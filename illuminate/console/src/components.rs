@@ -207,7 +207,6 @@ impl Components {
 
         let content =
             ensure_punctuation(highlight_dynamic_content(message.as_ref())).to_uppercase();
-        let content = content.replace("<OPTIONS=BOLD>", "<options=bold>");
         let width = self
             .output
             .width()
