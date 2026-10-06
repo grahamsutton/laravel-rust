@@ -1,0 +1,13 @@
+[package]
+name = "illuminate-macros"
+description = "Procedural macros for the Laravel framework."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+[lib]
+proc-macro = true

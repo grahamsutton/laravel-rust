@@ -1,0 +1,10 @@
+/target
+**/*.rs.bk
+.env
+/skeleton/storage/logs/*.log
+/skeleton/storage/framework/sessions/*
+/skeleton/storage/framework/cache/data/*
+/skeleton/database/*.sqlite
+.DS_Store
+.idea
+.vscode

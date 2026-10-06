@@ -1,0 +1,1 @@
+//! The Illuminate session component.

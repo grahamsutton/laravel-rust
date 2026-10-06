@@ -1,0 +1,1 @@
+//! The Illuminate auth component.

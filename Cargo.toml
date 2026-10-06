@@ -1,0 +1,144 @@
+[package]
+name = "laravel"
+description = "The Laravel Framework, for Rust."
+keywords = ["framework", "laravel", "web", "eloquent", "artisan"]
+categories = ["web-programming", "web-programming::http-server", "database"]
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[workspace]
+resolver = "2"
+members = [
+    "illuminate/*",
+]
+
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Graham Sutton <grahamsutton2@gmail.com>"]
+repository = "https://github.com/grahamsutton/laravel-rust"
+rust-version = "1.88"
+
+[workspace.dependencies]
+# The Illuminate components...
+illuminate-support = { path = "illuminate/support", version = "0.1.0" }
+illuminate-container = { path = "illuminate/container", version = "0.1.0" }
+illuminate-config = { path = "illuminate/config", version = "0.1.0" }
+illuminate-events = { path = "illuminate/events", version = "0.1.0" }
+illuminate-pipeline = { path = "illuminate/pipeline", version = "0.1.0" }
+illuminate-log = { path = "illuminate/log", version = "0.1.0" }
+illuminate-filesystem = { path = "illuminate/filesystem", version = "0.1.0" }
+illuminate-encryption = { path = "illuminate/encryption", version = "0.1.0" }
+illuminate-hashing = { path = "illuminate/hashing", version = "0.1.0" }
+illuminate-translation = { path = "illuminate/translation", version = "0.1.0" }
+illuminate-http = { path = "illuminate/http", version = "0.1.0" }
+illuminate-routing = { path = "illuminate/routing", version = "0.1.0" }
+illuminate-cookie = { path = "illuminate/cookie", version = "0.1.0" }
+illuminate-session = { path = "illuminate/session", version = "0.1.0" }
+illuminate-view = { path = "illuminate/view", version = "0.1.0" }
+illuminate-validation = { path = "illuminate/validation", version = "0.1.0" }
+illuminate-database = { path = "illuminate/database", version = "0.1.0" }
+illuminate-macros = { path = "illuminate/macros", version = "0.1.0" }
+illuminate-pagination = { path = "illuminate/pagination", version = "0.1.0" }
+illuminate-cache = { path = "illuminate/cache", version = "0.1.0" }
+illuminate-auth = { path = "illuminate/auth", version = "0.1.0" }
+illuminate-console = { path = "illuminate/console", version = "0.1.0" }
+illuminate-queue = { path = "illuminate/queue", version = "0.1.0" }
+illuminate-mail = { path = "illuminate/mail", version = "0.1.0" }
+illuminate-notifications = { path = "illuminate/notifications", version = "0.1.0" }
+illuminate-foundation = { path = "illuminate/foundation", version = "0.1.0" }
+laravel = { path = ".", version = "0.1.0" }
+
+# Third-party dependencies (shared feature sets keep builds unified)...
+tokio = { version = "1", features = ["full"] }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+http = "1"
+bytes = "1"
+serde = { version = "1", features = ["derive", "rc"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+indexmap = { version = "2", features = ["serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
+sqlx = { version = "0.8", default-features = false, features = ["any", "sqlite", "postgres", "mysql", "runtime-tokio", "json"] }
+regex = "1"
+async-trait = "0.1"
+futures = "0.3"
+thiserror = "2"
+anyhow = "1"
+rand = "0.9"
+uuid = { version = "1", features = ["v4", "v7", "serde"] }
+ulid = "1"
+base64 = "0.22"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+aes-gcm = "0.10"
+hmac = "0.12"
+sha2 = "0.10"
+sha1 = "0.10"
+md-5 = "0.10"
+hex = "0.4"
+bcrypt = "0.17"
+argon2 = "0.5"
+syn = { version = "2", features = ["full", "extra-traits"] }
+quote = "1"
+proc-macro2 = "1"
+proc-macro-crate = "3"
+percent-encoding = "2"
+form_urlencoded = "1"
+url = "2"
+multer = "3"
+mime_guess = "2"
+inventory = "0.3"
+subtle = "2"
+crc32fast = "1"
+tempfile = "3"
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls-tls", "hostname"] }
+
+[dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-config.workspace = true
+illuminate-events.workspace = true
+illuminate-pipeline.workspace = true
+illuminate-log.workspace = true
+illuminate-filesystem.workspace = true
+illuminate-encryption.workspace = true
+illuminate-hashing.workspace = true
+illuminate-translation.workspace = true
+illuminate-http.workspace = true
+illuminate-routing.workspace = true
+illuminate-cookie.workspace = true
+illuminate-session.workspace = true
+illuminate-view.workspace = true
+illuminate-validation.workspace = true
+illuminate-database.workspace = true
+illuminate-macros.workspace = true
+illuminate-pagination.workspace = true
+illuminate-cache.workspace = true
+illuminate-auth.workspace = true
+illuminate-console.workspace = true
+illuminate-queue.workspace = true
+illuminate-mail.workspace = true
+illuminate-notifications.workspace = true
+illuminate-foundation.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+inventory.workspace = true
+
+[profile.dev]
+# Keep debug builds snappy while still giving dependencies a little speed.
+debug = 1
+
+[profile.dev.package."*"]
+opt-level = 1
