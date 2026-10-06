@@ -6,9 +6,8 @@
 //! ```
 //! use illuminate_console::Application;
 //!
-//! # tokio_test();
 //! # #[tokio::main(flavor = "current_thread")]
-//! # async fn tokio_test() {
+//! # async fn main() {
 //! let artisan = Application::new();
 //!
 //! artisan.command("greet {name}", |cmd| async move {
@@ -26,22 +25,22 @@
 use std::future::Future;
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 
-use indexmap::IndexMap;
 use illuminate_support::{Error, Result};
+use indexmap::IndexMap;
 use regex::Regex;
 
 use crate::builtin::{HelpCommand, ListCommand};
 use crate::command::{
-    ClosureCommand, Command, CommandExit, CommandNotFoundException, FAILURE, INVALID, ManuallyFailedException,
-    PromptValidationException, SUCCESS,
+    ClosureCommand, Command, CommandExit, CommandNotFoundException, FAILURE, INVALID,
+    ManuallyFailedException, PromptValidationException, SUCCESS,
 };
 use crate::components::Components;
 use crate::console::Console;
 use crate::descriptor;
 use crate::formatter::OutputFormatter;
 use crate::input::{
-    ArgValue, ArtisanArgs, Input, InputArgument, InputDefinition, InputOption, InputValue, InvalidDefinitionException,
-    InvalidInputException, OptionMode, tokenize,
+    ArgValue, ArtisanArgs, Input, InputArgument, InputDefinition, InputOption, InputValue,
+    InvalidDefinitionException, InvalidInputException, OptionMode, tokenize,
 };
 use crate::output::{Output, Verbosity};
 use crate::parser::Parser;
@@ -58,6 +57,11 @@ pub fn current_output() -> Output {
     CURRENT_OUTPUT
         .try_with(Output::clone)
         .unwrap_or_else(|_| STDOUT.get_or_init(Output::stdout).clone())
+}
+
+/// Run the future with the given output as the current output.
+pub(crate) async fn scope_output<F: Future>(output: Output, future: F) -> F::Output {
+    CURRENT_OUTPUT.scope(output, future).await
 }
 
 /// A registered command, with its parsed signature.
@@ -96,7 +100,10 @@ impl std::fmt::Debug for Application {
         f.debug_struct("Application")
             .field("name", &self.name())
             .field("version", &self.version())
-            .field("commands", &self.commands.read().unwrap().keys().collect::<Vec<_>>())
+            .field(
+                "commands",
+                &self.commands.read().unwrap().keys().collect::<Vec<_>>(),
+            )
             .finish()
     }
 }
@@ -129,7 +136,9 @@ impl Application {
     }
 
     fn arc(&self) -> Arc<Application> {
-        self.this.upgrade().expect("the console application has been dropped")
+        self.this
+            .upgrade()
+            .expect("the console application has been dropped")
     }
 
     // ------------------------------------------------------------------
@@ -293,7 +302,10 @@ impl Application {
     /// Remove a command.
     pub fn forget(&self, name: &str) {
         self.commands.write().unwrap().shift_remove(name);
-        self.aliases.write().unwrap().retain(|_, target| target != name);
+        self.aliases
+            .write()
+            .unwrap()
+            .retain(|_, target| target != name);
     }
 
     /// Determine if a command (or alias) with the given name exists.
@@ -303,7 +315,8 @@ impl Application {
 
     /// Get a command by its exact name or alias.
     pub fn get(&self, name: &str) -> Option<Arc<dyn Command>> {
-        self.registered(name).map(|registered| registered.command.clone())
+        self.registered(name)
+            .map(|registered| registered.command.clone())
     }
 
     /// Every registered command, keyed by name.
@@ -326,7 +339,10 @@ impl Application {
     }
 
     /// Every command and alias name, with the command it refers to.
-    pub(crate) fn registry_entries(&self, namespace: Option<&str>) -> Vec<(String, Arc<Registered>)> {
+    pub(crate) fn registry_entries(
+        &self,
+        namespace: Option<&str>,
+    ) -> Vec<(String, Arc<Registered>)> {
         let mut entries: Vec<(String, Arc<Registered>)> = self
             .commands
             .read()
@@ -399,7 +415,11 @@ impl Application {
     }
 
     fn abbreviation_expression(name: &str) -> String {
-        name.split(':').map(regex::escape).collect::<Vec<_>>().join("[^:]*:") + "[^:]*"
+        name.split(':')
+            .map(regex::escape)
+            .collect::<Vec<_>>()
+            .join("[^:]*:")
+            + "[^:]*"
     }
 
     /// Find the full namespace for the given (possibly abbreviated) namespace.
@@ -408,10 +428,15 @@ impl Application {
         let expression = Self::abbreviation_expression(namespace);
         let regex = Regex::new(&format!("^{expression}")).expect("escaped expression");
 
-        let matches: Vec<String> = all.iter().filter(|ns| regex.is_match(ns)).cloned().collect();
+        let matches: Vec<String> = all
+            .iter()
+            .filter(|ns| regex.is_match(ns))
+            .cloned()
+            .collect();
 
         if matches.is_empty() {
-            let mut message = format!("There are no commands defined in the \"{namespace}\" namespace.");
+            let mut message =
+                format!("There are no commands defined in the \"{namespace}\" namespace.");
             let alternatives = find_alternatives(namespace, &all);
             append_alternatives(&mut message, &alternatives);
             return Err(CommandNotFoundException::new(message, alternatives));
@@ -429,15 +454,23 @@ impl Application {
             ));
         }
 
-        Ok(if exact { namespace.to_string() } else { matches[0].clone() })
+        Ok(if exact {
+            namespace.to_string()
+        } else {
+            matches[0].clone()
+        })
     }
 
     /// Find a command by its name, alias or an unambiguous abbreviation.
     pub fn find(&self, name: &str) -> Result<Arc<dyn Command>, CommandNotFoundException> {
-        self.find_registered(name).map(|registered| registered.command.clone())
+        self.find_registered(name)
+            .map(|registered| registered.command.clone())
     }
 
-    pub(crate) fn find_registered(&self, name: &str) -> Result<Arc<Registered>, CommandNotFoundException> {
+    pub(crate) fn find_registered(
+        &self,
+        name: &str,
+    ) -> Result<Arc<Registered>, CommandNotFoundException> {
         if let Some(registered) = self.registered(name) {
             return Ok(registered);
         }
@@ -453,9 +486,17 @@ impl Application {
         let insensitive = Regex::new(&format!("(?i)^{expression}")).expect("escaped expression");
         let exact = Regex::new(&format!("(?i)^{expression}$")).expect("escaped expression");
 
-        let mut matches: Vec<String> = all.iter().filter(|n| sensitive.is_match(n)).cloned().collect();
+        let mut matches: Vec<String> = all
+            .iter()
+            .filter(|n| sensitive.is_match(n))
+            .cloned()
+            .collect();
         if matches.is_empty() {
-            matches = all.iter().filter(|n| insensitive.is_match(n)).cloned().collect();
+            matches = all
+                .iter()
+                .filter(|n| insensitive.is_match(n))
+                .cloned()
+                .collect();
         }
 
         if matches.is_empty() || !matches.iter().any(|n| exact.is_match(n)) {
@@ -466,7 +507,10 @@ impl Application {
             let mut message = format!("Command \"{name}\" is not defined.");
             let alternatives: Vec<String> = find_alternatives(name, &all)
                 .into_iter()
-                .filter(|alternative| self.registered(alternative).is_some_and(|r| !r.command.hidden()))
+                .filter(|alternative| {
+                    self.registered(alternative)
+                        .is_some_and(|r| !r.command.hidden())
+                })
                 .collect();
             append_alternatives(&mut message, &alternatives);
 
@@ -498,10 +542,19 @@ impl Application {
                 let abbreviations: Vec<String> = visible
                     .iter()
                     .map(|n| {
-                        let description = self.registered(n).map(|r| r.command.description().to_string()).unwrap_or_default();
+                        let description = self
+                            .registered(n)
+                            .map(|r| r.command.description().to_string())
+                            .unwrap_or_default();
                         let abbreviation = format!("{n:<max$} {description}");
                         if abbreviation.chars().count() > usable_width {
-                            format!("{}...", abbreviation.chars().take(usable_width.saturating_sub(3)).collect::<String>())
+                            format!(
+                                "{}...",
+                                abbreviation
+                                    .chars()
+                                    .take(usable_width.saturating_sub(3))
+                                    .collect::<String>()
+                            )
                         } else {
                             abbreviation
                         }
@@ -520,9 +573,9 @@ impl Application {
             matches = if visible.is_empty() { matches } else { visible };
         }
 
-        let registered = self
-            .registered(&matches[0])
-            .ok_or_else(|| CommandNotFoundException::new(format!("The command \"{name}\" does not exist."), vec![]))?;
+        let registered = self.registered(&matches[0]).ok_or_else(|| {
+            CommandNotFoundException::new(format!("The command \"{name}\" does not exist."), vec![])
+        })?;
 
         if registered.command.hidden() {
             return Err(CommandNotFoundException::new(
@@ -542,11 +595,12 @@ impl Application {
     /// binary), writing to the terminal. Returns the exit code.
     ///
     /// ```no_run
-    /// # async fn main() {
-    /// let artisan = illuminate_console::Application::new();
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let artisan = illuminate_console::Application::new();
     ///
-    /// std::process::exit(artisan.run(std::env::args()).await);
-    /// # }
+    ///     std::process::exit(artisan.run(std::env::args()).await);
+    /// }
     /// ```
     pub async fn run<I, S>(&self, argv: I) -> i32
     where
@@ -622,11 +676,20 @@ impl Application {
     }
 
     /// Call a command, writing to the given output.
-    pub async fn call_with_output(&self, command: &str, args: impl Into<ArtisanArgs>, output: &Output) -> Result<i32> {
+    pub async fn call_with_output(
+        &self,
+        command: &str,
+        args: impl Into<ArtisanArgs>,
+        output: &Output,
+    ) -> Result<i32> {
         let (name, source) = Self::parse_command(command, args.into());
 
         if !self.has(&name) {
-            return Err(CommandNotFoundException::new(format!("The command \"{name}\" does not exist."), vec![]).into());
+            return Err(CommandNotFoundException::new(
+                format!("The command \"{name}\" does not exist."),
+                vec![],
+            )
+            .into());
         }
 
         match &source {
@@ -699,9 +762,9 @@ impl Application {
 
         let wants_help = match &source {
             Source::Tokens(tokens) => has_parameter_option(tokens, &["--help", "-h"]),
-            Source::Named(named) => named
-                .iter()
-                .any(|(key, value)| (key == "--help" || key == "-h") && *value != ArgValue::Bool(false)),
+            Source::Named(named) => named.iter().any(|(key, value)| {
+                (key == "--help" || key == "-h") && *value != ArgValue::Bool(false)
+            }),
         };
 
         if wants_help && registered.name != "help" {
@@ -709,13 +772,21 @@ impl Application {
             return Ok(SUCCESS);
         }
 
-        let definition = registered.definition.merged_with(&Self::default_definition(), true);
+        let definition = registered
+            .definition
+            .merged_with(&Self::default_definition(), true);
 
         let mut input = match source {
             Source::Tokens(tokens) => Input::from_tokens(tokens, &definition)?,
             Source::Named(mut named) => {
                 named.retain(|(key, _)| key != "command");
-                named.insert(0, ("command".to_string(), ArgValue::String(registered.name.clone())));
+                named.insert(
+                    0,
+                    (
+                        "command".to_string(),
+                        ArgValue::String(registered.name.clone()),
+                    ),
+                );
                 Input::from_named(&named, &definition)?
             }
         };
@@ -767,7 +838,12 @@ impl Application {
         result
     }
 
-    fn prompt_for_missing_arguments(&self, registered: &Registered, input: &mut Input, output: &Output) -> Result<()> {
+    fn prompt_for_missing_arguments(
+        &self,
+        registered: &Registered,
+        input: &mut Input,
+        output: &Output,
+    ) -> Result<()> {
         let questions = registered.command.prompt_for_missing_arguments_using();
 
         for argument in registered.definition.arguments() {
@@ -799,7 +875,11 @@ impl Application {
                 .validate(move |value| value.is_empty().then(|| format!("The {name} is required.")))
                 .prompt_on(output)?;
 
-            let value = if argument.array { InputValue::Array(vec![answer]) } else { InputValue::String(answer) };
+            let value = if argument.array {
+                InputValue::Array(vec![answer])
+            } else {
+                InputValue::String(answer)
+            };
             input.set_argument(&argument.name, value)?;
         }
 
@@ -844,7 +924,12 @@ impl Application {
     /// Render an exception for the console, returning the exit code to use.
     pub fn render_exception(&self, error: &Error, output: &Output) -> i32 {
         if let Some(not_found) = error.downcast_ref::<CommandNotFoundException>() {
-            let mut message = not_found.message.split('.').next().unwrap_or_default().to_string();
+            let mut message = not_found
+                .message
+                .split('.')
+                .next()
+                .unwrap_or_default()
+                .to_string();
             let components = Components::new(output).verbosity(Verbosity::Quiet);
 
             if not_found.alternatives.is_empty() {
@@ -868,7 +953,11 @@ impl Application {
 
         self.report(error);
 
-        let chain: Vec<String> = error.chain().skip(1).map(|cause| cause.to_string()).collect();
+        let chain: Vec<String> = error
+            .chain()
+            .skip(1)
+            .map(|cause| cause.to_string())
+            .collect();
         let details = output.is_verbose().then_some(chain);
         render_throwable(&error.to_string(), details, output);
 
@@ -882,7 +971,11 @@ fn render_throwable(message: &str, causes: Option<Vec<String>>, output: &Output)
 
     let message = message.trim();
     let terminal_width = output.width().saturating_sub(1).max(10);
-    let title = if message.is_empty() { "  [Error]  ".to_string() } else { String::new() };
+    let title = if message.is_empty() {
+        "  [Error]  ".to_string()
+    } else {
+        String::new()
+    };
     let mut length = title.chars().count();
 
     let mut lines: Vec<(String, usize)> = Vec::new();
@@ -906,7 +999,10 @@ fn render_throwable(message: &str, causes: Option<Vec<String>>, output: &Output)
     let empty = format!("<error>{}</error>", " ".repeat(length));
     let mut messages = vec![empty.clone()];
     if !title.is_empty() {
-        messages.push(format!("<error>{title}{}</error>", " ".repeat(length.saturating_sub(title.len()))));
+        messages.push(format!(
+            "<error>{title}{}</error>",
+            " ".repeat(length.saturating_sub(title.len()))
+        ));
     }
     for (line, width) in lines {
         messages.push(format!(
@@ -924,7 +1020,14 @@ fn render_throwable(message: &str, causes: Option<Vec<String>>, output: &Output)
 
     if let Some(causes) = causes {
         for cause in causes {
-            output.write_with(&format!("<comment>Caused by:</comment> {}", OutputFormatter::escape(&cause)), true, Verbosity::Quiet);
+            output.write_with(
+                &format!(
+                    "<comment>Caused by:</comment> {}",
+                    OutputFormatter::escape(&cause)
+                ),
+                true,
+                Verbosity::Quiet,
+            );
         }
     }
 }
@@ -955,7 +1058,9 @@ pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
         let mut current = vec![i + 1; b.len() + 1];
         for (j, cb) in b.iter().enumerate() {
             let cost = usize::from(ca != cb);
-            current[j + 1] = (previous[j + 1] + 1).min(current[j] + 1).min(previous[j] + cost);
+            current[j + 1] = (previous[j + 1] + 1)
+                .min(current[j] + 1)
+                .min(previous[j] + cost);
         }
         previous = current;
     }
@@ -985,7 +1090,9 @@ fn find_alternatives(name: &str, collection: &[String]) -> Vec<String> {
             };
 
             let distance = levenshtein(subname, part);
-            if distance as f64 <= subname.len() as f64 / 3.0 || (!subname.is_empty() && part.contains(subname)) {
+            if distance as f64 <= subname.len() as f64 / 3.0
+                || (!subname.is_empty() && part.contains(subname))
+            {
                 *alternatives.entry(item.clone()).or_insert(0) += distance;
             } else if exists {
                 *alternatives.get_mut(item).unwrap() += THRESHOLD;
@@ -1024,7 +1131,11 @@ pub(crate) fn has_parameter_option(tokens: &[String], values: &[&str]) -> bool {
         }
 
         for value in values {
-            let leading = if value.starts_with("--") { format!("{value}=") } else { value.to_string() };
+            let leading = if value.starts_with("--") {
+                format!("{value}=")
+            } else {
+                value.to_string()
+            };
             if token == value || (!leading.is_empty() && token.starts_with(&leading)) {
                 return true;
             }
@@ -1041,7 +1152,10 @@ fn parameter_option(tokens: &[String], name: &str) -> Option<String> {
             return None;
         }
         if token == name {
-            return iter.peek().filter(|next| !next.starts_with('-')).map(|next| next.to_string());
+            return iter
+                .peek()
+                .filter(|next| !next.starts_with('-'))
+                .map(|next| next.to_string());
         }
         if let Some(value) = token.strip_prefix(&format!("{name}=")) {
             return Some(value.to_string());
@@ -1089,7 +1203,9 @@ fn configure_io_from_tokens(tokens: &[String], output: &Output) {
         let level = parameter_option(tokens, "--verbose");
         if has_parameter_option(tokens, &["-vvv", "--verbose=3"]) || level.as_deref() == Some("3") {
             output.set_verbosity(Verbosity::Debug);
-        } else if has_parameter_option(tokens, &["-vv", "--verbose=2"]) || level.as_deref() == Some("2") {
+        } else if has_parameter_option(tokens, &["-vv", "--verbose=2"])
+            || level.as_deref() == Some("2")
+        {
             output.set_verbosity(Verbosity::VeryVerbose);
         } else if has_parameter_option(tokens, &["-v", "--verbose=1", "--verbose"]) {
             output.set_verbosity(Verbosity::Verbose);
@@ -1159,7 +1275,10 @@ mod tests {
     #[test]
     fn it_finds_alternatives() {
         let all = tokens(&["make:model", "make:migration", "migrate", "list", "help"]);
-        assert_eq!(find_alternatives("mak:model", &all), vec!["make:migration", "make:model"]);
+        assert_eq!(
+            find_alternatives("mak:model", &all),
+            vec!["make:migration", "make:model"]
+        );
         assert_eq!(find_alternatives("lst", &all), vec!["list"]);
         assert!(find_alternatives("zzzzzz", &all).is_empty());
     }
@@ -1176,8 +1295,14 @@ mod tests {
 
     #[test]
     fn it_finds_the_first_argument() {
-        assert_eq!(first_argument(&tokens(&["-v", "migrate", "x"])).as_deref(), Some("migrate"));
-        assert_eq!(first_argument(&tokens(&["--env", "local", "migrate"])).as_deref(), Some("migrate"));
+        assert_eq!(
+            first_argument(&tokens(&["-v", "migrate", "x"])).as_deref(),
+            Some("migrate")
+        );
+        assert_eq!(
+            first_argument(&tokens(&["--env", "local", "migrate"])).as_deref(),
+            Some("migrate")
+        );
         assert_eq!(first_argument(&tokens(&["--ansi"])), None);
     }
 

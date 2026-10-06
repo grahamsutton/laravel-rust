@@ -330,7 +330,7 @@ impl Connection {
 
     /// Escape a value for safe SQL embedding (used by `to_raw_sql`).
     pub fn escape(&self, value: &Value) -> Result<String> {
-        self.query_grammar().escape(value).map_err(|e| illuminate_support::error!(e))
+        self.query_grammar().escape(value).map_err(|e| anyhow::anyhow!(e))
     }
 
     // ------------------------------------------------------------------
@@ -588,7 +588,7 @@ impl Connection {
     /// Reconnect to the database.
     pub async fn reconnect(&self) -> Result<()> {
         self.disconnect().await;
-        self.pool().map(|_| ()).map_err(|e| illuminate_support::error!(e.to_string()))
+        self.pool().map(|_| ()).map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
     // ------------------------------------------------------------------

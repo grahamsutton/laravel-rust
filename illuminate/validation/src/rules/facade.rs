@@ -5,9 +5,9 @@ use illuminate_support::Value;
 use super::builders::enum_values_rule;
 use super::database::DatabaseRuleKind;
 use super::{
-    AnyOf, ArrayKeys, ArrayRule, BackedEnum, ConditionalRules, Contains, DatabaseRule, DateRule, Dimensions,
-    DoesntContain, EmailRule, Enum, FileRule, ImageFile, In, IntoCondition, IntoDataCondition, NestedRules, NotIn,
-    NumericRule, RuleItem, RuleSet, StringRule,
+    AnyOf, ArrayKeys, ArrayRule, BackedEnum, ConditionalRules, Contains, DatabaseRule, DateRule,
+    Dimensions, DoesntContain, EmailRule, Enum, FileRule, ImageFile, In, IntoCondition,
+    IntoDataCondition, NestedRules, NotIn, NumericRule, RuleItem, RuleSet, StringRule,
 };
 use crate::rule::{ClosureRule, FailCallback};
 
@@ -76,7 +76,10 @@ impl Rule {
 
     /// The field is required unless the condition holds.
     pub fn required_unless(condition: impl IntoCondition) -> ConditionalRules {
-        ConditionalRules::from_condition(condition.into_condition().negate(), RuleSet::from("required"))
+        ConditionalRules::from_condition(
+            condition.into_condition().negate(),
+            RuleSet::from("required"),
+        )
     }
 
     /// The field is excluded from the validated data when the condition holds.
@@ -86,7 +89,10 @@ impl Rule {
 
     /// The field is excluded from the validated data unless the condition holds.
     pub fn exclude_unless(condition: impl IntoCondition) -> ConditionalRules {
-        ConditionalRules::from_condition(condition.into_condition().negate(), RuleSet::from("exclude"))
+        ConditionalRules::from_condition(
+            condition.into_condition().negate(),
+            RuleSet::from("exclude"),
+        )
     }
 
     /// The field is prohibited when the condition holds.
@@ -96,22 +102,35 @@ impl Rule {
 
     /// The field is prohibited unless the condition holds.
     pub fn prohibited_unless(condition: impl IntoCondition) -> ConditionalRules {
-        ConditionalRules::from_condition(condition.into_condition().negate(), RuleSet::from("prohibited"))
+        ConditionalRules::from_condition(
+            condition.into_condition().negate(),
+            RuleSet::from("prohibited"),
+        )
     }
 
     /// Apply `rules` when the condition (a `bool`, or a closure receiving
     /// the data) holds, and `default` otherwise.
-    pub fn when(condition: impl IntoDataCondition, rules: impl Into<RuleSet>, default: impl Into<RuleSet>) -> ConditionalRules {
+    pub fn when(
+        condition: impl IntoDataCondition,
+        rules: impl Into<RuleSet>,
+        default: impl Into<RuleSet>,
+    ) -> ConditionalRules {
         ConditionalRules::new(condition, rules, default)
     }
 
     /// Apply `rules` unless the condition holds.
-    pub fn unless(condition: impl IntoDataCondition, rules: impl Into<RuleSet>, default: impl Into<RuleSet>) -> ConditionalRules {
+    pub fn unless(
+        condition: impl IntoDataCondition,
+        rules: impl Into<RuleSet>,
+        default: impl Into<RuleSet>,
+    ) -> ConditionalRules {
         ConditionalRules::new(condition, default, rules)
     }
 
     /// Compute rules for each concrete attribute from its value and name.
-    pub fn for_each<R: Into<RuleSet>>(callback: impl Fn(&Value, &str) -> R + Send + Sync + 'static) -> NestedRules {
+    pub fn for_each<R: Into<RuleSet>>(
+        callback: impl Fn(&Value, &str) -> R + Send + Sync + 'static,
+    ) -> NestedRules {
         NestedRules::new(callback)
     }
 
@@ -184,7 +203,9 @@ impl Rule {
     ///     })],
     /// };
     /// ```
-    pub fn closure(callback: impl Fn(&str, &Value, &mut FailCallback<'_>) + Send + Sync + 'static) -> ClosureRule {
+    pub fn closure(
+        callback: impl Fn(&str, &Value, &mut FailCallback<'_>) + Send + Sync + 'static,
+    ) -> ClosureRule {
         ClosureRule::new(callback)
     }
 }

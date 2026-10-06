@@ -8,9 +8,12 @@
 //! parameters, which can't coerce a string into a `timestamp` or `uuid`.
 
 use std::str::FromStr;
+
+use futures::future::BoxFuture;
 use std::time::Duration;
 
-use illuminate_support::{Map, Number, Value, ValueExt};
+use illuminate_support::{Map, Value, ValueExt};
+use serde_json::Number;
 use sqlx::mysql::{MySqlConnectOptions, MySqlPool, MySqlPoolOptions, MySqlRow};
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::{PgConnectOptions, PgPool, PgPoolOptions, PgRow};
@@ -513,83 +516,97 @@ fn bind_sqlite<'q>(
     query
 }
 
-pub(crate) async fn sqlite_fetch<'a, E>(
+pub(crate) fn sqlite_fetch<'a, E>(
     executor: E,
     sql: &'a str,
     bindings: &'a [Value],
-) -> Result<Vec<Value>, sqlx::Error>
+) -> BoxFuture<'a, Result<Vec<Value>, sqlx::Error>>
 where
-    E: Executor<'a, Database = Sqlite>,
+    E: Executor<'a, Database = Sqlite> + 'a,
 {
-    let rows = bind_sqlite(sqlx::query(sql), bindings)
-        .fetch_all(executor)
-        .await?;
-    Ok(rows.iter().map(decode_sqlite_row).collect())
+    Box::pin(async move {
+        let rows = bind_sqlite(sqlx::query(sql), bindings)
+            .fetch_all(executor)
+            .await?;
+        Ok(rows.iter().map(decode_sqlite_row).collect())
+    })
 }
 
-pub(crate) async fn sqlite_execute<'a, E>(
+pub(crate) fn sqlite_execute<'a, E>(
     executor: E,
     sql: &'a str,
     bindings: &'a [Value],
-) -> Result<Affected, sqlx::Error>
+) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
 where
-    E: Executor<'a, Database = Sqlite>,
+    E: Executor<'a, Database = Sqlite> + 'a,
 {
-    let result = bind_sqlite(sqlx::query(sql), bindings)
-        .execute(executor)
-        .await?;
-    Ok(Affected {
-        rows: result.rows_affected(),
-        last_insert_id: Some(result.last_insert_rowid()),
+    Box::pin(async move {
+        let result = bind_sqlite(sqlx::query(sql), bindings)
+            .execute(executor)
+            .await?;
+        Ok(Affected {
+            rows: result.rows_affected(),
+            last_insert_id: Some(result.last_insert_rowid()),
+        })
     })
 }
 
-pub(crate) async fn sqlite_unprepared<'a, E>(executor: E, sql: &'a str) -> Result<Affected, sqlx::Error>
+pub(crate) fn sqlite_unprepared<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
 where
-    E: Executor<'a, Database = Sqlite>,
+    E: Executor<'a, Database = Sqlite> + 'a,
 {
-    let result = sqlx::raw_sql(sql).execute(executor).await?;
-    Ok(Affected {
-        rows: result.rows_affected(),
-        last_insert_id: Some(result.last_insert_rowid()),
+    Box::pin(async move {
+        let result = executor.execute(sqlx::raw_sql(sql)).await?;
+        Ok(Affected {
+            rows: result.rows_affected(),
+            last_insert_id: Some(result.last_insert_rowid()),
+        })
     })
 }
 
-pub(crate) async fn mysql_fetch<'a, E>(executor: E, sql: &'a str) -> Result<Vec<Value>, sqlx::Error>
+pub(crate) fn mysql_fetch<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Vec<Value>, sqlx::Error>>
 where
-    E: Executor<'a, Database = MySql>,
+    E: Executor<'a, Database = MySql> + 'a,
 {
-    let rows = sqlx::raw_sql(sql).fetch_all(executor).await?;
-    Ok(rows.iter().map(decode_mysql_row).collect())
-}
-
-pub(crate) async fn mysql_execute<'a, E>(executor: E, sql: &'a str) -> Result<Affected, sqlx::Error>
-where
-    E: Executor<'a, Database = MySql>,
-{
-    let result = sqlx::raw_sql(sql).execute(executor).await?;
-    Ok(Affected {
-        rows: result.rows_affected(),
-        last_insert_id: Some(result.last_insert_id() as i64),
+    Box::pin(async move {
+        let rows = executor.fetch_all(sqlx::raw_sql(sql)).await?;
+        Ok(rows.iter().map(decode_mysql_row).collect())
     })
 }
 
-pub(crate) async fn postgres_fetch<'a, E>(executor: E, sql: &'a str) -> Result<Vec<Value>, sqlx::Error>
+pub(crate) fn mysql_execute<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
 where
-    E: Executor<'a, Database = Postgres>,
+    E: Executor<'a, Database = MySql> + 'a,
 {
-    let rows = sqlx::raw_sql(sql).fetch_all(executor).await?;
-    Ok(rows.iter().map(decode_postgres_row).collect())
+    Box::pin(async move {
+        let result = executor.execute(sqlx::raw_sql(sql)).await?;
+        Ok(Affected {
+            rows: result.rows_affected(),
+            last_insert_id: Some(result.last_insert_id() as i64),
+        })
+    })
 }
 
-pub(crate) async fn postgres_execute<'a, E>(executor: E, sql: &'a str) -> Result<Affected, sqlx::Error>
+pub(crate) fn postgres_fetch<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Vec<Value>, sqlx::Error>>
 where
-    E: Executor<'a, Database = Postgres>,
+    E: Executor<'a, Database = Postgres> + 'a,
 {
-    let result = sqlx::raw_sql(sql).execute(executor).await?;
-    Ok(Affected {
-        rows: result.rows_affected(),
-        last_insert_id: None,
+    Box::pin(async move {
+        let rows = executor.fetch_all(sqlx::raw_sql(sql)).await?;
+        Ok(rows.iter().map(decode_postgres_row).collect())
+    })
+}
+
+pub(crate) fn postgres_execute<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
+where
+    E: Executor<'a, Database = Postgres> + 'a,
+{
+    Box::pin(async move {
+        let result = executor.execute(sqlx::raw_sql(sql)).await?;
+        Ok(Affected {
+            rows: result.rows_affected(),
+            last_insert_id: None,
+        })
     })
 }
 
@@ -615,57 +632,59 @@ fn bytes_value(bytes: Vec<u8>) -> Value {
 pub(crate) fn decode_sqlite_row(row: &SqliteRow) -> Value {
     let mut map = Map::new();
     for column in row.columns() {
-        let value = match row.try_get_raw(column.ordinal()) {
-            Ok(raw) => decode_sqlite_value(raw),
-            Err(_) => Value::Null,
-        };
-        map.insert(column.name().to_string(), value);
+        map.insert(column.name().to_string(), decode_sqlite_value(row, column.ordinal()));
     }
     Value::Object(map)
 }
 
-fn decode_sqlite_value(raw: sqlx::sqlite::SqliteValueRef<'_>) -> Value {
-    if raw.is_null() {
-        return Value::Null;
-    }
-    let kind = raw.type_info().name().to_string();
+fn sqlite_decode<'r, T: Decode<'r, Sqlite>>(row: &'r SqliteRow, index: usize) -> Option<T> {
+    let raw = row.try_get_raw(index).ok()?;
+    T::decode(raw).ok()
+}
+
+fn decode_sqlite_value(row: &SqliteRow, index: usize) -> Value {
+    let kind = match row.try_get_raw(index) {
+        Ok(raw) if raw.is_null() => return Value::Null,
+        Ok(raw) => raw.type_info().name().to_string(),
+        Err(_) => return Value::Null,
+    };
     match kind.as_str() {
         "INTEGER" => {
-            if let Ok(i) = <i64 as Decode<Sqlite>>::decode(raw.clone()) {
+            if let Some(i) = sqlite_decode::<i64>(row, index) {
                 return Value::from(i);
             }
         }
         "REAL" => {
-            if let Ok(f) = <f64 as Decode<Sqlite>>::decode(raw.clone()) {
+            if let Some(f) = sqlite_decode::<f64>(row, index) {
                 return float_value(f);
             }
         }
         "TEXT" => {
-            if let Ok(s) = <String as Decode<Sqlite>>::decode(raw.clone()) {
+            if let Some(s) = sqlite_decode::<String>(row, index) {
                 return Value::String(s);
             }
         }
         "BLOB" => {
-            if let Ok(b) = <Vec<u8> as Decode<Sqlite>>::decode(raw.clone()) {
+            if let Some(b) = sqlite_decode::<Vec<u8>>(row, index) {
                 return bytes_value(b);
             }
         }
         _ => {}
     }
     // Leniently try each representation in turn.
-    if let Ok(i) = <i64 as Decode<Sqlite>>::decode(raw.clone()) {
+    if let Some(i) = sqlite_decode::<i64>(row, index) {
         return Value::from(i);
     }
-    if let Ok(f) = <f64 as Decode<Sqlite>>::decode(raw.clone()) {
+    if let Some(f) = sqlite_decode::<f64>(row, index) {
         return float_value(f);
     }
-    if let Ok(s) = <String as Decode<Sqlite>>::decode(raw.clone()) {
+    if let Some(s) = sqlite_decode::<String>(row, index) {
         return Value::String(s);
     }
-    if let Ok(b) = <bool as Decode<Sqlite>>::decode(raw.clone()) {
+    if let Some(b) = sqlite_decode::<bool>(row, index) {
         return Value::Bool(b);
     }
-    if let Ok(b) = <Vec<u8> as Decode<Sqlite>>::decode(raw) {
+    if let Some(b) = sqlite_decode::<Vec<u8>>(row, index) {
         return bytes_value(b);
     }
     Value::Null

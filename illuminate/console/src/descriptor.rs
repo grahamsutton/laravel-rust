@@ -29,7 +29,8 @@ fn total_width_for_options(options: &[InputOption]) -> usize {
             if option.mode == OptionMode::Negatable {
                 name_length += 6 + width(&option.name);
             } else if option.accepts_value() {
-                name_length += 1 + width(&option.name) + if option.is_value_optional() { 2 } else { 0 };
+                name_length +=
+                    1 + width(&option.name) + if option.is_value_optional() { 2 } else { 0 };
             }
 
             name_length
@@ -40,7 +41,12 @@ fn total_width_for_options(options: &[InputOption]) -> usize {
 
 fn describe_argument(argument: &InputArgument, total_width: usize) -> String {
     let default = InputDefinition::default_display(&argument.default)
-        .map(|default| format!("<comment> [default: {}]</comment>", OutputFormatter::escape(&default)))
+        .map(|default| {
+            format!(
+                "<comment> [default: {}]</comment>",
+                OutputFormatter::escape(&default)
+            )
+        })
         .unwrap_or_default();
 
     let spacing = total_width.saturating_sub(width(&argument.name));
@@ -57,7 +63,12 @@ fn describe_argument(argument: &InputArgument, total_width: usize) -> String {
 fn describe_option(option: &InputOption, total_width: usize) -> String {
     let default = if option.accepts_value() {
         InputDefinition::default_display(&option.default)
-            .map(|default| format!("<comment> [default: {}]</comment>", OutputFormatter::escape(&default)))
+            .map(|default| {
+                format!(
+                    "<comment> [default: {}]</comment>",
+                    OutputFormatter::escape(&default)
+                )
+            })
             .unwrap_or_default()
     } else {
         String::new()
@@ -91,7 +102,11 @@ fn describe_option(option: &InputOption, total_width: usize) -> String {
         " ".repeat(spacing),
         indent_description(&option.description, total_width),
         default,
-        if option.array { "<comment> (multiple values allowed)</comment>" } else { "" }
+        if option.array {
+            "<comment> (multiple values allowed)</comment>"
+        } else {
+            ""
+        }
     )
 }
 
@@ -119,10 +134,13 @@ pub(crate) fn describe_input_definition(definition: &InputDefinition) -> String 
     if !definition.options().is_empty() {
         text.push_str("<comment>Options:</comment>");
 
-        let (later, first): (Vec<&InputOption>, Vec<&InputOption>) = definition
-            .options()
-            .iter()
-            .partition(|option| option.shortcut.as_deref().is_some_and(|s| s.chars().count() > 1));
+        let (later, first): (Vec<&InputOption>, Vec<&InputOption>) =
+            definition.options().iter().partition(|option| {
+                option
+                    .shortcut
+                    .as_deref()
+                    .is_some_and(|s| s.chars().count() > 1)
+            });
 
         for option in first.into_iter().chain(later) {
             text.push('\n');
@@ -132,6 +150,8 @@ pub(crate) fn describe_input_definition(definition: &InputDefinition) -> String 
 
     text
 }
+
+type Entries = Vec<(String, std::sync::Arc<Registered>)>;
 
 /// The commands of the application, grouped by namespace.
 pub(crate) struct ApplicationDescription {
@@ -143,8 +163,8 @@ impl ApplicationDescription {
     pub(crate) fn new(application: &Application, namespace: Option<&str>) -> Self {
         let entries = application.registry_entries(namespace);
 
-        let mut global: Vec<(String, std::sync::Arc<Registered>)> = Vec::new();
-        let mut namespaced: std::collections::BTreeMap<String, Vec<(String, std::sync::Arc<Registered>)>> =
+        let mut global: Entries = Vec::new();
+        let mut namespaced: std::collections::BTreeMap<String, Entries> =
             std::collections::BTreeMap::new();
 
         for (name, registered) in entries {
@@ -162,7 +182,7 @@ impl ApplicationDescription {
         let mut commands = Vec::new();
         let mut namespaces = Vec::new();
 
-        let mut groups: Vec<(String, Vec<(String, std::sync::Arc<Registered>)>)> = Vec::new();
+        let mut groups: Vec<(String, Entries)> = Vec::new();
         if !global.is_empty() {
             groups.push((GLOBAL_NAMESPACE.to_string(), global));
         }
@@ -180,11 +200,16 @@ impl ApplicationDescription {
             namespaces.push((id, names));
         }
 
-        Self { commands, namespaces }
+        Self {
+            commands,
+            namespaces,
+        }
     }
 
     fn command(&self, name: &str) -> Option<&std::sync::Arc<Registered>> {
-        self.commands.iter().find(|registered| registered.name == name)
+        self.commands
+            .iter()
+            .find(|registered| registered.name == name)
     }
 }
 
@@ -202,7 +227,11 @@ fn column_width(description: &ApplicationDescription, include_aliases: bool) -> 
 }
 
 /// Describe the whole application (the `list` command's output).
-pub(crate) fn describe_application(application: &Application, namespace: Option<&str>, raw: bool) -> String {
+pub(crate) fn describe_application(
+    application: &Application,
+    namespace: Option<&str>,
+    raw: bool,
+) -> String {
     let description = ApplicationDescription::new(application, namespace);
     let mut text = String::new();
 
@@ -226,8 +255,11 @@ pub(crate) fn describe_application(application: &Application, namespace: Option<
     text.push_str("<comment>Usage:</comment>\n");
     text.push_str("  command [options] [arguments]\n\n");
 
-    let options = InputDefinition::new(Vec::new(), Application::default_definition().options().to_vec())
-        .unwrap_or_default();
+    let options = InputDefinition::new(
+        Vec::new(),
+        Application::default_definition().options().to_vec(),
+    )
+    .unwrap_or_default();
     text.push_str(&describe_input_definition(&options));
     text.push_str("\n\n");
 
@@ -241,7 +273,10 @@ pub(crate) fn describe_application(application: &Application, namespace: Option<
     }
 
     for (id, names) in &description.namespaces {
-        let names: Vec<&String> = names.iter().filter(|name| description.command(name).is_some()).collect();
+        let names: Vec<&String> = names
+            .iter()
+            .filter(|name| description.command(name).is_some())
+            .collect();
         if names.is_empty() {
             continue;
         }
@@ -254,7 +289,11 @@ pub(crate) fn describe_application(application: &Application, namespace: Option<
         for name in names {
             let registered = description.command(name).expect("filtered above");
             let aliases = registered.command.aliases();
-            let aliases = if aliases.is_empty() { String::new() } else { format!("[{}] ", aliases.join("|")) };
+            let aliases = if aliases.is_empty() {
+                String::new()
+            } else {
+                format!("[{}] ", aliases.join("|"))
+            };
             let spacing = width.saturating_sub(self::width(name));
 
             text.push('\n');
@@ -273,17 +312,27 @@ pub(crate) fn describe_application(application: &Application, namespace: Option<
 /// The processed help text of a command.
 pub(crate) fn processed_help(application: &Application, registered: &Registered) -> String {
     let help = registered.command.help();
-    let help = if help.is_empty() { registered.command.description() } else { help };
+    let help = if help.is_empty() {
+        registered.command.description()
+    } else {
+        help
+    };
 
-    help.replace("%command.name%", &registered.name)
-        .replace("%command.full_name%", &format!("{} {}", application.binary(), registered.name))
+    help.replace("%command.name%", &registered.name).replace(
+        "%command.full_name%",
+        &format!("{} {}", application.binary(), registered.name),
+    )
 }
 
 /// The short synopsis of a command, e.g. `mail:send [options] [--] <user>`.
 pub(crate) fn synopsis(registered: &Registered) -> String {
-    format!("{} {}", registered.name, registered.definition.synopsis(true))
-        .trim()
-        .to_string()
+    format!(
+        "{} {}",
+        registered.name,
+        registered.definition.synopsis(true)
+    )
+    .trim()
+    .to_string()
 }
 
 /// Describe a single command (the `help` command's output).
@@ -363,7 +412,10 @@ fn command_json(application: &Application, registered: &Registered) -> Value {
 }
 
 /// Describe the application as JSON.
-pub(crate) fn describe_application_json(application: &Application, namespace: Option<&str>) -> String {
+pub(crate) fn describe_application_json(
+    application: &Application,
+    namespace: Option<&str>,
+) -> String {
     let description = ApplicationDescription::new(application, namespace);
 
     let mut value = json!({

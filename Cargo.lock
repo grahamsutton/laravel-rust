@@ -958,6 +958,27 @@ dependencies = [
 [[package]]
 name = "illuminate-auth"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "hex",
+ "hmac",
+ "illuminate-config",
+ "illuminate-container",
+ "illuminate-cookie",
+ "illuminate-encryption",
+ "illuminate-hashing",
+ "illuminate-http",
+ "illuminate-session",
+ "illuminate-support",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "subtle",
+ "thiserror",
+ "tokio",
+]
 
 [[package]]
 name = "illuminate-cache"
@@ -1004,8 +1025,10 @@ dependencies = [
  "illuminate-container",
  "illuminate-support",
  "indexmap",
+ "regex",
  "serde_json",
  "sha1",
+ "tempfile",
  "thiserror",
  "tokio",
 ]
@@ -1131,13 +1154,17 @@ dependencies = [
  "illuminate-container",
  "illuminate-cookie",
  "illuminate-encryption",
+ "illuminate-events",
  "illuminate-filesystem",
  "illuminate-hashing",
  "illuminate-http",
+ "illuminate-log",
  "illuminate-pagination",
+ "illuminate-pipeline",
  "illuminate-routing",
  "illuminate-session",
  "illuminate-support",
+ "illuminate-translation",
  "indexmap",
  "mime_guess",
  "rand 0.9.5",
@@ -1427,13 +1454,10 @@ name = "laravel"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "illuminate-auth",
  "illuminate-cache",
  "illuminate-config",
- "illuminate-console",
  "illuminate-container",
  "illuminate-cookie",
- "illuminate-database",
  "illuminate-encryption",
  "illuminate-events",
  "illuminate-filesystem",
@@ -1442,20 +1466,16 @@ dependencies = [
  "illuminate-http",
  "illuminate-log",
  "illuminate-macros",
- "illuminate-mail",
- "illuminate-notifications",
  "illuminate-pagination",
  "illuminate-pipeline",
- "illuminate-queue",
  "illuminate-routing",
  "illuminate-session",
  "illuminate-support",
  "illuminate-translation",
- "illuminate-validation",
- "illuminate-view",
  "inventory",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

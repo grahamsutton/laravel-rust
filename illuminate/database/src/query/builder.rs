@@ -5,7 +5,8 @@ use std::future::Future;
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
 
-use illuminate_support::{Collection, Conditionable, Result, Tappable, Value, ValueExt, bail};
+use anyhow::bail;
+use illuminate_support::{Collection, Conditionable, Result, Tappable, Value, ValueExt};
 
 use super::clauses::*;
 use super::grammar::{QueryGrammar, UpsertColumn};

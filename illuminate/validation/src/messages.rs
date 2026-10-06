@@ -52,166 +52,426 @@ impl MessageResolver for EnglishMessages {
     }
 }
 
+/// Laravel's `lang/en/validation.php`, flattened with dot keys.
+const ENGLISH: &[(&str, &str)] = &[
+    ("accepted", "The :attribute field must be accepted."),
+    (
+        "accepted_if",
+        "The :attribute field must be accepted when :other is :value.",
+    ),
+    ("active_url", "The :attribute field must be a valid URL."),
+    ("after", "The :attribute field must be a date after :date."),
+    (
+        "after_or_equal",
+        "The :attribute field must be a date after or equal to :date.",
+    ),
+    ("alpha", "The :attribute field must only contain letters."),
+    (
+        "alpha_dash",
+        "The :attribute field must only contain letters, numbers, dashes, and underscores.",
+    ),
+    (
+        "alpha_num",
+        "The :attribute field must only contain letters and numbers.",
+    ),
+    ("any_of", "The :attribute field is invalid."),
+    ("array", "The :attribute field must be an array."),
+    (
+        "array_keys",
+        "The :attribute field must only contain the following keys: :values.",
+    ),
+    (
+        "ascii",
+        "The :attribute field must only contain single-byte alphanumeric characters and symbols.",
+    ),
+    (
+        "base64",
+        "The :attribute field must be a valid Base64 string.",
+    ),
+    (
+        "before",
+        "The :attribute field must be a date before :date.",
+    ),
+    (
+        "before_or_equal",
+        "The :attribute field must be a date before or equal to :date.",
+    ),
+    (
+        "between.array",
+        "The :attribute field must have between :min and :max items.",
+    ),
+    (
+        "between.file",
+        "The :attribute field must be between :min and :max kilobytes.",
+    ),
+    (
+        "between.numeric",
+        "The :attribute field must be between :min and :max.",
+    ),
+    (
+        "between.string",
+        "The :attribute field must be between :min and :max characters.",
+    ),
+    ("boolean", "The :attribute field must be true or false."),
+    (
+        "can",
+        "The :attribute field contains an unauthorized value.",
+    ),
+    (
+        "confirmed",
+        "The :attribute field confirmation does not match.",
+    ),
+    (
+        "contains",
+        "The :attribute field is missing a required value.",
+    ),
+    ("current_password", "The password is incorrect."),
+    ("date", "The :attribute field must be a valid date."),
+    (
+        "date_equals",
+        "The :attribute field must be a date equal to :date.",
+    ),
+    (
+        "date_format",
+        "The :attribute field must match the format :format.",
+    ),
+    (
+        "decimal",
+        "The :attribute field must have :decimal decimal places.",
+    ),
+    ("declined", "The :attribute field must be declined."),
+    (
+        "declined_if",
+        "The :attribute field must be declined when :other is :value.",
+    ),
+    (
+        "different",
+        "The :attribute field and :other must be different.",
+    ),
+    ("digits", "The :attribute field must be :digits digits."),
+    (
+        "digits_between",
+        "The :attribute field must be between :min and :max digits.",
+    ),
+    (
+        "dimensions",
+        "The :attribute field has invalid image dimensions.",
+    ),
+    ("distinct", "The :attribute field has a duplicate value."),
+    (
+        "doesnt_contain",
+        "The :attribute field must not contain any of the following: :values.",
+    ),
+    (
+        "doesnt_end_with",
+        "The :attribute field must not end with one of the following: :values.",
+    ),
+    (
+        "doesnt_start_with",
+        "The :attribute field must not start with one of the following: :values.",
+    ),
+    (
+        "email",
+        "The :attribute field must be a valid email address.",
+    ),
+    (
+        "encoding",
+        "The :attribute field must be encoded in :encoding.",
+    ),
+    (
+        "ends_with",
+        "The :attribute field must end with one of the following: :values.",
+    ),
+    ("enum", "The selected :attribute is invalid."),
+    ("exists", "The selected :attribute is invalid."),
+    (
+        "extensions",
+        "The :attribute field must have one of the following extensions: :values.",
+    ),
+    ("file", "The :attribute field must be a file."),
+    ("filled", "The :attribute field must have a value."),
+    (
+        "gt.array",
+        "The :attribute field must have more than :value items.",
+    ),
+    (
+        "gt.file",
+        "The :attribute field must be greater than :value kilobytes.",
+    ),
+    (
+        "gt.numeric",
+        "The :attribute field must be greater than :value.",
+    ),
+    (
+        "gt.string",
+        "The :attribute field must be greater than :value characters.",
+    ),
+    (
+        "gte.array",
+        "The :attribute field must have :value items or more.",
+    ),
+    (
+        "gte.file",
+        "The :attribute field must be greater than or equal to :value kilobytes.",
+    ),
+    (
+        "gte.numeric",
+        "The :attribute field must be greater than or equal to :value.",
+    ),
+    (
+        "gte.string",
+        "The :attribute field must be greater than or equal to :value characters.",
+    ),
+    (
+        "hex_color",
+        "The :attribute field must be a valid hexadecimal color.",
+    ),
+    ("image", "The :attribute field must be an image."),
+    ("in", "The selected :attribute is invalid."),
+    ("in_array", "The :attribute field must exist in :other."),
+    (
+        "in_array_keys",
+        "The :attribute field must contain at least one of the following keys: :values.",
+    ),
+    ("integer", "The :attribute field must be an integer."),
+    ("ip", "The :attribute field must be a valid IP address."),
+    ("ipv4", "The :attribute field must be a valid IPv4 address."),
+    ("ipv6", "The :attribute field must be a valid IPv6 address."),
+    ("json", "The :attribute field must be a valid JSON string."),
+    ("list", "The :attribute field must be a list."),
+    ("lowercase", "The :attribute field must be lowercase."),
+    (
+        "lt.array",
+        "The :attribute field must have less than :value items.",
+    ),
+    (
+        "lt.file",
+        "The :attribute field must be less than :value kilobytes.",
+    ),
+    (
+        "lt.numeric",
+        "The :attribute field must be less than :value.",
+    ),
+    (
+        "lt.string",
+        "The :attribute field must be less than :value characters.",
+    ),
+    (
+        "lte.array",
+        "The :attribute field must not have more than :value items.",
+    ),
+    (
+        "lte.file",
+        "The :attribute field must be less than or equal to :value kilobytes.",
+    ),
+    (
+        "lte.numeric",
+        "The :attribute field must be less than or equal to :value.",
+    ),
+    (
+        "lte.string",
+        "The :attribute field must be less than or equal to :value characters.",
+    ),
+    (
+        "mac_address",
+        "The :attribute field must be a valid MAC address.",
+    ),
+    (
+        "max.array",
+        "The :attribute field must not have more than :max items.",
+    ),
+    (
+        "max.file",
+        "The :attribute field must not be greater than :max kilobytes.",
+    ),
+    (
+        "max.numeric",
+        "The :attribute field must not be greater than :max.",
+    ),
+    (
+        "max.string",
+        "The :attribute field must not be greater than :max characters.",
+    ),
+    (
+        "max_digits",
+        "The :attribute field must not have more than :max digits.",
+    ),
+    (
+        "mimes",
+        "The :attribute field must be a file of type: :values.",
+    ),
+    (
+        "mimetypes",
+        "The :attribute field must be a file of type: :values.",
+    ),
+    (
+        "min.array",
+        "The :attribute field must have at least :min items.",
+    ),
+    (
+        "min.file",
+        "The :attribute field must be at least :min kilobytes.",
+    ),
+    ("min.numeric", "The :attribute field must be at least :min."),
+    (
+        "min.string",
+        "The :attribute field must be at least :min characters.",
+    ),
+    (
+        "min_digits",
+        "The :attribute field must have at least :min digits.",
+    ),
+    ("missing", "The :attribute field must be missing."),
+    (
+        "missing_if",
+        "The :attribute field must be missing when :other is :value.",
+    ),
+    (
+        "missing_unless",
+        "The :attribute field must be missing unless :other is :value.",
+    ),
+    (
+        "missing_with",
+        "The :attribute field must be missing when :values is present.",
+    ),
+    (
+        "missing_with_all",
+        "The :attribute field must be missing when :values are present.",
+    ),
+    (
+        "multiple_of",
+        "The :attribute field must be a multiple of :value.",
+    ),
+    ("not_in", "The selected :attribute is invalid."),
+    ("not_regex", "The :attribute field format is invalid."),
+    ("numeric", "The :attribute field must be a number."),
+    (
+        "password.letters",
+        "The :attribute field must contain at least one letter.",
+    ),
+    (
+        "password.mixed",
+        "The :attribute field must contain at least one uppercase and one lowercase letter.",
+    ),
+    (
+        "password.numbers",
+        "The :attribute field must contain at least one number.",
+    ),
+    (
+        "password.symbols",
+        "The :attribute field must contain at least one symbol.",
+    ),
+    (
+        "password.uncompromised",
+        "The given :attribute has appeared in a data leak. Please choose a different :attribute.",
+    ),
+    ("present", "The :attribute field must be present."),
+    (
+        "present_if",
+        "The :attribute field must be present when :other is :value.",
+    ),
+    (
+        "present_unless",
+        "The :attribute field must be present unless :other is :value.",
+    ),
+    (
+        "present_with",
+        "The :attribute field must be present when :values is present.",
+    ),
+    (
+        "present_with_all",
+        "The :attribute field must be present when :values are present.",
+    ),
+    ("prohibited", "The :attribute field is prohibited."),
+    (
+        "prohibited_if",
+        "The :attribute field is prohibited when :other is :value.",
+    ),
+    (
+        "prohibited_if_accepted",
+        "The :attribute field is prohibited when :other is accepted.",
+    ),
+    (
+        "prohibited_if_declined",
+        "The :attribute field is prohibited when :other is declined.",
+    ),
+    (
+        "prohibited_unless",
+        "The :attribute field is prohibited unless :other is in :values.",
+    ),
+    (
+        "prohibits",
+        "The :attribute field prohibits :other from being present.",
+    ),
+    ("regex", "The :attribute field format is invalid."),
+    ("required", "The :attribute field is required."),
+    (
+        "required_array_keys",
+        "The :attribute field must contain entries for: :values.",
+    ),
+    (
+        "required_if",
+        "The :attribute field is required when :other is :value.",
+    ),
+    (
+        "required_if_accepted",
+        "The :attribute field is required when :other is accepted.",
+    ),
+    (
+        "required_if_declined",
+        "The :attribute field is required when :other is declined.",
+    ),
+    (
+        "required_unless",
+        "The :attribute field is required unless :other is in :values.",
+    ),
+    (
+        "required_with",
+        "The :attribute field is required when :values is present.",
+    ),
+    (
+        "required_with_all",
+        "The :attribute field is required when :values are present.",
+    ),
+    (
+        "required_without",
+        "The :attribute field is required when :values is not present.",
+    ),
+    (
+        "required_without_all",
+        "The :attribute field is required when none of :values are present.",
+    ),
+    ("same", "The :attribute field must match :other."),
+    (
+        "size.array",
+        "The :attribute field must contain :size items.",
+    ),
+    ("size.file", "The :attribute field must be :size kilobytes."),
+    ("size.numeric", "The :attribute field must be :size."),
+    (
+        "size.string",
+        "The :attribute field must be :size characters.",
+    ),
+    (
+        "starts_with",
+        "The :attribute field must start with one of the following: :values.",
+    ),
+    ("string", "The :attribute field must be a string."),
+    ("timezone", "The :attribute field must be a valid timezone."),
+    ("unique", "The :attribute has already been taken."),
+    ("uploaded", "The :attribute failed to upload."),
+    ("uppercase", "The :attribute field must be uppercase."),
+    ("url", "The :attribute field must be a valid URL."),
+    ("ulid", "The :attribute field must be a valid ULID."),
+    ("uuid", "The :attribute field must be a valid UUID."),
+];
+
 static LINES: LazyLock<Value> = LazyLock::new(|| {
-    json!({
-        "accepted": "The :attribute field must be accepted.",
-        "accepted_if": "The :attribute field must be accepted when :other is :value.",
-        "active_url": "The :attribute field must be a valid URL.",
-        "after": "The :attribute field must be a date after :date.",
-        "after_or_equal": "The :attribute field must be a date after or equal to :date.",
-        "alpha": "The :attribute field must only contain letters.",
-        "alpha_dash": "The :attribute field must only contain letters, numbers, dashes, and underscores.",
-        "alpha_num": "The :attribute field must only contain letters and numbers.",
-        "any_of": "The :attribute field is invalid.",
-        "array": "The :attribute field must be an array.",
-        "array_keys": "The :attribute field must only contain the following keys: :values.",
-        "ascii": "The :attribute field must only contain single-byte alphanumeric characters and symbols.",
-        "base64": "The :attribute field must be a valid Base64 string.",
-        "before": "The :attribute field must be a date before :date.",
-        "before_or_equal": "The :attribute field must be a date before or equal to :date.",
-        "between": {
-            "array": "The :attribute field must have between :min and :max items.",
-            "file": "The :attribute field must be between :min and :max kilobytes.",
-            "numeric": "The :attribute field must be between :min and :max.",
-            "string": "The :attribute field must be between :min and :max characters.",
-        },
-        "boolean": "The :attribute field must be true or false.",
-        "can": "The :attribute field contains an unauthorized value.",
-        "confirmed": "The :attribute field confirmation does not match.",
-        "contains": "The :attribute field is missing a required value.",
-        "current_password": "The password is incorrect.",
-        "date": "The :attribute field must be a valid date.",
-        "date_equals": "The :attribute field must be a date equal to :date.",
-        "date_format": "The :attribute field must match the format :format.",
-        "decimal": "The :attribute field must have :decimal decimal places.",
-        "declined": "The :attribute field must be declined.",
-        "declined_if": "The :attribute field must be declined when :other is :value.",
-        "different": "The :attribute field and :other must be different.",
-        "digits": "The :attribute field must be :digits digits.",
-        "digits_between": "The :attribute field must be between :min and :max digits.",
-        "dimensions": "The :attribute field has invalid image dimensions.",
-        "distinct": "The :attribute field has a duplicate value.",
-        "doesnt_contain": "The :attribute field must not contain any of the following: :values.",
-        "doesnt_end_with": "The :attribute field must not end with one of the following: :values.",
-        "doesnt_start_with": "The :attribute field must not start with one of the following: :values.",
-        "email": "The :attribute field must be a valid email address.",
-        "encoding": "The :attribute field must be encoded in :encoding.",
-        "ends_with": "The :attribute field must end with one of the following: :values.",
-        "enum": "The selected :attribute is invalid.",
-        "exists": "The selected :attribute is invalid.",
-        "extensions": "The :attribute field must have one of the following extensions: :values.",
-        "file": "The :attribute field must be a file.",
-        "filled": "The :attribute field must have a value.",
-        "gt": {
-            "array": "The :attribute field must have more than :value items.",
-            "file": "The :attribute field must be greater than :value kilobytes.",
-            "numeric": "The :attribute field must be greater than :value.",
-            "string": "The :attribute field must be greater than :value characters.",
-        },
-        "gte": {
-            "array": "The :attribute field must have :value items or more.",
-            "file": "The :attribute field must be greater than or equal to :value kilobytes.",
-            "numeric": "The :attribute field must be greater than or equal to :value.",
-            "string": "The :attribute field must be greater than or equal to :value characters.",
-        },
-        "hex_color": "The :attribute field must be a valid hexadecimal color.",
-        "image": "The :attribute field must be an image.",
-        "in": "The selected :attribute is invalid.",
-        "in_array": "The :attribute field must exist in :other.",
-        "in_array_keys": "The :attribute field must contain at least one of the following keys: :values.",
-        "integer": "The :attribute field must be an integer.",
-        "ip": "The :attribute field must be a valid IP address.",
-        "ipv4": "The :attribute field must be a valid IPv4 address.",
-        "ipv6": "The :attribute field must be a valid IPv6 address.",
-        "json": "The :attribute field must be a valid JSON string.",
-        "list": "The :attribute field must be a list.",
-        "lowercase": "The :attribute field must be lowercase.",
-        "lt": {
-            "array": "The :attribute field must have less than :value items.",
-            "file": "The :attribute field must be less than :value kilobytes.",
-            "numeric": "The :attribute field must be less than :value.",
-            "string": "The :attribute field must be less than :value characters.",
-        },
-        "lte": {
-            "array": "The :attribute field must not have more than :value items.",
-            "file": "The :attribute field must be less than or equal to :value kilobytes.",
-            "numeric": "The :attribute field must be less than or equal to :value.",
-            "string": "The :attribute field must be less than or equal to :value characters.",
-        },
-        "mac_address": "The :attribute field must be a valid MAC address.",
-        "max": {
-            "array": "The :attribute field must not have more than :max items.",
-            "file": "The :attribute field must not be greater than :max kilobytes.",
-            "numeric": "The :attribute field must not be greater than :max.",
-            "string": "The :attribute field must not be greater than :max characters.",
-        },
-        "max_digits": "The :attribute field must not have more than :max digits.",
-        "mimes": "The :attribute field must be a file of type: :values.",
-        "mimetypes": "The :attribute field must be a file of type: :values.",
-        "min": {
-            "array": "The :attribute field must have at least :min items.",
-            "file": "The :attribute field must be at least :min kilobytes.",
-            "numeric": "The :attribute field must be at least :min.",
-            "string": "The :attribute field must be at least :min characters.",
-        },
-        "min_digits": "The :attribute field must have at least :min digits.",
-        "missing": "The :attribute field must be missing.",
-        "missing_if": "The :attribute field must be missing when :other is :value.",
-        "missing_unless": "The :attribute field must be missing unless :other is :value.",
-        "missing_with": "The :attribute field must be missing when :values is present.",
-        "missing_with_all": "The :attribute field must be missing when :values are present.",
-        "multiple_of": "The :attribute field must be a multiple of :value.",
-        "not_in": "The selected :attribute is invalid.",
-        "not_regex": "The :attribute field format is invalid.",
-        "numeric": "The :attribute field must be a number.",
-        "password": {
-            "letters": "The :attribute field must contain at least one letter.",
-            "mixed": "The :attribute field must contain at least one uppercase and one lowercase letter.",
-            "numbers": "The :attribute field must contain at least one number.",
-            "symbols": "The :attribute field must contain at least one symbol.",
-            "uncompromised": "The given :attribute has appeared in a data leak. Please choose a different :attribute.",
-        },
-        "present": "The :attribute field must be present.",
-        "present_if": "The :attribute field must be present when :other is :value.",
-        "present_unless": "The :attribute field must be present unless :other is :value.",
-        "present_with": "The :attribute field must be present when :values is present.",
-        "present_with_all": "The :attribute field must be present when :values are present.",
-        "prohibited": "The :attribute field is prohibited.",
-        "prohibited_if": "The :attribute field is prohibited when :other is :value.",
-        "prohibited_if_accepted": "The :attribute field is prohibited when :other is accepted.",
-        "prohibited_if_declined": "The :attribute field is prohibited when :other is declined.",
-        "prohibited_unless": "The :attribute field is prohibited unless :other is in :values.",
-        "prohibits": "The :attribute field prohibits :other from being present.",
-        "regex": "The :attribute field format is invalid.",
-        "required": "The :attribute field is required.",
-        "required_array_keys": "The :attribute field must contain entries for: :values.",
-        "required_if": "The :attribute field is required when :other is :value.",
-        "required_if_accepted": "The :attribute field is required when :other is accepted.",
-        "required_if_declined": "The :attribute field is required when :other is declined.",
-        "required_unless": "The :attribute field is required unless :other is in :values.",
-        "required_with": "The :attribute field is required when :values is present.",
-        "required_with_all": "The :attribute field is required when :values are present.",
-        "required_without": "The :attribute field is required when :values is not present.",
-        "required_without_all": "The :attribute field is required when none of :values are present.",
-        "same": "The :attribute field must match :other.",
-        "size": {
-            "array": "The :attribute field must contain :size items.",
-            "file": "The :attribute field must be :size kilobytes.",
-            "numeric": "The :attribute field must be :size.",
-            "string": "The :attribute field must be :size characters.",
-        },
-        "starts_with": "The :attribute field must start with one of the following: :values.",
-        "string": "The :attribute field must be a string.",
-        "timezone": "The :attribute field must be a valid timezone.",
-        "unique": "The :attribute has already been taken.",
-        "uploaded": "The :attribute failed to upload.",
-        "uppercase": "The :attribute field must be uppercase.",
-        "url": "The :attribute field must be a valid URL.",
-        "ulid": "The :attribute field must be a valid ULID.",
-        "uuid": "The :attribute field must be a valid UUID.",
-        "custom": {},
-        "attributes": {},
-    })
+    let mut lines = json!({"custom": {}, "attributes": {}});
+    for (key, line) in ENGLISH {
+        data::set(&mut lines, key, Value::String(line.to_string()));
+    }
+    lines
 });
 
 /// Compile a message key pattern (`items.*.name`) into a regex where `*`
@@ -232,7 +492,10 @@ fn replace_keeping_case(message: &str, mapping: &[(&str, String)]) -> String {
         message = message
             .replace(&format!(":{placeholder}"), value)
             .replace(&format!(":{}", Str::upper(placeholder)), &Str::upper(value))
-            .replace(&format!(":{}", Str::ucfirst(placeholder)), &Str::ucfirst(value));
+            .replace(
+                &format!(":{}", Str::ucfirst(placeholder)),
+                &Str::ucfirst(value),
+            );
     }
     message
 }
@@ -266,7 +529,9 @@ fn position_word(n: usize) -> &'static str {
 
 fn str_ireplace(message: &str, search: &str, replace: &str) -> String {
     let pattern = Regex::new(&format!("(?i){}", regex::escape(search))).expect("escaped pattern");
-    pattern.replace_all(message, regex::NoExpand(replace)).into_owned()
+    pattern
+        .replace_all(message, regex::NoExpand(replace))
+        .into_owned()
 }
 
 impl Validator {
@@ -277,14 +542,15 @@ impl Validator {
     /// Look up a validation language line: the registered resolver first,
     /// then the built-in English messages.
     pub fn language_line(&self, key: &str) -> Option<String> {
-        self.language_value(key).and_then(|v| v.as_str().map(str::to_string))
+        self.language_value(key)
+            .and_then(|v| v.as_str().map(str::to_string))
     }
 
     pub(crate) fn language_value(&self, key: &str) -> Option<Value> {
-        if let Some(resolver) = &self.resolver {
-            if let Some(value) = resolver.get(key) {
-                return Some(value);
-            }
+        if let Some(resolver) = &self.resolver
+            && let Some(value) = resolver.get(key)
+        {
+            return Some(value);
         }
         EnglishMessages.get(key)
     }
@@ -315,7 +581,9 @@ impl Validator {
         let attribute_type = self.attribute_type(attribute, extra_numeric);
 
         // Inline messages given to the validator.
-        if let Some(inline) = self.get_from_local_array(&display, &lower_rule, &self.custom_messages, attribute_type) {
+        if let Some(inline) =
+            self.get_from_local_array(&display, &lower_rule, &self.custom_messages, attribute_type)
+        {
             match inline {
                 Value::String(message) => return message,
                 Value::Object(map) if is_size_rule => {
@@ -348,9 +616,12 @@ impl Validator {
             return line;
         }
 
-        if let Some(Value::String(message)) =
-            self.get_from_local_array(&display, &lower_rule, &self.extensions.fallback_messages, attribute_type)
-        {
+        if let Some(Value::String(message)) = self.get_from_local_array(
+            &display,
+            &lower_rule,
+            &self.extensions.fallback_messages,
+            attribute_type,
+        ) {
             return message;
         }
 
@@ -366,9 +637,16 @@ impl Validator {
         source: &IndexMap<String, Value>,
         attribute_type: &str,
     ) -> Option<Value> {
-        let mut keys = vec![format!("{attribute}.{lower_rule}"), lower_rule.to_string(), attribute.to_string()];
+        let mut keys = vec![
+            format!("{attribute}.{lower_rule}"),
+            lower_rule.to_string(),
+            attribute.to_string(),
+        ];
         if attribute_type != "file" {
-            let short = format!("{attribute}.{}", Str::snake(&Str::class_basename(lower_rule)));
+            let short = format!(
+                "{attribute}.{}",
+                Str::snake(&Str::class_basename(lower_rule))
+            );
             if !keys.contains(&short) {
                 keys.push(short);
             }
@@ -386,10 +664,10 @@ impl Validator {
                     continue;
                 }
                 if source_key == key {
-                    if source_key == attribute {
-                        if let Value::Object(map) = message {
-                            return map.get(lower_rule).cloned();
-                        }
+                    if source_key == attribute
+                        && let Value::Object(map) = message
+                    {
+                        return map.get(lower_rule).cloned();
                     }
                     return Some(message.clone());
                 }
@@ -409,11 +687,10 @@ impl Validator {
                 data::flatten(&custom, "", &mut flattened);
                 for (flat_key, message) in flattened {
                     let flat_key = data::unescape(&flat_key);
-                    let matches = flat_key == short_key || (flat_key.contains('*') && Str::is(&flat_key, short_key));
-                    if matches {
-                        if let Some(message) = message.as_str() {
-                            return Some(message.to_string());
-                        }
+                    let matches = flat_key == short_key
+                        || (flat_key.contains('*') && Str::is(&flat_key, short_key));
+                    if matches && let Some(message) = message.as_str() {
+                        return Some(message.to_string());
                     }
                 }
             }
@@ -436,7 +713,10 @@ impl Validator {
         attribute.to_string()
     }
 
-    fn attribute_from_local_array(attribute: &str, source: &IndexMap<String, String>) -> Option<String> {
+    fn attribute_from_local_array(
+        attribute: &str,
+        source: &IndexMap<String, String>,
+    ) -> Option<String> {
         if let Some(name) = source.get(attribute) {
             return Some(name.clone());
         }
@@ -488,13 +768,18 @@ impl Validator {
     pub fn displayable_value(&self, attribute: &str, value: &Value) -> String {
         let display = data::unescape(attribute);
         let as_string = value.to_string_lossy();
-        if let Some(custom) = self.custom_values.get(&display).and_then(|values| values.get(&as_string)) {
+        if let Some(custom) = self
+            .custom_values
+            .get(&display)
+            .and_then(|values| values.get(&as_string))
+        {
             return custom.clone();
         }
         if data::is_array(value) {
             return "array".to_string();
         }
-        if let Some(line) = self.language_line(&format!("validation.values.{display}.{as_string}")) {
+        if let Some(line) = self.language_line(&format!("validation.values.{display}.{as_string}"))
+        {
             return line;
         }
         match value {
@@ -506,22 +791,18 @@ impl Validator {
     }
 
     fn attribute_list(&self, attributes: &[String]) -> Vec<String> {
-        attributes.iter().map(|a| self.displayable_attribute(a)).collect()
+        attributes
+            .iter()
+            .map(|a| self.displayable_attribute(a))
+            .collect()
     }
 
     // ------------------------------------------------------------------
     // Replacements
     // ------------------------------------------------------------------
 
-    /// Replace all placeholders in a message (`makeReplacements`).
-    pub(crate) fn make_replacements(
-        &self,
-        message: &str,
-        attribute: &str,
-        rule: &str,
-        parameters: &[String],
-        extra_numeric: bool,
-    ) -> String {
+    /// Replace `:attribute`, `:input`, `:index` and `:position` placeholders.
+    pub(crate) fn replace_common(&self, message: &str, attribute: &str) -> String {
         let display = self.displayable_attribute(attribute);
         let mut message = message
             .replace(":attribute", &display)
@@ -536,12 +817,29 @@ impl Validator {
         }
 
         message = self.replace_index_or_position(&message, attribute, "index", |n| n.to_string());
-        message = self.replace_index_or_position(&message, attribute, "position", |n| (n + 1).to_string());
-        message = self.replace_index_or_position(&message, attribute, "ordinal-position", |n| ordinal(n + 1));
+        message = self
+            .replace_index_or_position(&message, attribute, "position", |n| (n + 1).to_string());
+        self.replace_index_or_position(&message, attribute, "ordinal-position", |n| ordinal(n + 1))
+    }
 
+    /// Replace all placeholders in a message (`makeReplacements`).
+    pub(crate) fn make_replacements(
+        &self,
+        message: &str,
+        attribute: &str,
+        rule: &str,
+        parameters: &[String],
+        extra_numeric: bool,
+    ) -> String {
+        let message = self.replace_common(message, attribute);
         let lower_rule = Str::snake(rule);
         if let Some(replacer) = self.extensions.replacers.get(&lower_rule) {
-            return replacer(&message, &data::unescape(attribute), &lower_rule, parameters);
+            return replacer(
+                &message,
+                &data::unescape(attribute),
+                &lower_rule,
+                parameters,
+            );
         }
         self.replace_builtin(message, attribute, rule, parameters, extra_numeric)
     }
@@ -554,7 +852,9 @@ impl Validator {
         modifier: impl Fn(usize) -> String,
     ) -> String {
         let lower = message.to_lowercase();
-        if !lower.contains(&format!(":{placeholder}")) && !lower.contains(&format!("-{placeholder}")) {
+        if !lower.contains(&format!(":{placeholder}"))
+            && !lower.contains(&format!("-{placeholder}"))
+        {
             return message.to_string();
         }
         let mut message = message.to_string();
@@ -588,8 +888,11 @@ impl Validator {
         let joined_attributes = |separator: &str| self.attribute_list(params).join(separator);
 
         match rule {
-            "AcceptedIf" | "DeclinedIf" | "MissingIf" | "PresentIf" | "RequiredIf" | "ProhibitedIf" => {
-                let other_value = data::get(self.data(), &p(0)).cloned().unwrap_or(Value::Null);
+            "AcceptedIf" | "DeclinedIf" | "MissingIf" | "PresentIf" | "RequiredIf"
+            | "ProhibitedIf" => {
+                let other_value = data::get(self.data(), &p(0))
+                    .cloned()
+                    .unwrap_or(Value::Null);
                 let value = self.displayable_value(&p(0), &other_value);
                 let other = self.displayable_attribute(&p(0));
                 replace_keeping_case(&message, &[("other", other), ("value", value)])
@@ -597,11 +900,20 @@ impl Validator {
             "Between" | "DigitsBetween" => message.replace(":min", &p(0)).replace(":max", &p(1)),
             "DateFormat" => message.replace(":format", &p(0)),
             "Decimal" => {
-                let decimal = if params.len() > 1 { format!("{}-{}", p(0), p(1)) } else { p(0) };
+                let decimal = if params.len() > 1 {
+                    format!("{}-{}", p(0), p(1))
+                } else {
+                    p(0)
+                };
                 message.replace(":decimal", &decimal)
             }
-            "Different" | "Same" | "InArray" | "RequiredIfAccepted" | "RequiredIfDeclined"
-            | "ProhibitedIfAccepted" | "ProhibitedIfDeclined" => {
+            "Different"
+            | "Same"
+            | "InArray"
+            | "RequiredIfAccepted"
+            | "RequiredIfDeclined"
+            | "ProhibitedIfAccepted"
+            | "ProhibitedIfDeclined" => {
                 replace_keeping_case(&message, &[("other", self.displayable_attribute(&p(0)))])
             }
             "Digits" => message.replace(":digits", &p(0)),
@@ -611,19 +923,28 @@ impl Validator {
             "Max" | "MaxDigits" => message.replace(":max", &p(0)),
             "MissingUnless" | "PresentUnless" => message
                 .replace(":other", &self.displayable_attribute(&p(0)))
-                .replace(":value", &self.displayable_value(&p(0), &Value::String(p(1)))),
-            "MissingWith" | "MissingWithAll" | "PresentWith" | "PresentWithAll" | "RequiredWith"
-            | "RequiredWithAll" | "RequiredWithout" | "RequiredWithoutAll" => {
+                .replace(
+                    ":value",
+                    &self.displayable_value(&p(0), &Value::String(p(1))),
+                ),
+            "MissingWith" | "MissingWithAll" | "PresentWith" | "PresentWithAll"
+            | "RequiredWith" | "RequiredWithAll" | "RequiredWithout" | "RequiredWithoutAll" => {
                 let values = joined_attributes(" / ");
-                let ucfirst: Vec<String> = self.attribute_list(params).iter().map(|a| Str::ucfirst(a)).collect();
+                let ucfirst: Vec<String> = self
+                    .attribute_list(params)
+                    .iter()
+                    .map(|a| Str::ucfirst(a))
+                    .collect();
                 message
                     .replace(":values", &values)
                     .replace(":VALUES", &Str::upper(&values))
                     .replace(":Values", &ucfirst.join(" / "))
             }
             "MultipleOf" => message.replace(":value", &p(0)),
-            "In" | "NotIn" | "InArrayKeys" | "RequiredArrayKeys" | "EndsWith" | "DoesntEndWith" | "StartsWith"
-            | "DoesntStartWith" | "DoesntContain" => self.replace_in(&message, attribute, params),
+            "In" | "NotIn" | "InArrayKeys" | "RequiredArrayKeys" | "EndsWith" | "DoesntEndWith"
+            | "StartsWith" | "DoesntStartWith" | "DoesntContain" => {
+                self.replace_in(&message, attribute, params)
+            }
             "ArrayKeys" => {
                 let message = self.replace_in(&message, attribute, params);
                 let unexpected: Vec<String> = match self.value(attribute) {
@@ -639,7 +960,9 @@ impl Validator {
             }
             "Size" => message.replace(":size", &p(0)),
             "Gt" | "Lt" | "Gte" | "Lte" => match data::get(self.data(), &p(0)) {
-                None | Some(Value::Null) => message.replace(":value", &self.displayable_attribute(&p(0))),
+                None | Some(Value::Null) => {
+                    message.replace(":value", &self.displayable_attribute(&p(0)))
+                }
                 Some(value) => {
                     let size = self
                         .size_of(attribute, value, extra_numeric || is_numeric(value))
@@ -667,7 +990,11 @@ impl Validator {
             }
             "Prohibits" => {
                 let others = joined_attributes(" / ");
-                let ucfirst: Vec<String> = self.attribute_list(params).iter().map(|a| Str::ucfirst(a)).collect();
+                let ucfirst: Vec<String> = self
+                    .attribute_list(params)
+                    .iter()
+                    .map(|a| Str::ucfirst(a))
+                    .collect();
                 message
                     .replace(":other", &others)
                     .replace(":OTHER", &Str::upper(&others))
@@ -719,7 +1046,9 @@ mod tests {
         );
         assert_eq!(
             EnglishMessages.get("validation.between.string"),
-            Some(json!("The :attribute field must be between :min and :max characters."))
+            Some(json!(
+                "The :attribute field must be between :min and :max characters."
+            ))
         );
         assert_eq!(EnglishMessages.get("validation.nope"), None);
         assert_eq!(EnglishMessages.get("required"), None);
@@ -728,7 +1057,10 @@ mod tests {
     #[test]
     fn placeholders_keep_their_case() {
         assert_eq!(
-            replace_keeping_case(":other / :OTHER / :Other", &[("other", "first name".into())]),
+            replace_keeping_case(
+                ":other / :OTHER / :Other",
+                &[("other", "first name".into())]
+            ),
             "first name / FIRST NAME / First name"
         );
         assert_eq!(ordinal(1), "1st");

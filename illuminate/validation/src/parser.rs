@@ -79,7 +79,11 @@ pub(crate) fn parse_string_rule(rule: &str) -> Option<(String, Vec<String>)> {
         "Bool" => "Boolean".to_string(),
         _ => name,
     };
-    if name.is_empty() { None } else { Some((name, params)) }
+    if name.is_empty() {
+        None
+    } else {
+        Some((name, params))
+    }
 }
 
 fn compile_items(items: &[RuleItem], attribute: &str, data: &Value, out: &mut Vec<Compiled>) {
@@ -144,7 +148,10 @@ pub(crate) fn explode(rules: &Rules, data: &Value) -> Exploded {
 
 fn explode_wildcard(exploded: &mut Exploded, attribute: &str, set: &RuleSet, data: &Value) {
     let keys = data::expand_wildcard(attribute, data);
-    let implicit = exploded.implicit_attributes.entry(attribute.to_string()).or_default();
+    let implicit = exploded
+        .implicit_attributes
+        .entry(attribute.to_string())
+        .or_default();
     for key in &keys {
         if !implicit.contains(key) {
             implicit.push(key.clone());
@@ -176,13 +183,25 @@ mod tests {
 
     #[test]
     fn it_parses_string_rules() {
-        assert_eq!(parse_string_rule("required"), Some(("Required".into(), vec![])));
-        assert_eq!(parse_string_rule("max:255"), Some(("Max".into(), vec!["255".into()])));
+        assert_eq!(
+            parse_string_rule("required"),
+            Some(("Required".into(), vec![]))
+        );
+        assert_eq!(
+            parse_string_rule("max:255"),
+            Some(("Max".into(), vec!["255".into()]))
+        );
         assert_eq!(
             parse_string_rule("required_if:role,admin,owner"),
-            Some(("RequiredIf".into(), vec!["role".into(), "admin".into(), "owner".into()]))
+            Some((
+                "RequiredIf".into(),
+                vec!["role".into(), "admin".into(), "owner".into()]
+            ))
         );
-        assert_eq!(parse_string_rule("regex:/^a,b$/"), Some(("Regex".into(), vec!["/^a,b$/".into()])));
+        assert_eq!(
+            parse_string_rule("regex:/^a,b$/"),
+            Some(("Regex".into(), vec!["/^a,b$/".into()]))
+        );
         assert_eq!(parse_string_rule("int"), Some(("Integer".into(), vec![])));
         assert_eq!(parse_string_rule(""), None);
     }
@@ -194,6 +213,9 @@ mod tests {
         let exploded = explode(&rules, &data);
         let keys: Vec<&String> = exploded.rules.keys().collect();
         assert_eq!(keys, vec!["title", "items.0.name", "items.1.name"]);
-        assert_eq!(exploded.implicit_attributes["items.*.name"], vec!["items.0.name", "items.1.name"]);
+        assert_eq!(
+            exploded.implicit_attributes["items.*.name"],
+            vec!["items.0.name", "items.1.name"]
+        );
     }
 }

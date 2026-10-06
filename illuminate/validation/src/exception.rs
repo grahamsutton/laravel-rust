@@ -191,8 +191,14 @@ mod tests {
             ("name", vec!["The name field is required.", "Another."]),
             ("email", vec!["Bad email."]),
         ]);
-        assert_eq!(three.message(), "The name field is required. (and 2 more errors)");
-        assert_eq!(ValidationException::new(MessageBag::new()).message(), "The given data was invalid.");
+        assert_eq!(
+            three.message(),
+            "The name field is required. (and 2 more errors)"
+        );
+        assert_eq!(
+            ValidationException::new(MessageBag::new()).message(),
+            "The given data was invalid."
+        );
     }
 
     #[test]
@@ -214,7 +220,10 @@ mod tests {
         let request = Request::create_with("/users", "POST", json!({}), headers);
         let response = ValidationException::with_messages([("email", "Taken.")]).render(&request);
         assert_eq!(response.status_code(), 422);
-        assert_eq!(response.json_body(), json!({"message": "Taken.", "errors": {"email": ["Taken."]}}));
+        assert_eq!(
+            response.json_body(),
+            json!({"message": "Taken.", "errors": {"email": ["Taken."]}})
+        );
     }
 
     #[test]
@@ -229,7 +238,10 @@ mod tests {
         );
         let response = ValidationException::with_messages([("email", "Taken.")]).render(&request);
         assert!(response.is_redirect());
-        assert_eq!(response.target_url().as_deref(), Some("http://localhost/register"));
+        assert_eq!(
+            response.target_url().as_deref(),
+            Some("http://localhost/register")
+        );
         assert_eq!(response.flashed_input(), Some(&json!({"name": "Taylor"})));
         let (bag, errors) = response.flashed_errors().unwrap();
         assert_eq!(bag, "default");

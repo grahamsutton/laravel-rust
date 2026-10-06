@@ -135,7 +135,9 @@ impl Question {
     /// The choice labels, if this is a choice question.
     pub fn choice_labels(&self) -> Vec<String> {
         match &self.kind {
-            QuestionKind::Choice { choices, .. } => choices.iter().map(|(_, label)| label.clone()).collect(),
+            QuestionKind::Choice { choices, .. } => {
+                choices.iter().map(|(_, label)| label.clone()).collect()
+            }
             _ => Vec::new(),
         }
     }
@@ -294,7 +296,13 @@ impl std::fmt::Debug for Output {
 }
 
 impl Output {
-    fn build(sink: Sink, decorated: bool, interactive: bool, width: Option<usize>, reader: Arc<dyn InputReader>) -> Self {
+    fn build(
+        sink: Sink,
+        decorated: bool,
+        interactive: bool,
+        width: Option<usize>,
+        reader: Arc<dyn InputReader>,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 sink,
@@ -309,12 +317,13 @@ impl Output {
     }
 
     /// Output to the terminal. ANSI decoration and interactivity are
-    /// detected automatically.
+    /// detected automatically (set `SHELL_INTERACTIVE` to answer questions
+    /// from piped input).
     pub fn stdout() -> Self {
         Self::build(
             Sink::Stdout,
             stdout_supports_color(),
-            std::io::stdin().is_terminal(),
+            std::io::stdin().is_terminal() || std::env::var_os("SHELL_INTERACTIVE").is_some(),
             None,
             Arc::new(StdinReader),
         )
@@ -339,7 +348,13 @@ impl Output {
 
     /// Output that discards everything written to it.
     pub fn null() -> Self {
-        Self::build(Sink::Null, false, false, Some(80), Arc::new(LinesReader::default()))
+        Self::build(
+            Sink::Null,
+            false,
+            false,
+            Some(80),
+            Arc::new(LinesReader::default()),
+        )
     }
 
     /// A silent copy of this output that still answers questions the same way.
@@ -407,7 +422,9 @@ impl Output {
 
     /// Set the verbosity.
     pub fn set_verbosity(&self, verbosity: Verbosity) {
-        self.inner.verbosity.store(verbosity as u16, Ordering::Relaxed);
+        self.inner
+            .verbosity
+            .store(verbosity as u16, Ordering::Relaxed);
     }
 
     /// Determine if the output is quiet (or silent).
@@ -600,31 +617,40 @@ impl Output {
     }
 
     fn write_prompt(&self, question: &Question, style: PromptStyle) {
-        let default_label = question.default.as_ref().map(|default| match &question.kind {
-            QuestionKind::Confirm => default.clone(),
-            QuestionKind::Choice { choices, .. } => default
-                .split(',')
-                .map(|value| {
-                    let value = value.trim();
-                    choices
-                        .iter()
-                        .find(|(key, _)| key == value)
-                        .map(|(_, label)| label.clone())
-                        .unwrap_or_else(|| value.to_string())
-                })
-                .collect::<Vec<_>>()
-                .join(", "),
-            _ => default.clone(),
-        });
+        let default_label = question
+            .default
+            .as_ref()
+            .map(|default| match &question.kind {
+                QuestionKind::Confirm => default.clone(),
+                QuestionKind::Choice { choices, .. } => default
+                    .split(',')
+                    .map(|value| {
+                        let value = value.trim();
+                        choices
+                            .iter()
+                            .find(|(key, _)| key == value)
+                            .map(|(_, label)| label.clone())
+                            .unwrap_or_else(|| value.to_string())
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                _ => default.clone(),
+            });
 
         let escaped = OutputFormatter::escape(&question.text);
-        let multiline = if question.multiline { " (press <comment>Ctrl+D</comment> to continue)" } else { "" };
+        let multiline = if question.multiline {
+            " (press <comment>Ctrl+D</comment> to continue)"
+        } else {
+            ""
+        };
 
         match style {
             PromptStyle::Symfony => {
                 let text = match (&question.kind, default_label) {
                     (QuestionKind::Confirm, Some(default)) => {
-                        format!(" <info>{escaped}{multiline} (yes/no)</info> [<comment>{default}</comment>]:")
+                        format!(
+                            " <info>{escaped}{multiline} (yes/no)</info> [<comment>{default}</comment>]:"
+                        )
                     }
                     (_, None) => format!(" <info>{escaped}{multiline}</info>:"),
                     (_, Some(default)) => format!(
@@ -635,7 +661,11 @@ impl Output {
                 self.writeln(text);
 
                 if let QuestionKind::Choice { choices, .. } = &question.kind {
-                    let width = choices.iter().map(|(key, _)| key.chars().count()).max().unwrap_or(0);
+                    let width = choices
+                        .iter()
+                        .map(|(key, _)| key.chars().count())
+                        .max()
+                        .unwrap_or(0);
                     for (key, label) in choices {
                         self.writeln(format!(
                             "  [<comment>{key:<width$}</comment>] {}",
@@ -667,7 +697,12 @@ impl Output {
 
                 if let QuestionKind::Choice { choices, .. } = &question.kind {
                     for (key, label) in choices {
-                        crate::components::render_two_column_detail(self, label, key, Verbosity::Normal);
+                        crate::components::render_two_column_detail(
+                            self,
+                            label,
+                            key,
+                            Verbosity::Normal,
+                        );
                     }
                 }
 
@@ -678,7 +713,10 @@ impl Output {
 
     pub(crate) fn write_question_error(&self, message: &str) {
         self.auto_prepend_block();
-        self.writeln(format!("<error> [ERROR] {} </error>", OutputFormatter::escape(message)));
+        self.writeln(format!(
+            "<error> [ERROR] {} </error>",
+            OutputFormatter::escape(message)
+        ));
         self.new_line(1);
     }
 
@@ -686,8 +724,16 @@ impl Output {
     pub fn ask_text(&self, question: &Question, style: PromptStyle) -> Option<String> {
         match self.ask_question(question, style) {
             Some(answer) => {
-                let answer = if question.multiline { answer } else { answer.trim().to_string() };
-                if answer.is_empty() { question.default.clone().or(Some(answer)) } else { Some(answer) }
+                let answer = if question.multiline {
+                    answer
+                } else {
+                    answer.trim().to_string()
+                };
+                if answer.is_empty() {
+                    question.default.clone().or(Some(answer))
+                } else {
+                    Some(answer)
+                }
             }
             None => question.default.clone(),
         }
@@ -704,14 +750,23 @@ impl Output {
             Some(answer) => {
                 let answer = answer.trim();
                 let is_yes = answer.to_ascii_lowercase().starts_with('y');
-                if default { answer.is_empty() || is_yes } else { !answer.is_empty() && is_yes }
+                if default {
+                    answer.is_empty() || is_yes
+                } else {
+                    !answer.is_empty() && is_yes
+                }
             }
         }
     }
 
     /// Ask a choice question, returning the selected labels (or keys, when
     /// `return_keys` is set). Invalid answers are rejected and asked again.
-    pub fn ask_choice(&self, question: &Question, return_keys: bool, style: PromptStyle) -> Vec<String> {
+    pub fn ask_choice(
+        &self,
+        question: &Question,
+        return_keys: bool,
+        style: PromptStyle,
+    ) -> Vec<String> {
         let (choices, multiple) = match &question.kind {
             QuestionKind::Choice { choices, multiple } => (choices.clone(), *multiple),
             _ => return self.ask_text(question, style).into_iter().collect(),
@@ -764,7 +819,8 @@ pub(crate) fn validate_choice(
     let mut results = Vec::new();
 
     for value in selected {
-        let by_label: Vec<&(String, String)> = choices.iter().filter(|(_, label)| label == value).collect();
+        let by_label: Vec<&(String, String)> =
+            choices.iter().filter(|(_, label)| label == value).collect();
 
         if by_label.len() > 1 {
             let labels: Vec<&str> = choices.iter().map(|(_, label)| label.as_str()).collect();
@@ -780,7 +836,11 @@ pub(crate) fn validate_choice(
             .or_else(|| choices.iter().find(|(key, _)| key == value));
 
         match found {
-            Some((key, label)) => results.push(if return_keys { key.clone() } else { label.clone() }),
+            Some((key, label)) => results.push(if return_keys {
+                key.clone()
+            } else {
+                label.clone()
+            }),
             None => return Err(format!("Value \"{value}\" is invalid")),
         }
     }
@@ -813,10 +873,12 @@ pub fn terminal_width() -> usize {
     static WIDTH: OnceLock<usize> = OnceLock::new();
 
     *WIDTH.get_or_init(|| {
-        if let Some(columns) = std::env::var("COLUMNS").ok().and_then(|c| c.trim().parse::<usize>().ok()) {
-            if columns > 0 {
-                return columns;
-            }
+        if let Some(columns) = std::env::var("COLUMNS")
+            .ok()
+            .and_then(|c| c.trim().parse::<usize>().ok())
+            && columns > 0
+        {
+            return columns;
         }
 
         if std::io::stdout().is_terminal() {
@@ -828,10 +890,13 @@ pub fn terminal_width() -> usize {
 
             if let Ok(size) = size {
                 let text = String::from_utf8_lossy(&size.stdout);
-                if let Some(columns) = text.split_whitespace().nth(1).and_then(|c| c.parse::<usize>().ok()) {
-                    if columns > 0 {
-                        return columns;
-                    }
+                if let Some(columns) = text
+                    .split_whitespace()
+                    .nth(1)
+                    .and_then(|c| c.parse::<usize>().ok())
+                    && columns > 0
+                {
+                    return columns;
                 }
             }
         }
@@ -887,10 +952,16 @@ mod tests {
     fn it_answers_from_fed_lines() {
         let output = Output::buffered().with_input(["Taylor", "", "yes"]);
         let question = Question::new("What is your name?");
-        assert_eq!(output.ask_text(&question, PromptStyle::Symfony).as_deref(), Some("Taylor"));
+        assert_eq!(
+            output.ask_text(&question, PromptStyle::Symfony).as_deref(),
+            Some("Taylor")
+        );
 
         let question = Question::new("Framework?").default(Some("Laravel".into()));
-        assert_eq!(output.ask_text(&question, PromptStyle::Symfony).as_deref(), Some("Laravel"));
+        assert_eq!(
+            output.ask_text(&question, PromptStyle::Symfony).as_deref(),
+            Some("Laravel")
+        );
 
         assert!(output.ask_confirmation("Continue?", false, PromptStyle::Symfony));
 
@@ -908,7 +979,10 @@ mod tests {
     fn non_interactive_outputs_use_defaults() {
         let output = Output::buffered();
         let question = Question::new("Name?").default(Some("Abigail".into()));
-        assert_eq!(output.ask_text(&question, PromptStyle::Symfony).as_deref(), Some("Abigail"));
+        assert_eq!(
+            output.ask_text(&question, PromptStyle::Symfony).as_deref(),
+            Some("Abigail")
+        );
         assert!(output.ask_confirmation("Sure?", true, PromptStyle::Symfony));
         assert_eq!(output.contents(), "");
     }
@@ -919,14 +993,26 @@ mod tests {
             ("0".to_string(), "PHP".to_string()),
             ("1".to_string(), "Ruby".to_string()),
         ];
-        assert_eq!(validate_choice("PHP", &choices, false, false), Ok(vec!["PHP".to_string()]));
-        assert_eq!(validate_choice("1", &choices, false, false), Ok(vec!["Ruby".to_string()]));
-        assert_eq!(validate_choice("1", &choices, false, true), Ok(vec!["1".to_string()]));
+        assert_eq!(
+            validate_choice("PHP", &choices, false, false),
+            Ok(vec!["PHP".to_string()])
+        );
+        assert_eq!(
+            validate_choice("1", &choices, false, false),
+            Ok(vec!["Ruby".to_string()])
+        );
+        assert_eq!(
+            validate_choice("1", &choices, false, true),
+            Ok(vec!["1".to_string()])
+        );
         assert_eq!(
             validate_choice("0, Ruby", &choices, true, false),
             Ok(vec!["PHP".to_string(), "Ruby".to_string()])
         );
-        assert_eq!(validate_choice("Go", &choices, false, false), Err("Value \"Go\" is invalid".to_string()));
+        assert_eq!(
+            validate_choice("Go", &choices, false, false),
+            Err("Value \"Go\" is invalid".to_string())
+        );
     }
 
     #[test]
@@ -936,7 +1022,10 @@ mod tests {
             choices: vec![("0".into(), "PHP".into()), ("1".into(), "Ruby".into())],
             multiple: false,
         });
-        assert_eq!(output.ask_choice(&question, false, PromptStyle::Symfony), vec!["Ruby"]);
+        assert_eq!(
+            output.ask_choice(&question, false, PromptStyle::Symfony),
+            vec!["Ruby"]
+        );
         let text = output.contents();
         assert!(text.contains("  [0] PHP\n  [1] Ruby\n"));
         assert!(text.contains("[ERROR] Value \"Go\" is invalid"));

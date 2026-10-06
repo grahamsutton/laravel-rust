@@ -154,7 +154,9 @@ pub(crate) fn loose_eq(a: &Value, b: &Value) -> bool {
         }
         (Array(x), Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(a, b)| loose_eq(a, b)),
         (Object(x), Object(y)) => {
-            x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| loose_eq(v, w)))
+            x.len() == y.len()
+                && x.iter()
+                    .all(|(k, v)| y.get(k).is_some_and(|w| loose_eq(v, w)))
         }
         (Array(items), Object(map)) | (Object(map), Array(items)) => {
             items.len() == map.len()
@@ -290,7 +292,11 @@ impl Dec {
         let int = digits[..point].trim_start_matches('0').to_string();
         let frac = digits[point..].trim_end_matches('0').to_string();
         let negative = negative && !(int.is_empty() && frac.is_empty());
-        Some(Dec { negative, int, frac })
+        Some(Dec {
+            negative,
+            int,
+            frac,
+        })
     }
 
     /// Build a decimal from an integer.
@@ -331,7 +337,11 @@ impl Dec {
     /// The value scaled by `10^scale` as an integer, when it fits in an `i128`.
     pub(crate) fn scaled(&self, scale: usize) -> Option<i128> {
         let digits = format!("{}{:0<scale$}", self.int, self.frac);
-        let digits = if digits.is_empty() { "0".to_string() } else { digits };
+        let digits = if digits.is_empty() {
+            "0".to_string()
+        } else {
+            digits
+        };
         let magnitude: i128 = digits.parse().ok()?;
         Some(if self.negative { -magnitude } else { magnitude })
     }
@@ -342,7 +352,11 @@ impl Dec {
             "{}{}.{}",
             if self.negative { "-" } else { "" },
             if self.int.is_empty() { "0" } else { &self.int },
-            if self.frac.is_empty() { "0" } else { &self.frac }
+            if self.frac.is_empty() {
+                "0"
+            } else {
+                &self.frac
+            }
         );
         s.parse().unwrap_or(0.0)
     }
@@ -475,11 +489,20 @@ mod tests {
         let a = Dec::parse("10.50").unwrap();
         let b = Dec::parse("10.5").unwrap();
         assert_eq!(a, b);
-        assert!(Dec::parse("99999999999999999999999").unwrap() > Dec::parse("99999999999999999999998").unwrap());
+        assert!(
+            Dec::parse("99999999999999999999999").unwrap()
+                > Dec::parse("99999999999999999999998").unwrap()
+        );
         assert!(Dec::parse("-2").unwrap() < Dec::parse("-1.5").unwrap());
         assert_eq!(Dec::parse("1e3").unwrap(), Dec::parse("1000").unwrap());
         assert!(Dec::parse("1e2000").is_none());
-        assert!(is_multiple_of(&Dec::parse("10.5").unwrap(), &Dec::parse("3.5").unwrap()));
-        assert!(!is_multiple_of(&Dec::parse("10").unwrap(), &Dec::parse("3").unwrap()));
+        assert!(is_multiple_of(
+            &Dec::parse("10.5").unwrap(),
+            &Dec::parse("3.5").unwrap()
+        ));
+        assert!(!is_multiple_of(
+            &Dec::parse("10").unwrap(),
+            &Dec::parse("3").unwrap()
+        ));
     }
 }

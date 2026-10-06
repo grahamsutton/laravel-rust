@@ -26,7 +26,11 @@ impl Style {
     /// Create a style from a foreground color, background color and options.
     ///
     /// Returns `None` when a color or option is not recognized.
-    pub fn new(foreground: Option<&str>, background: Option<&str>, options: &[&str]) -> Option<Self> {
+    pub fn new(
+        foreground: Option<&str>,
+        background: Option<&str>,
+        options: &[&str],
+    ) -> Option<Self> {
         let mut style = Style::default();
 
         if let Some(color) = foreground {
@@ -81,7 +85,10 @@ impl Style {
                 "fg" => foreground = Some(value),
                 "bg" => background = Some(value),
                 "options" => options.extend(
-                    value.split(',').map(|o| o.trim().to_string()).filter(|o| !o.is_empty()),
+                    value
+                        .split(',')
+                        .map(|o| o.trim().to_string())
+                        .filter(|o| !o.is_empty()),
                 ),
                 // Hyperlinks are accepted but rendered as plain text.
                 "href" => {}
@@ -100,7 +107,12 @@ impl Style {
             return text.to_string();
         }
 
-        format!("\x1b[{}m{}\x1b[{}m", self.set.join(";"), text, self.unset.join(";"))
+        format!(
+            "\x1b[{}m{}\x1b[{}m",
+            self.set.join(";"),
+            text,
+            self.unset.join(";")
+        )
     }
 }
 
@@ -108,7 +120,9 @@ fn color_codes(color: &str, background: bool) -> Option<(String, String)> {
     let color = color.trim().to_ascii_lowercase();
     let unset = if background { "49" } else { "39" }.to_string();
 
-    const NAMES: [&str; 8] = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"];
+    const NAMES: [&str; 8] = [
+        "black", "red", "green", "yellow", "blue", "magenta", "cyan", "white",
+    ];
 
     if color == "default" {
         return Some((unset.clone(), unset));
@@ -189,28 +203,32 @@ impl OutputFormatter {
                 continue;
             }
 
-            if c == '<' {
-                if let Some(end) = chars[i + 1..].iter().position(|ch| *ch == '>' || *ch == '<') {
-                    let end = i + 1 + end;
+            if c == '<'
+                && let Some(end) = chars[i + 1..]
+                    .iter()
+                    .position(|ch| *ch == '>' || *ch == '<')
+            {
+                let end = i + 1 + end;
 
-                    if chars[end] == '>' {
-                        let tag: String = chars[i + 1..end].iter().collect();
+                if chars[end] == '>' {
+                    let tag: String = chars[i + 1..end].iter().collect();
 
-                        if let Some(closing) = tag.strip_prefix('/') {
-                            if closing.is_empty() || (is_tag_name(closing) && Style::parse(closing).is_some()) {
-                                flush(&mut text, &mut output, &stack);
-                                stack.pop();
-                                i = end + 1;
-                                continue;
-                            }
-                        } else if is_tag_name(&tag) {
-                            if let Some(style) = Style::parse(&tag) {
-                                flush(&mut text, &mut output, &stack);
-                                stack.push(style);
-                                i = end + 1;
-                                continue;
-                            }
+                    if let Some(closing) = tag.strip_prefix('/') {
+                        if closing.is_empty()
+                            || (is_tag_name(closing) && Style::parse(closing).is_some())
+                        {
+                            flush(&mut text, &mut output, &stack);
+                            stack.pop();
+                            i = end + 1;
+                            continue;
                         }
+                    } else if is_tag_name(&tag)
+                        && let Some(style) = Style::parse(&tag)
+                    {
+                        flush(&mut text, &mut output, &stack);
+                        stack.push(style);
+                        i = end + 1;
+                        continue;
                     }
                 }
             }
@@ -265,25 +283,29 @@ pub fn strip_ansi(value: &str) -> String {
     output
 }
 
-/// The display width of a plain (already formatted) string.
-pub(crate) fn display_width(value: &str) -> usize {
-    strip_ansi(value).chars().count()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn it_strips_known_tags_when_not_decorated() {
-        assert_eq!(OutputFormatter::format("<info>a</info> <comment>b</comment>", false), "a b");
-        assert_eq!(OutputFormatter::format("<fg=red;options=bold>x</>", false), "x");
+        assert_eq!(
+            OutputFormatter::format("<info>a</info> <comment>b</comment>", false),
+            "a b"
+        );
+        assert_eq!(
+            OutputFormatter::format("<fg=red;options=bold>x</>", false),
+            "x"
+        );
         assert_eq!(OutputFormatter::format("<error>e</error>", false), "e");
     }
 
     #[test]
     fn it_leaves_unknown_tags_alone() {
-        assert_eq!(OutputFormatter::format("mail:send <user>", false), "mail:send <user>");
+        assert_eq!(
+            OutputFormatter::format("mail:send <user>", false),
+            "mail:send <user>"
+        );
         assert_eq!(OutputFormatter::format("a < b > c", false), "a < b > c");
         assert_eq!(OutputFormatter::format("<>", false), "<>");
         assert_eq!(OutputFormatter::format("</>", false), "");
@@ -298,8 +320,14 @@ mod tests {
 
     #[test]
     fn it_applies_ansi_codes() {
-        assert_eq!(OutputFormatter::format("<comment>x</comment>", true), "\x1b[33mx\x1b[39m");
-        assert_eq!(OutputFormatter::format("<error>x</error>", true), "\x1b[37;41mx\x1b[39;49m");
+        assert_eq!(
+            OutputFormatter::format("<comment>x</comment>", true),
+            "\x1b[33mx\x1b[39m"
+        );
+        assert_eq!(
+            OutputFormatter::format("<error>x</error>", true),
+            "\x1b[37;41mx\x1b[39;49m"
+        );
         assert_eq!(
             OutputFormatter::format("<fg=gray;options=bold>x</>", true),
             "\x1b[90;1mx\x1b[39;22m"
@@ -327,7 +355,10 @@ mod tests {
 
     #[test]
     fn invalid_inline_styles_are_literal() {
-        assert_eq!(OutputFormatter::format("<fg=nope>x</>", false), "<fg=nope>x</>");
+        assert_eq!(
+            OutputFormatter::format("<fg=nope>x</>", false),
+            "<fg=nope>x"
+        );
         assert_eq!(OutputFormatter::format("<foo=bar>x", false), "<foo=bar>x");
     }
 }

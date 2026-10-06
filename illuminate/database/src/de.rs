@@ -401,6 +401,7 @@ mod tests {
         assert_eq!(row.id, 3);
         assert!(row.admin);
         assert_eq!(row.score, 4.5);
+        assert_eq!(row.name, "Taylor");
         assert_eq!(row.tags, vec!["a", "b"]);
         assert_eq!(row.settings, Settings { theme: "dark".into() });
         assert_eq!(row.status, Status::Active);

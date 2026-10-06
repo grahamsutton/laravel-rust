@@ -58,10 +58,15 @@ It's also possible to get raw list of commands (useful for embedding command run
                 namespace.as_deref(),
                 cmd.option_bool("raw"),
             )),
-            "json" => cmd
-                .output()
-                .writeln(descriptor::describe_application_json(&application, namespace.as_deref())),
-            other => return Err(InvalidInputException::new(format!("Unsupported format \"{other}\".")).into()),
+            "json" => cmd.output().writeln(descriptor::describe_application_json(
+                &application,
+                namespace.as_deref(),
+            )),
+            other => {
+                return Err(
+                    InvalidInputException::new(format!("Unsupported format \"{other}\".")).into(),
+                );
+            }
         }
 
         Ok(())
@@ -99,15 +104,23 @@ To display the list of available commands, please use the <info>list</info> comm
 
     async fn handle(&self, cmd: Console) -> Result<()> {
         let application = cmd.application();
-        let name = cmd.argument("command_name").unwrap_or_else(|| "help".to_string());
+        let name = cmd
+            .argument("command_name")
+            .unwrap_or_else(|| "help".to_string());
         let registered = application.find_registered(&name)?;
 
         match cmd.option("format").as_deref().unwrap_or("txt") {
-            "txt" => cmd.output().write(descriptor::describe_command(&application, &registered)),
+            "txt" => cmd
+                .output()
+                .write(descriptor::describe_command(&application, &registered)),
             "json" => cmd
                 .output()
                 .writeln(descriptor::describe_command_json(&application, &registered)),
-            other => return Err(InvalidInputException::new(format!("Unsupported format \"{other}\".")).into()),
+            other => {
+                return Err(
+                    InvalidInputException::new(format!("Unsupported format \"{other}\".")).into(),
+                );
+            }
         }
 
         Ok(())

@@ -41,7 +41,11 @@ impl From<()> for TaskResult {
 
 impl From<bool> for TaskResult {
     fn from(success: bool) -> Self {
-        if success { TaskResult::Success } else { TaskResult::Failure }
+        if success {
+            TaskResult::Success
+        } else {
+            TaskResult::Failure
+        }
     }
 }
 
@@ -55,11 +59,17 @@ pub struct Components {
 static DYNAMIC_CONTENT: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([^\]]+)\]").unwrap());
 
 fn highlight_dynamic_content(value: &str) -> String {
-    DYNAMIC_CONTENT.replace_all(value, "<options=bold>[$1]</>").into_owned()
+    DYNAMIC_CONTENT
+        .replace_all(value, "<options=bold>[$1]</>")
+        .into_owned()
 }
 
 fn ensure_punctuation(value: String) -> String {
-    if value.ends_with(['.', '?', '!', ':']) { value } else { format!("{value}.") }
+    if value.ends_with(['.', '?', '!', ':']) {
+        value
+    } else {
+        format!("{value}.")
+    }
 }
 
 fn ensure_no_punctuation(mut value: String) -> String {
@@ -70,7 +80,12 @@ fn ensure_no_punctuation(mut value: String) -> String {
 }
 
 /// Render a two column detail line (`  First ........ Second`).
-pub(crate) fn render_two_column_detail(output: &Output, first: &str, second: &str, verbosity: Verbosity) {
+pub(crate) fn render_two_column_detail(
+    output: &Output,
+    first: &str,
+    second: &str,
+    verbosity: Verbosity,
+) {
     let first = ensure_no_punctuation(highlight_dynamic_content(first));
     let second = highlight_dynamic_content(second);
 
@@ -190,9 +205,14 @@ impl Components {
             return;
         }
 
-        let content = ensure_punctuation(highlight_dynamic_content(message.as_ref())).to_uppercase();
+        let content =
+            ensure_punctuation(highlight_dynamic_content(message.as_ref())).to_uppercase();
         let content = content.replace("<OPTIONS=BOLD>", "<options=bold>");
-        let width = self.output.width().saturating_sub(4).max(OutputFormatter::width(&content));
+        let width = self
+            .output
+            .width()
+            .saturating_sub(4)
+            .max(OutputFormatter::width(&content));
         let text_width = OutputFormatter::width(&content);
         let left = (width - text_width) / 2;
         let right = width - text_width - left;
@@ -209,11 +229,16 @@ impl Components {
         let lines = [
             String::new(),
             block(" ".repeat(width)),
-            block(format!("{}{content}{}", " ".repeat(left), " ".repeat(right))),
+            block(format!(
+                "{}{content}{}",
+                " ".repeat(left),
+                " ".repeat(right)
+            )),
             block(" ".repeat(width)),
         ];
 
-        self.output.write_with(&lines.join("\n"), true, self.verbosity);
+        self.output
+            .write_with(&lines.join("\n"), true, self.verbosity);
     }
 
     /// Render a bulleted list: `  ⇂ Item`.
@@ -231,7 +256,12 @@ impl Components {
 
     /// Render a two column detail line: `  First .............. Second`.
     pub fn two_column_detail(&self, first: impl AsRef<str>, second: impl AsRef<str>) {
-        render_two_column_detail(&self.output, first.as_ref(), second.as_ref(), self.verbosity);
+        render_two_column_detail(
+            &self.output,
+            first.as_ref(),
+            second.as_ref(),
+            self.verbosity,
+        );
     }
 
     /// Run a task, rendering its description, how long it took, and
@@ -259,8 +289,11 @@ impl Components {
         let width = self.output.width().min(150);
         let dots = width.saturating_sub(description_width + run_time.chars().count() + 10);
 
-        self.output
-            .write_with(&format!("<fg=gray>{}</>", ".".repeat(dots)), false, self.verbosity);
+        self.output.write_with(
+            &format!("<fg=gray>{}</>", ".".repeat(dots)),
+            false,
+            self.verbosity,
+        );
         self.output
             .write_with(&format!("<fg=gray>{run_time}</>"), false, self.verbosity);
 
@@ -299,7 +332,11 @@ impl Components {
     }
 
     /// Ask a question, falling back to the given default.
-    pub fn ask_with_default(&self, question: impl AsRef<str>, default: impl Into<String>) -> String {
+    pub fn ask_with_default(
+        &self,
+        question: impl AsRef<str>,
+        default: impl Into<String>,
+    ) -> String {
         let question = Question::new(question.as_ref()).default(Some(default.into()));
         self.output
             .ask_text(&question, PromptStyle::Components)
@@ -307,7 +344,12 @@ impl Components {
     }
 
     /// Ask a question with suggested answers.
-    pub fn ask_with_completion<I, S>(&self, question: impl AsRef<str>, choices: I, default: Option<&str>) -> String
+    pub fn ask_with_completion<I, S>(
+        &self,
+        question: impl AsRef<str>,
+        choices: I,
+        default: Option<&str>,
+    ) -> String
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
@@ -334,12 +376,22 @@ impl Components {
     }
 
     /// Give the user a single choice from a list of options.
-    pub fn choice<I, S>(&self, question: impl AsRef<str>, choices: I, default: Option<usize>) -> String
+    pub fn choice<I, S>(
+        &self,
+        question: impl AsRef<str>,
+        choices: I,
+        default: Option<usize>,
+    ) -> String
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let question = choice_question(question.as_ref(), choices, default.map(|d| d.to_string()), false);
+        let question = choice_question(
+            question.as_ref(),
+            choices,
+            default.map(|d| d.to_string()),
+            false,
+        );
         self.output
             .ask_choice(&question, false, PromptStyle::Components)
             .into_iter()
@@ -348,18 +400,35 @@ impl Components {
     }
 
     /// Give the user several choices from a list of options.
-    pub fn choice_multiple<I, S>(&self, question: impl AsRef<str>, choices: I, default: &[usize]) -> Vec<String>
+    pub fn choice_multiple<I, S>(
+        &self,
+        question: impl AsRef<str>,
+        choices: I,
+        default: &[usize],
+    ) -> Vec<String>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let default = (!default.is_empty()).then(|| default.iter().map(usize::to_string).collect::<Vec<_>>().join(","));
+        let default = (!default.is_empty()).then(|| {
+            default
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        });
         let question = choice_question(question.as_ref(), choices, default, true);
-        self.output.ask_choice(&question, false, PromptStyle::Components)
+        self.output
+            .ask_choice(&question, false, PromptStyle::Components)
     }
 }
 
-pub(crate) fn choice_question<I, S>(text: &str, choices: I, default: Option<String>, multiple: bool) -> Question
+pub(crate) fn choice_question<I, S>(
+    text: &str,
+    choices: I,
+    default: Option<String>,
+    multiple: bool,
+) -> Question
 where
     I: IntoIterator<Item = S>,
     S: Into<String>,
@@ -451,19 +520,27 @@ mod tests {
     #[tokio::test]
     async fn it_renders_tasks() {
         let (output, components) = components();
-        let result = components.task("Migrating", || async { Ok(()) }).await.unwrap();
+        let result = components
+            .task("Migrating", || async { Ok(()) })
+            .await
+            .unwrap();
         assert_eq!(result, TaskResult::Success);
         let line = output.fetch();
         assert!(line.starts_with("  Migrating ...."));
         assert!(line.contains("ms DONE\n"));
         assert_eq!(line.trim_end().chars().count(), 78);
 
-        let result = components.task("Skipping", || async { Ok(false) }).await.unwrap();
+        let result = components
+            .task("Skipping", || async { Ok(false) })
+            .await
+            .unwrap();
         assert_eq!(result, TaskResult::Failure);
         assert!(output.fetch().ends_with(" FAIL\n"));
 
         let error = components
-            .task("Exploding", || async { Err::<(), _>(illuminate_support::error::error!("Boom")) })
+            .task("Exploding", || async {
+                Err::<(), _>(illuminate_support::error::error!("Boom"))
+            })
             .await
             .unwrap_err();
         assert_eq!(error.to_string(), "Boom");
@@ -475,7 +552,10 @@ mod tests {
         let output = Output::buffered().with_input(["Taylor", "1", "y"]);
         let components = Components::new(&output);
         assert_eq!(components.ask("What is your name?"), "Taylor");
-        assert_eq!(components.choice("Language", ["PHP", "Rust"], Some(0)), "Rust");
+        assert_eq!(
+            components.choice("Language", ["PHP", "Rust"], Some(0)),
+            "Rust"
+        );
         assert!(components.confirm("Continue", false));
 
         let text = output.contents();
@@ -488,8 +568,14 @@ mod tests {
     #[test]
     fn it_respects_verbosity() {
         let (output, components) = components();
-        components.clone().verbosity(Verbosity::Verbose).info("Hidden");
-        components.clone().verbosity(Verbosity::Verbose).bullet_list(["a"]);
+        components
+            .clone()
+            .verbosity(Verbosity::Verbose)
+            .info("Hidden");
+        components
+            .clone()
+            .verbosity(Verbosity::Verbose)
+            .bullet_list(["a"]);
         assert_eq!(output.fetch(), "");
     }
 }

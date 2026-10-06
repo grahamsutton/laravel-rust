@@ -69,14 +69,16 @@ impl TableStyle {
             },
             "box" => {
                 let mut style = Self::uniform("─", "│", "┼");
-                style.crossings = ["┼", "┌", "┬", "┐", "┤", "┘", "┴", "└", "├", "├", "┼", "┤"].map(String::from);
+                style.crossings =
+                    ["┼", "┌", "┬", "┐", "┤", "┘", "┴", "└", "├", "├", "┼", "┤"].map(String::from);
                 style
             }
             "box-double" => {
                 let mut style = Self::uniform("═", "║", "┼");
                 style.horizontal_inside = "─".into();
                 style.vertical_inside = "│".into();
-                style.crossings = ["┼", "╔", "╤", "╗", "╢", "╝", "╧", "╚", "╟", "╠", "╪", "╣"].map(String::from);
+                style.crossings =
+                    ["┼", "╔", "╤", "╗", "╢", "╝", "╧", "╚", "╟", "╠", "╪", "╣"].map(String::from);
                 style
             }
             _ => return None,
@@ -96,7 +98,6 @@ impl Default for TableStyle {
 enum Separator {
     Top,
     TopBottom,
-    Mid,
     Bottom,
 }
 
@@ -212,7 +213,11 @@ impl Table {
         if !self.rows.is_empty() {
             self.push_separator(
                 &mut lines,
-                if has_headers { Separator::TopBottom } else { Separator::Top },
+                if has_headers {
+                    Separator::TopBottom
+                } else {
+                    Separator::Top
+                },
                 &widths,
             );
             for row in &self.rows {
@@ -229,12 +234,14 @@ impl Table {
         let style = &self.style;
         let c = &style.crossings;
 
-        if style.horizontal_outside.is_empty() && style.horizontal_inside.is_empty() && c[0].is_empty() {
+        if style.horizontal_outside.is_empty()
+            && style.horizontal_inside.is_empty()
+            && c[0].is_empty()
+        {
             return;
         }
 
         let (horizontal, left, mid, right) = match kind {
-            Separator::Mid => (&style.horizontal_inside, &c[8], &c[0], &c[4]),
             Separator::Top => (&style.horizontal_outside, &c[1], &c[2], &c[3]),
             Separator::TopBottom => (&style.horizontal_outside, &c[9], &c[10], &c[11]),
             Separator::Bottom => (&style.horizontal_outside, &c[7], &c[6], &c[5]),
@@ -243,7 +250,11 @@ impl Table {
         let mut markup = left.clone();
         for (index, width) in widths.iter().enumerate() {
             markup.push_str(&horizontal.repeat(*width));
-            markup.push_str(if index == widths.len() - 1 { right } else { mid });
+            markup.push_str(if index == widths.len() - 1 {
+                right
+            } else {
+                mid
+            });
         }
 
         lines.push(markup);
@@ -285,7 +296,10 @@ fn value_rows(rows: &Value) -> Vec<Vec<String>> {
                 other => vec![cell(other)],
             })
             .collect(),
-        Value::Object(map) => map.values().map(|row| value_rows(&Value::Array(vec![row.clone()])).remove(0)).collect(),
+        Value::Object(map) => map
+            .values()
+            .map(|row| value_rows(&Value::Array(vec![row.clone()])).remove(0))
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -320,25 +334,40 @@ mod tests {
     #[test]
     fn it_renders_rows_without_headers() {
         let table = Table::new().rows([["a", "b"]]);
-        assert_eq!(table.render_to_string(), "+---+---+\n| a | b |\n+---+---+\n");
+        assert_eq!(
+            table.render_to_string(),
+            "+---+---+\n| a | b |\n+---+---+\n"
+        );
     }
 
     #[test]
     fn it_renders_the_box_style() {
         let table = Table::new().headers(["A"]).rows([["b"]]).style("box");
-        assert_eq!(table.render_to_string(), "┌───┐\n│ A │\n├───┤\n│ b │\n└───┘\n");
+        assert_eq!(
+            table.render_to_string(),
+            "┌───┐\n│ A │\n├───┤\n│ b │\n└───┘\n"
+        );
     }
 
     #[test]
     fn it_renders_the_compact_style() {
-        let table = Table::new().headers(["ID", "Name"]).rows([["1", "Taylor"]]).style("compact");
+        let table = Table::new()
+            .headers(["ID", "Name"])
+            .rows([["1", "Taylor"]])
+            .style("compact");
         assert_eq!(table.render_to_string(), " ID Name   \n 1  Taylor \n");
     }
 
     #[test]
     fn it_renders_the_borderless_style() {
-        let table = Table::new().headers(["A"]).rows([["b"]]).style("borderless");
-        assert_eq!(table.render_to_string(), " === \n  A  \n === \n  b  \n === \n");
+        let table = Table::new()
+            .headers(["A"])
+            .rows([["b"]])
+            .style("borderless");
+        assert_eq!(
+            table.render_to_string(),
+            " === \n  A  \n === \n  b  \n === \n"
+        );
     }
 
     #[test]
@@ -355,7 +384,15 @@ mod tests {
             [2, null],
         ]);
         let table = Table::new().headers(["ID", "Email"]).rows_from_value(&rows);
-        assert!(table.render_to_string().contains("| 1  | taylor@example.com |"));
-        assert!(table.render_to_string().contains("| 2  |                    |"));
+        assert!(
+            table
+                .render_to_string()
+                .contains("| 1  | taylor@example.com |")
+        );
+        assert!(
+            table
+                .render_to_string()
+                .contains("| 2  |                    |")
+        );
     }
 }

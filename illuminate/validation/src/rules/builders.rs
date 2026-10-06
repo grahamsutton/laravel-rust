@@ -8,7 +8,10 @@ use illuminate_support::{Carbon, Conditionable, Value, ValueExt};
 use super::{IntoRuleItems, RuleItem, RuleSet, quote_values};
 
 fn stringify<V: Into<Value>>(values: impl IntoIterator<Item = V>) -> Vec<String> {
-    values.into_iter().map(|v| v.into().to_string_lossy()).collect()
+    values
+        .into_iter()
+        .map(|v| v.into().to_string_lossy())
+        .collect()
 }
 
 fn str_items(rules: Vec<String>) -> Vec<RuleItem> {
@@ -84,7 +87,9 @@ pub struct ArrayRule {
 impl ArrayRule {
     /// Create the rule (an empty list allows any keys).
     pub fn new<V: Into<Value>>(keys: impl IntoIterator<Item = V>) -> Self {
-        Self { keys: stringify(keys) }
+        Self {
+            keys: stringify(keys),
+        }
     }
 }
 
@@ -113,7 +118,9 @@ pub struct ArrayKeys {
 impl ArrayKeys {
     /// Create the rule.
     pub fn new<V: Into<Value>>(keys: impl IntoIterator<Item = V>) -> Self {
-        Self { keys: stringify(keys) }
+        Self {
+            keys: stringify(keys),
+        }
     }
 }
 
@@ -221,7 +228,11 @@ impl Conditionable for Dimensions {}
 
 impl std::fmt::Display for Dimensions {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let constraints: Vec<String> = self.constraints.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        let constraints: Vec<String> = self
+            .constraints
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect();
         write!(f, "dimensions:{}", constraints.join(","))
     }
 }
@@ -293,7 +304,9 @@ impl DateRule {
     fn format_date(&self, date: DateArg) -> String {
         match date {
             DateArg::Str(s) => s,
-            DateArg::Date(d) => crate::date::format_carbon(&d, self.format.as_deref().unwrap_or("Y-m-d")),
+            DateArg::Date(d) => {
+                crate::date::format_carbon(&d, self.format.as_deref().unwrap_or("Y-m-d"))
+            }
         }
     }
 
@@ -599,12 +612,26 @@ impl StringRule {
 
     /// Only letters, numbers, dashes and underscores.
     pub fn alpha_dash(self, ascii: bool) -> Self {
-        self.add(if ascii { "alpha_dash:ascii" } else { "alpha_dash" }.to_string())
+        self.add(
+            if ascii {
+                "alpha_dash:ascii"
+            } else {
+                "alpha_dash"
+            }
+            .to_string(),
+        )
     }
 
     /// Only letters and numbers.
     pub fn alpha_numeric(self, ascii: bool) -> Self {
-        self.add(if ascii { "alpha_num:ascii" } else { "alpha_num" }.to_string())
+        self.add(
+            if ascii {
+                "alpha_num:ascii"
+            } else {
+                "alpha_num"
+            }
+            .to_string(),
+        )
     }
 
     /// Only 7-bit ASCII characters.
@@ -839,7 +866,10 @@ impl From<&str> for FileSize {
     /// Panics on an unknown suffix, like Laravel's "Invalid file size suffix." exception.
     fn from(size: &str) -> Self {
         let size = size.trim().to_ascii_lowercase();
-        let number: String = size.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+        let number: String = size
+            .chars()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect();
         let value: f64 = number.parse().unwrap_or(0.0);
         let factor = if size.ends_with("kb") {
             1.0
@@ -898,7 +928,10 @@ impl FileRule {
 
     /// Only allow the given client-provided extensions.
     pub fn extensions<S: AsRef<str>>(mut self, extensions: impl IntoIterator<Item = S>) -> Self {
-        self.extensions = extensions.into_iter().map(|e| e.as_ref().to_ascii_lowercase()).collect();
+        self.extensions = extensions
+            .into_iter()
+            .map(|e| e.as_ref().to_ascii_lowercase())
+            .collect();
         self
     }
 
@@ -943,12 +976,27 @@ impl FileRule {
 
     fn string_rules(&self) -> Vec<String> {
         let mut rules = vec!["file".to_string()];
-        let (mimetypes, mimes): (Vec<&String>, Vec<&String>) = self.mimetypes.iter().partition(|t| t.contains('/'));
+        let (mimetypes, mimes): (Vec<&String>, Vec<&String>) =
+            self.mimetypes.iter().partition(|t| t.contains('/'));
         if !mimetypes.is_empty() {
-            rules.push(format!("mimetypes:{}", mimetypes.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(",")));
+            rules.push(format!(
+                "mimetypes:{}",
+                mimetypes
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
         }
         if !mimes.is_empty() {
-            rules.push(format!("mimes:{}", mimes.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(",")));
+            rules.push(format!(
+                "mimes:{}",
+                mimes
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ));
         }
         if !self.extensions.is_empty() {
             rules.push(format!("extensions:{}", self.extensions.join(",")));
@@ -957,7 +1005,9 @@ impl FileRule {
             (None, None) => {}
             (Some(min), None) => rules.push(format!("min:{}", num(min))),
             (None, Some(max)) => rules.push(format!("max:{}", num(max))),
-            (Some(min), Some(max)) if min != max => rules.push(format!("between:{},{}", num(min), num(max))),
+            (Some(min), Some(max)) if min != max => {
+                rules.push(format!("between:{},{}", num(min), num(max)))
+            }
             (Some(size), Some(_)) => rules.push(format!("size:{}", num(size))),
         }
         if let Some(encoding) = &self.encoding {
@@ -998,7 +1048,11 @@ impl ImageFile {
     /// Create the rule, optionally allowing SVG images.
     pub fn new(allow_svg: bool) -> Self {
         Self {
-            file: FileRule::new().rules(if allow_svg { "image:allow_svg" } else { "image" }),
+            file: FileRule::new().rules(if allow_svg {
+                "image:allow_svg"
+            } else {
+                "image"
+            }),
         }
     }
 
@@ -1106,7 +1160,10 @@ impl<T: BackedEnum> Enum<T> {
     /// Create the rule for the enum type.
     pub fn new() -> Self {
         Self {
-            values: T::cases().iter().map(|c| c.value().to_string_lossy()).collect(),
+            values: T::cases()
+                .iter()
+                .map(|c| c.value().to_string_lossy())
+                .collect(),
             only: None,
             except: Vec::new(),
             _marker: PhantomData,
@@ -1115,20 +1172,33 @@ impl<T: BackedEnum> Enum<T> {
 
     /// Only allow the given cases.
     pub fn only(mut self, cases: impl IntoIterator<Item = T>) -> Self {
-        self.only = Some(cases.into_iter().map(|c| c.value().to_string_lossy()).collect());
+        self.only = Some(
+            cases
+                .into_iter()
+                .map(|c| c.value().to_string_lossy())
+                .collect(),
+        );
         self
     }
 
     /// Allow every case except the given ones.
     pub fn except(mut self, cases: impl IntoIterator<Item = T>) -> Self {
-        self.except = cases.into_iter().map(|c| c.value().to_string_lossy()).collect();
+        self.except = cases
+            .into_iter()
+            .map(|c| c.value().to_string_lossy())
+            .collect();
         self
     }
 
     fn allowed(&self) -> Vec<String> {
         match &self.only {
             Some(only) => only.clone(),
-            None => self.values.iter().filter(|v| !self.except.contains(v)).cloned().collect(),
+            None => self
+                .values
+                .iter()
+                .filter(|v| !self.except.contains(v))
+                .cloned()
+                .collect(),
         }
     }
 }
@@ -1176,9 +1246,14 @@ mod tests {
 
     #[test]
     fn file_rules_compile() {
-        assert_eq!(FileRule::new().size(512).to_rules(), vec!["file", "size:512"]);
         assert_eq!(
-            FileRule::types(["image/*", "pdf"]).extensions(["PDF"]).to_rules(),
+            FileRule::new().size(512).to_rules(),
+            vec!["file", "size:512"]
+        );
+        assert_eq!(
+            FileRule::types(["image/*", "pdf"])
+                .extensions(["PDF"])
+                .to_rules(),
             vec!["file", "mimetypes:image/*", "mimes:pdf", "extensions:pdf"]
         );
     }

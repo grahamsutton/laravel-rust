@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use illuminate_http::UploadedFile;
-use illuminate_support::{Error, Str, Value};
+use illuminate_support::{Error, Value};
 
 use crate::data;
 use crate::validator::Validator;
@@ -89,7 +89,11 @@ pub trait ValidationRule: Send + Sync {
     fn name(&self) -> String {
         let full = std::any::type_name::<Self>();
         let without_generics = full.split('<').next().unwrap_or(full);
-        without_generics.rsplit("::").next().unwrap_or(without_generics).to_string()
+        without_generics
+            .rsplit("::")
+            .next()
+            .unwrap_or(without_generics)
+            .to_string()
     }
 }
 
@@ -127,7 +131,9 @@ impl<'a> ValidationContext<'a> {
     /// Get a value from the data under validation using "dot" notation
     /// (`null` when missing).
     pub fn input(&self, key: &str) -> Value {
-        data::get(self.validator.data(), key).cloned().unwrap_or(Value::Null)
+        data::get(self.validator.data(), key)
+            .cloned()
+            .unwrap_or(Value::Null)
     }
 
     /// Determine if the data under validation contains the given key.
@@ -174,7 +180,9 @@ pub struct ClosureRule {
 
 impl ClosureRule {
     /// Create a closure rule.
-    pub fn new(callback: impl Fn(&str, &Value, &mut FailCallback<'_>) + Send + Sync + 'static) -> Self {
+    pub fn new(
+        callback: impl Fn(&str, &Value, &mut FailCallback<'_>) + Send + Sync + 'static,
+    ) -> Self {
         Self {
             callback: Arc::new(callback),
             implicit: false,
@@ -205,7 +213,9 @@ impl ValidationRule for ClosureRule {
 
 impl std::fmt::Debug for ClosureRule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClosureRule").field("implicit", &self.implicit).finish()
+        f.debug_struct("ClosureRule")
+            .field("implicit", &self.implicit)
+            .finish()
     }
 }
 
@@ -227,9 +237,4 @@ pub trait UncompromisedVerifier: Send + Sync {
     /// Determine if the password has appeared in data leaks no more than
     /// `threshold` times.
     async fn verify(&self, password: &str, threshold: usize) -> bool;
-}
-
-/// The snake-cased short name of a rule, for message keys.
-pub(crate) fn snake_name(name: &str) -> String {
-    Str::snake(name)
 }

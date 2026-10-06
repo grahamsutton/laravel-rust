@@ -28,7 +28,9 @@ impl Condition {
         match value {
             "NULL" => Condition::WhereNull(column.to_string()),
             "NOT_NULL" => Condition::WhereNotNull(column.to_string()),
-            v if v.starts_with('!') => Condition::WhereNot(column.to_string(), Value::String(v[1..].to_string())),
+            v if v.starts_with('!') => {
+                Condition::WhereNot(column.to_string(), Value::String(v[1..].to_string()))
+            }
             v => Condition::Where(column.to_string(), Value::String(v.to_string())),
         }
     }
@@ -164,21 +166,34 @@ impl DatabaseRule {
 
     /// Add a `where column is not null` condition.
     pub fn where_not_null(mut self, column: &str) -> Self {
-        self.wheres.push(Condition::WhereNotNull(column.to_string()));
+        self.wheres
+            .push(Condition::WhereNotNull(column.to_string()));
         self
     }
 
     /// Add a `where column in (...)` condition.
-    pub fn where_in<V: Into<Value>>(mut self, column: &str, values: impl IntoIterator<Item = V>) -> Self {
-        self.wheres
-            .push(Condition::WhereIn(column.to_string(), values.into_iter().map(Into::into).collect()));
+    pub fn where_in<V: Into<Value>>(
+        mut self,
+        column: &str,
+        values: impl IntoIterator<Item = V>,
+    ) -> Self {
+        self.wheres.push(Condition::WhereIn(
+            column.to_string(),
+            values.into_iter().map(Into::into).collect(),
+        ));
         self
     }
 
     /// Add a `where column not in (...)` condition.
-    pub fn where_not_in<V: Into<Value>>(mut self, column: &str, values: impl IntoIterator<Item = V>) -> Self {
-        self.wheres
-            .push(Condition::WhereNotIn(column.to_string(), values.into_iter().map(Into::into).collect()));
+    pub fn where_not_in<V: Into<Value>>(
+        mut self,
+        column: &str,
+        values: impl IntoIterator<Item = V>,
+    ) -> Self {
+        self.wheres.push(Condition::WhereNotIn(
+            column.to_string(),
+            values.into_iter().map(Into::into).collect(),
+        ));
         self
     }
 
@@ -233,7 +248,10 @@ impl DatabaseRule {
 
     /// The rule's string parameters (for `failed()`).
     pub(crate) fn params(&self) -> Vec<String> {
-        let mut params = vec![self.table.clone(), self.column.clone().unwrap_or_else(|| "NULL".into())];
+        let mut params = vec![
+            self.table.clone(),
+            self.column.clone().unwrap_or_else(|| "NULL".into()),
+        ];
         if self.kind == DatabaseRuleKind::Unique {
             params.push(match &self.ignore {
                 Some(id) => id.to_string_lossy(),
@@ -277,7 +295,9 @@ impl std::fmt::Display for DatabaseRule {
                     wheres.join(",")
                 )
             }
-            DatabaseRuleKind::Exists => format!("exists:{},{},{}", self.table, column, wheres.join(",")),
+            DatabaseRuleKind::Exists => {
+                format!("exists:{},{},{}", self.table, column, wheres.join(","))
+            }
         };
         f.write_str(rendered.trim_end_matches(','))
     }

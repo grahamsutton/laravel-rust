@@ -34,7 +34,13 @@ pub trait PresenceVerifier: Send + Sync {
 
     /// Count the distinct values of `column` among `values`, applying the
     /// extra conditions.
-    async fn multi_count(&self, table: &str, column: &str, values: &[Value], extra: &[Condition]) -> Result<usize>;
+    async fn multi_count(
+        &self,
+        table: &str,
+        column: &str,
+        values: &[Value],
+        extra: &[Condition],
+    ) -> Result<usize>;
 }
 
 /// Split `connection.table` into its connection and table.
@@ -89,7 +95,12 @@ impl ArrayPresenceVerifier {
 
     /// Insert a row into a table.
     pub fn insert(&self, table: &str, row: Value) {
-        self.tables.write().unwrap().entry(table.to_string()).or_default().push(row);
+        self.tables
+            .write()
+            .unwrap()
+            .entry(table.to_string())
+            .or_default()
+            .push(row);
     }
 
     fn rows(&self, table: &str) -> Vec<Value> {
@@ -97,7 +108,10 @@ impl ArrayPresenceVerifier {
         if let Some(rows) = tables.get(table) {
             return rows.clone();
         }
-        tables.get(split_table(table).1).cloned().unwrap_or_default()
+        tables
+            .get(split_table(table).1)
+            .cloned()
+            .unwrap_or_default()
     }
 
     fn column<'a>(row: &'a Value, column: &str) -> &'a Value {
@@ -105,14 +119,20 @@ impl ArrayPresenceVerifier {
     }
 
     fn matches(row: &Value, condition: &Condition) -> bool {
-        let equals = |a: &Value, b: &Value| !a.is_null() && (loose_eq(a, b) || a.to_string_lossy() == b.to_string_lossy());
+        let equals = |a: &Value, b: &Value| {
+            !a.is_null() && (loose_eq(a, b) || a.to_string_lossy() == b.to_string_lossy())
+        };
         match condition {
             Condition::Where(column, value) => equals(Self::column(row, column), value),
             Condition::WhereNot(column, value) => !equals(Self::column(row, column), value),
             Condition::WhereNull(column) => Self::column(row, column).is_null(),
             Condition::WhereNotNull(column) => !Self::column(row, column).is_null(),
-            Condition::WhereIn(column, values) => values.iter().any(|v| equals(Self::column(row, column), v)),
-            Condition::WhereNotIn(column, values) => !values.iter().any(|v| equals(Self::column(row, column), v)),
+            Condition::WhereIn(column, values) => {
+                values.iter().any(|v| equals(Self::column(row, column), v))
+            }
+            Condition::WhereNotIn(column, values) => {
+                !values.iter().any(|v| equals(Self::column(row, column), v))
+            }
         }
     }
 }
@@ -129,10 +149,13 @@ impl PresenceVerifier for ArrayPresenceVerifier {
         extra: &[Condition],
     ) -> Result<usize> {
         let mut conditions = vec![Condition::Where(column.to_string(), value.clone())];
-        if let Some(id) = exclude_id {
-            if id.to_string_lossy() != "NULL" {
-                conditions.push(Condition::WhereNot(id_column.unwrap_or("id").to_string(), id.clone()));
-            }
+        if let Some(id) = exclude_id
+            && id.to_string_lossy() != "NULL"
+        {
+            conditions.push(Condition::WhereNot(
+                id_column.unwrap_or("id").to_string(),
+                id.clone(),
+            ));
         }
         conditions.extend(extra.iter().cloned());
         Ok(self
@@ -142,7 +165,13 @@ impl PresenceVerifier for ArrayPresenceVerifier {
             .count())
     }
 
-    async fn multi_count(&self, table: &str, column: &str, values: &[Value], extra: &[Condition]) -> Result<usize> {
+    async fn multi_count(
+        &self,
+        table: &str,
+        column: &str,
+        values: &[Value],
+        extra: &[Condition],
+    ) -> Result<usize> {
         let mut conditions = vec![Condition::WhereIn(column.to_string(), values.to_vec())];
         conditions.extend(extra.iter().cloned());
         let mut seen: Vec<String> = Vec::new();

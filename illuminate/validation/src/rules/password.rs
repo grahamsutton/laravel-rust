@@ -44,7 +44,9 @@ pub struct Password {
 
 impl std::fmt::Debug for Password {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Password").field("rules", &self.applied_rules()).finish()
+        f.debug_struct("Password")
+            .field("rules", &self.applied_rules())
+            .finish()
     }
 }
 
@@ -212,7 +214,8 @@ impl Password {
 
 impl Conditionable for Password {}
 
-static MIXED: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\p{Ll}+.*\p{Lu})|(\p{Lu}+.*\p{Ll})").unwrap());
+static MIXED: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(\p{Ll}+.*\p{Lu})|(\p{Lu}+.*\p{Ll})").unwrap());
 static LETTERS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\pL").unwrap());
 static SYMBOLS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\p{Z}|\p{S}|\p{P}").unwrap());
 static NUMBERS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\pN").unwrap());
@@ -234,12 +237,14 @@ impl ValidationRule for Password {
             return;
         }
 
-        let mut validator = context
-            .validator()
-            .nested(context.data().clone(), Rules::new().rule(attribute.clone(), self.rule_set()));
+        let mut validator = context.validator().nested(
+            context.data().clone(),
+            Rules::new().rule(attribute.clone(), self.rule_set()),
+        );
 
         let password = value.as_str().map(str::to_string);
-        let (mixed, letters, symbols, numbers) = (self.mixed_case, self.letters, self.symbols, self.numbers);
+        let (mixed, letters, symbols, numbers) =
+            (self.mixed_case, self.letters, self.symbols, self.numbers);
         let failing = attribute.clone();
         validator = validator.after(move |validator| {
             let Some(password) = &password else { return };
@@ -271,14 +276,14 @@ impl ValidationRule for Password {
             }
         }
 
-        if self.uncompromised {
-            if let (Some(verifier), Some(password)) = (try_app::<dyn UncompromisedVerifier>(), value.as_str()) {
-                if !verifier.verify(password, self.threshold).await {
-                    validator.add_failure(&attribute, "password.uncompromised", &[]);
-                    for message in validator.errors().all() {
-                        fail(message);
-                    }
-                }
+        if self.uncompromised
+            && let (Some(verifier), Some(password)) =
+                (try_app::<dyn UncompromisedVerifier>(), value.as_str())
+            && !verifier.verify(password, self.threshold).await
+        {
+            validator.add_failure(&attribute, "password.uncompromised", &[]);
+            for message in validator.errors().all() {
+                fail(message);
             }
         }
     }

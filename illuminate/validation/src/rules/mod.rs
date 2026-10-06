@@ -17,8 +17,8 @@ use crate::rule::{ClosureRule, ValidationRule};
 
 pub use any_of::AnyOf;
 pub use builders::{
-    ArrayKeys, ArrayRule, BackedEnum, Contains, DateArg, DateRule, Dimensions, DoesntContain, EmailRule, Enum,
-    FileRule, FileSize, ImageFile, In, NotIn, NumericRule, StringRule,
+    ArrayKeys, ArrayRule, BackedEnum, Contains, DateArg, DateRule, Dimensions, DoesntContain,
+    EmailRule, Enum, FileRule, FileSize, ImageFile, In, NotIn, NumericRule, StringRule,
 };
 pub use database::{Condition, DatabaseRule, DatabaseRuleKind, Exists, Unique};
 pub use facade::Rule;
@@ -192,7 +192,10 @@ impl From<Arc<dyn ValidationRule>> for RuleSet {
 impl<T: IntoRuleItems, const N: usize> From<[T; N]> for RuleSet {
     fn from(rules: [T; N]) -> Self {
         RuleSet {
-            items: rules.into_iter().flat_map(IntoRuleItems::into_rule_items).collect(),
+            items: rules
+                .into_iter()
+                .flat_map(IntoRuleItems::into_rule_items)
+                .collect(),
         }
     }
 }
@@ -200,7 +203,10 @@ impl<T: IntoRuleItems, const N: usize> From<[T; N]> for RuleSet {
 impl<T: IntoRuleItems> From<Vec<T>> for RuleSet {
     fn from(rules: Vec<T>) -> Self {
         RuleSet {
-            items: rules.into_iter().flat_map(IntoRuleItems::into_rule_items).collect(),
+            items: rules
+                .into_iter()
+                .flat_map(IntoRuleItems::into_rule_items)
+                .collect(),
         }
     }
 }
@@ -288,7 +294,10 @@ impl Rules {
 
     /// Append rules to an attribute, keeping any it already has.
     pub fn append(&mut self, attribute: impl Into<String>, rules: impl Into<RuleSet>) {
-        self.rules.entry(attribute.into()).or_default().extend(rules.into());
+        self.rules
+            .entry(attribute.into())
+            .or_default()
+            .extend(rules.into());
     }
 
     /// Merge another rule map into this one (later rules are appended).
@@ -495,7 +504,11 @@ pub struct ConditionalRules {
 
 impl ConditionalRules {
     /// Create conditional rules.
-    pub fn new(condition: impl IntoDataCondition, rules: impl Into<RuleSet>, default: impl Into<RuleSet>) -> Self {
+    pub fn new(
+        condition: impl IntoDataCondition,
+        rules: impl Into<RuleSet>,
+        default: impl Into<RuleSet>,
+    ) -> Self {
         let (rules, default) = (rules.into(), default.into());
         Self {
             condition: condition.into_data_condition(),
@@ -528,16 +541,20 @@ impl IntoRuleItems for ConditionalRules {
     }
 }
 
+type NestedCallback = Arc<dyn Fn(&Value, &str) -> RuleSet + Send + Sync>;
+
 /// Rules computed for every concrete attribute (Laravel's `NestedRules`).
 #[derive(Clone)]
 pub struct NestedRules {
-    callback: Arc<dyn Fn(&Value, &str) -> RuleSet + Send + Sync>,
+    callback: NestedCallback,
 }
 
 impl NestedRules {
     /// Create nested rules from a callback receiving the attribute's value
     /// and its fully expanded name.
-    pub fn new<R: Into<RuleSet>>(callback: impl Fn(&Value, &str) -> R + Send + Sync + 'static) -> Self {
+    pub fn new<R: Into<RuleSet>>(
+        callback: impl Fn(&Value, &str) -> R + Send + Sync + 'static,
+    ) -> Self {
         Self {
             callback: Arc::new(move |value, attribute| callback(value, attribute).into()),
         }

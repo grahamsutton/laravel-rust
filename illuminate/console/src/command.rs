@@ -226,7 +226,11 @@ impl ClosureCommand {
 
     /// The command's name.
     pub fn name(&self) -> String {
-        self.signature.split_whitespace().next().unwrap_or_default().to_string()
+        self.signature
+            .split_whitespace()
+            .next()
+            .unwrap_or_default()
+            .to_string()
     }
 
     /// Set the description of the command.

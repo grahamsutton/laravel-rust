@@ -123,37 +123,49 @@ pub(crate) fn set_segments(data: &mut Value, segments: &[String], value: Value) 
         if !(current.is_object() || current.is_array()) || is_file(current) {
             *current = Value::Object(Map::new());
         }
-        if let Value::Array(items) = current {
-            match segment.parse::<usize>() {
-                Ok(index) if index <= items.len() => {
-                    if index == items.len() {
-                        items.push(Value::Null);
-                    }
-                    if last {
-                        items[index] = value;
-                        return;
-                    }
-                    current = &mut items[index];
-                    continue;
+        let array_index = match &*current {
+            Value::Array(items) => segment
+                .parse::<usize>()
+                .ok()
+                .filter(|index| *index <= items.len()),
+            _ => None,
+        };
+        if current.is_array() && array_index.is_none() {
+            let items = match std::mem::take(current) {
+                Value::Array(items) => items,
+                _ => Vec::new(),
+            };
+            *current = Value::Object(
+                items
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, v)| (i.to_string(), v))
+                    .collect(),
+            );
+        }
+        match current {
+            Value::Array(items) => {
+                let index = array_index.unwrap_or(items.len());
+                if index == items.len() {
+                    items.push(Value::Null);
                 }
-                _ => {
-                    let map: Map<String, Value> = std::mem::take(items)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, v)| (i.to_string(), v))
-                        .collect();
-                    *current = Value::Object(map);
+                if last {
+                    items[index] = value;
+                    return;
                 }
+                current = &mut items[index];
             }
+            Value::Object(map) => {
+                if last {
+                    map.insert(segment.clone(), value);
+                    return;
+                }
+                current = map
+                    .entry(segment.clone())
+                    .or_insert_with(|| Value::Object(Map::new()));
+            }
+            _ => unreachable!("containers were normalized above"),
         }
-        let Value::Object(map) = current else { unreachable!() };
-        if last {
-            map.insert(segment.clone(), value);
-            return;
-        }
-        current = map
-            .entry(segment.clone())
-            .or_insert_with(|| Value::Object(Map::new()));
     }
 }
 
@@ -170,10 +182,12 @@ pub(crate) fn forget(data: &mut Value, path: &str) {
                 Some(next) => next,
                 None => return,
             },
-            Value::Array(items) => match segment.parse::<usize>().ok().and_then(|i| items.get_mut(i)) {
-                Some(next) => next,
-                None => return,
-            },
+            Value::Array(items) => {
+                match segment.parse::<usize>().ok().and_then(|i| items.get_mut(i)) {
+                    Some(next) => next,
+                    None => return,
+                }
+            }
             _ => return,
         };
     }
@@ -184,16 +198,16 @@ pub(crate) fn forget(data: &mut Value, path: &str) {
         Value::Array(items) => {
             // PHP's unset() leaves a gap; we emulate it by converting the
             // list into a map keyed by the remaining indexes.
-            if let Ok(index) = last.parse::<usize>() {
-                if index < items.len() {
-                    let map: Map<String, Value> = std::mem::take(items)
-                        .into_iter()
-                        .enumerate()
-                        .filter(|(i, _)| *i != index)
-                        .map(|(i, v)| (i.to_string(), v))
-                        .collect();
-                    *current = Value::Object(map);
-                }
+            if let Ok(index) = last.parse::<usize>()
+                && index < items.len()
+            {
+                let map: Map<String, Value> = std::mem::take(items)
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != index)
+                    .map(|(i, v)| (i.to_string(), v))
+                    .collect();
+                *current = Value::Object(map);
             }
         }
         _ => {}
@@ -251,7 +265,10 @@ pub(crate) fn matches_pattern(pattern: &str, path: &str, allow_empty: bool) -> b
 
 /// Split a path into its *escaped* segments (keeping `\.` intact).
 pub(crate) fn segments_raw(path: &str) -> Vec<String> {
-    segments(path).into_iter().map(|s| escape_segment(&s)).collect()
+    segments(path)
+        .into_iter()
+        .map(|s| escape_segment(&s))
+        .collect()
 }
 
 /// The explicit path that leads up to the first wildcard (`users.*.email`
@@ -420,7 +437,9 @@ impl Node {
             }
             *self = Node::Branch(branch);
         }
-        let Node::Branch(children) = self else { unreachable!() };
+        let Node::Branch(children) = self else {
+            unreachable!()
+        };
         let child = children.entry(first.clone()).or_insert_with(Node::new);
         if rest.is_empty() {
             *child = Node::Leaf(value);
@@ -434,11 +453,19 @@ impl Node {
             Node::Leaf(value) => value,
             Node::Branch(children) => {
                 let is_list = !children.is_empty()
-                    && children.keys().enumerate().all(|(i, k)| *k == i.to_string());
+                    && children
+                        .keys()
+                        .enumerate()
+                        .all(|(i, k)| *k == i.to_string());
                 if is_list {
                     Value::Array(children.into_values().map(Node::into_value).collect())
                 } else {
-                    Value::Object(children.into_iter().map(|(k, v)| (k, v.into_value())).collect())
+                    Value::Object(
+                        children
+                            .into_iter()
+                            .map(|(k, v)| (k, v.into_value()))
+                            .collect(),
+                    )
                 }
             }
         }
@@ -472,11 +499,17 @@ mod tests {
             expand_wildcard("items.*.name", &data),
             vec!["items.0.name", "items.1.name", "items.2.name"]
         );
-        assert_eq!(expand_wildcard("items.*", &data), vec!["items.0", "items.1", "items.2"]);
+        assert_eq!(
+            expand_wildcard("items.*", &data),
+            vec!["items.0", "items.1", "items.2"]
+        );
         assert!(expand_wildcard("missing.*.name", &data).is_empty());
         assert!(expand_wildcard("empty.*", &data).is_empty());
         let nested = json!({"a": [{"b": [1, 2]}, {"b": [3]}]});
-        assert_eq!(expand_wildcard("a.*.b.*", &nested), vec!["a.0.b.0", "a.0.b.1", "a.1.b.0"]);
+        assert_eq!(
+            expand_wildcard("a.*.b.*", &nested),
+            vec!["a.0.b.0", "a.0.b.1", "a.1.b.0"]
+        );
     }
 
     #[test]
@@ -490,7 +523,10 @@ mod tests {
 
     #[test]
     fn it_converts_bracket_names() {
-        assert_eq!(bracket_to_dot("user[avatar]"), ("user.avatar".to_string(), false));
+        assert_eq!(
+            bracket_to_dot("user[avatar]"),
+            ("user.avatar".to_string(), false)
+        );
         assert_eq!(bracket_to_dot("photos[]"), ("photos".to_string(), true));
         assert_eq!(bracket_to_dot("avatar"), ("avatar".to_string(), false));
     }
@@ -500,6 +536,9 @@ mod tests {
         let mut node = Node::new();
         node.set(&["items".into(), "0".into(), "name".into()], json!("a"));
         node.set(&["items".into(), "1".into(), "name".into()], json!("b"));
-        assert_eq!(node.into_value(), json!({"items": [{"name": "a"}, {"name": "b"}]}));
+        assert_eq!(
+            node.into_value(),
+            json!({"items": [{"name": "a"}, {"name": "b"}]})
+        );
     }
 }

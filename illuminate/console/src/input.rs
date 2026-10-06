@@ -12,8 +12,8 @@
 //! assert_eq!(input.option("queue"), Some(InputValue::from("emails")));
 //! ```
 
-use indexmap::IndexMap;
 use illuminate_support::Value;
+use indexmap::IndexMap;
 
 /// Thrown when the given input does not satisfy a command's definition,
 /// such as a missing argument or an unknown option.
@@ -81,7 +81,9 @@ impl InputValue {
         match self {
             InputValue::Null => false,
             InputValue::Bool(value) => *value,
-            InputValue::String(value) => !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false"),
+            InputValue::String(value) => {
+                !value.is_empty() && value != "0" && !value.eq_ignore_ascii_case("false")
+            }
             InputValue::Array(values) => !values.is_empty(),
         }
     }
@@ -107,7 +109,9 @@ impl InputValue {
             InputValue::Null => Value::Null,
             InputValue::Bool(value) => Value::Bool(*value),
             InputValue::String(value) => Value::String(value.clone()),
-            InputValue::Array(values) => Value::Array(values.iter().cloned().map(Value::String).collect()),
+            InputValue::Array(values) => {
+                Value::Array(values.iter().cloned().map(Value::String).collect())
+            }
         }
     }
 
@@ -245,7 +249,12 @@ pub struct InputOption {
 
 impl InputOption {
     /// Create an option.
-    pub fn new(name: impl Into<String>, shortcut: Option<&str>, mode: OptionMode, description: impl Into<String>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        shortcut: Option<&str>,
+        mode: OptionMode,
+        description: impl Into<String>,
+    ) -> Self {
         let name: String = name.into();
         let shortcut = shortcut.and_then(|shortcut| {
             let parts: Vec<&str> = shortcut
@@ -321,7 +330,10 @@ impl InputOption {
 
     /// The option's individual shortcuts.
     pub fn shortcuts(&self) -> Vec<&str> {
-        self.shortcut.as_deref().map(|s| s.split('|').collect()).unwrap_or_default()
+        self.shortcut
+            .as_deref()
+            .map(|s| s.split('|').collect())
+            .unwrap_or_default()
     }
 }
 
@@ -334,7 +346,10 @@ pub struct InputDefinition {
 
 impl InputDefinition {
     /// Create a definition from the given arguments and options.
-    pub fn new(arguments: Vec<InputArgument>, options: Vec<InputOption>) -> Result<Self, InvalidDefinitionException> {
+    pub fn new(
+        arguments: Vec<InputArgument>,
+        options: Vec<InputOption>,
+    ) -> Result<Self, InvalidDefinitionException> {
         let mut definition = Self::default();
         for argument in arguments {
             definition.add_argument(argument)?;
@@ -346,7 +361,10 @@ impl InputDefinition {
     }
 
     /// Add an argument.
-    pub fn add_argument(&mut self, argument: InputArgument) -> Result<(), InvalidDefinitionException> {
+    pub fn add_argument(
+        &mut self,
+        argument: InputArgument,
+    ) -> Result<(), InvalidDefinitionException> {
         if self.argument(&argument.name).is_some() {
             return Err(InvalidDefinitionException::new(format!(
                 "An argument with name \"{}\" already exists.",
@@ -377,7 +395,9 @@ impl InputDefinition {
     /// Add an option.
     pub fn add_option(&mut self, option: InputOption) -> Result<(), InvalidDefinitionException> {
         if option.name.is_empty() {
-            return Err(InvalidDefinitionException::new("An option name cannot be empty."));
+            return Err(InvalidDefinitionException::new(
+                "An option name cannot be empty.",
+            ));
         }
 
         if let Some(existing) = self.option(&option.name) {
@@ -431,17 +451,24 @@ impl InputDefinition {
 
     /// Find the option with the given shortcut.
     pub fn option_for_shortcut(&self, shortcut: &str) -> Option<&InputOption> {
-        self.options.iter().find(|option| option.shortcuts().contains(&shortcut))
+        self.options
+            .iter()
+            .find(|option| option.shortcuts().contains(&shortcut))
     }
 
     /// Find the negatable option negated by the given name (`no-ansi` → `ansi`).
     pub fn negation(&self, name: &str) -> Option<&InputOption> {
         let name = name.strip_prefix("no-")?;
-        self.option(name).filter(|option| option.mode == OptionMode::Negatable)
+        self.option(name)
+            .filter(|option| option.mode == OptionMode::Negatable)
     }
 
     /// Merge another definition's options (and optionally arguments) into this one.
-    pub(crate) fn merged_with(&self, application: &InputDefinition, merge_arguments: bool) -> InputDefinition {
+    pub(crate) fn merged_with(
+        &self,
+        application: &InputDefinition,
+        merge_arguments: bool,
+    ) -> InputDefinition {
         let mut merged = InputDefinition {
             arguments: Vec::new(),
             options: self.options.clone(),
@@ -475,11 +502,19 @@ impl InputDefinition {
             for option in &self.options {
                 let value = if option.accepts_value() {
                     let name = option.name.to_uppercase();
-                    if option.is_value_optional() { format!(" [{name}]") } else { format!(" {name}") }
+                    if option.is_value_optional() {
+                        format!(" [{name}]")
+                    } else {
+                        format!(" {name}")
+                    }
                 } else {
                     String::new()
                 };
-                let shortcut = option.shortcut.as_ref().map(|s| format!("-{s}|")).unwrap_or_default();
+                let shortcut = option
+                    .shortcut
+                    .as_ref()
+                    .map(|s| format!("-{s}|"))
+                    .unwrap_or_default();
                 let negation = if option.mode == OptionMode::Negatable {
                     format!("|--no-{}", option.name)
                 } else {
@@ -689,7 +724,11 @@ impl ArtisanArgs {
                         parts.push(key.clone());
                     }
                 }
-                ArgValue::Bool(true) => parts.push(if is_option { key.clone() } else { "1".to_string() }),
+                ArgValue::Bool(true) => parts.push(if is_option {
+                    key.clone()
+                } else {
+                    "1".to_string()
+                }),
                 ArgValue::Bool(false) => {}
                 ArgValue::String(value) if is_long => parts.push(format!("{key}={value}")),
                 ArgValue::String(value) if is_option => parts.push(format!("{key}{value}")),
@@ -723,7 +762,11 @@ impl ArtisanArgs {
                         parts.push(key.clone());
                     }
                 }
-                ArgValue::Bool(true) => parts.push(if is_option { key.clone() } else { "1".to_string() }),
+                ArgValue::Bool(true) => parts.push(if is_option {
+                    key.clone()
+                } else {
+                    "1".to_string()
+                }),
                 ArgValue::Bool(false) => {}
                 ArgValue::String(value) => parts.push(if is_option {
                     format!("{key}={}", escape_token(value))
@@ -772,7 +815,10 @@ impl From<Value> for ArtisanArgs {
         match value {
             Value::Object(map) => Self {
                 tokens: Vec::new(),
-                named: map.into_iter().map(|(key, value)| (key, ArgValue::from(value))).collect(),
+                named: map
+                    .into_iter()
+                    .map(|(key, value)| (key, ArgValue::from(value)))
+                    .collect(),
             },
             Value::Array(values) => Self::tokens(values.into_iter().map(|value| match value {
                 Value::String(value) => value,
@@ -818,7 +864,10 @@ impl<V: Into<ArgValue>, const N: usize> From<[(&str, V); N]> for ArtisanArgs {
     fn from(pairs: [(&str, V); N]) -> Self {
         Self {
             tokens: Vec::new(),
-            named: pairs.into_iter().map(|(key, value)| (key.to_string(), value.into())).collect(),
+            named: pairs
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value.into()))
+                .collect(),
         }
     }
 }
@@ -827,7 +876,10 @@ impl<V: Into<ArgValue>> From<Vec<(&str, V)>> for ArtisanArgs {
     fn from(pairs: Vec<(&str, V)>) -> Self {
         Self {
             tokens: Vec::new(),
-            named: pairs.into_iter().map(|(key, value)| (key.to_string(), value.into())).collect(),
+            named: pairs
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value.into()))
+                .collect(),
         }
     }
 }
@@ -836,7 +888,10 @@ impl<V: Into<ArgValue>> From<Vec<(String, V)>> for ArtisanArgs {
     fn from(pairs: Vec<(String, V)>) -> Self {
         Self {
             tokens: Vec::new(),
-            named: pairs.into_iter().map(|(key, value)| (key, value.into())).collect(),
+            named: pairs
+                .into_iter()
+                .map(|(key, value)| (key, value.into()))
+                .collect(),
         }
     }
 }
@@ -856,7 +911,10 @@ pub struct Input {
 impl Input {
     /// Bind command line tokens (without the binary or command name, unless
     /// the definition declares a `command` argument) against a definition.
-    pub fn from_tokens<I, S>(tokens: I, definition: &InputDefinition) -> Result<Self, InvalidInputException>
+    pub fn from_tokens<I, S>(
+        tokens: I,
+        definition: &InputDefinition,
+    ) -> Result<Self, InvalidInputException>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
@@ -866,7 +924,8 @@ impl Input {
             ..Default::default()
         };
 
-        let mut tokens: std::collections::VecDeque<String> = tokens.into_iter().map(Into::into).collect();
+        let mut tokens: std::collections::VecDeque<String> =
+            tokens.into_iter().map(Into::into).collect();
         let mut parse_options = true;
 
         while let Some(token) = tokens.pop_front() {
@@ -887,7 +946,10 @@ impl Input {
     }
 
     /// Bind named parameters (Laravel's `['user' => 1, '--queue' => 'x']`).
-    pub fn from_named(parameters: &[(String, ArgValue)], definition: &InputDefinition) -> Result<Self, InvalidInputException> {
+    pub fn from_named(
+        parameters: &[(String, ArgValue)],
+        definition: &InputDefinition,
+    ) -> Result<Self, InvalidInputException> {
         let mut input = Self {
             definition: definition.clone(),
             ..Default::default()
@@ -905,19 +967,25 @@ impl Input {
                     .definition
                     .option_for_shortcut(shortcut)
                     .map(|option| option.name.clone())
-                    .ok_or_else(|| InvalidInputException::new(format!("The \"-{shortcut}\" option does not exist.")))?;
+                    .ok_or_else(|| {
+                        InvalidInputException::new(format!(
+                            "The \"-{shortcut}\" option does not exist."
+                        ))
+                    })?;
                 input.add_named_option(&name, value)?;
             } else {
-                let argument = input
-                    .definition
-                    .argument(key)
-                    .cloned()
-                    .ok_or_else(|| InvalidInputException::new(format!("The \"{key}\" argument does not exist.")))?;
+                let argument = input.definition.argument(key).cloned().ok_or_else(|| {
+                    InvalidInputException::new(format!("The \"{key}\" argument does not exist."))
+                })?;
 
                 let value = match value {
                     ArgValue::Null => InputValue::Null,
-                    ArgValue::Bool(value) => InputValue::String(if *value { "1" } else { "" }.to_string()),
-                    ArgValue::String(value) if argument.array => InputValue::Array(vec![value.clone()]),
+                    ArgValue::Bool(value) => {
+                        InputValue::String(if *value { "1" } else { "" }.to_string())
+                    }
+                    ArgValue::String(value) if argument.array => {
+                        InputValue::Array(vec![value.clone()])
+                    }
                     ArgValue::String(value) => InputValue::String(value.clone()),
                     ArgValue::Array(values) if argument.array => InputValue::Array(values.clone()),
                     ArgValue::Array(values) => InputValue::String(values.join(",")),
@@ -929,24 +997,34 @@ impl Input {
         Ok(input)
     }
 
-    fn add_named_option(&mut self, name: &str, value: &ArgValue) -> Result<(), InvalidInputException> {
+    fn add_named_option(
+        &mut self,
+        name: &str,
+        value: &ArgValue,
+    ) -> Result<(), InvalidInputException> {
         let Some(option) = self.definition.option(name).cloned() else {
             if let Some(option) = self.definition.negation(name) {
                 let name = option.name.clone();
                 self.options.insert(name, InputValue::Bool(false));
                 return Ok(());
             }
-            return Err(InvalidInputException::new(format!("The \"--{name}\" option does not exist.")));
+            return Err(InvalidInputException::new(format!(
+                "The \"--{name}\" option does not exist."
+            )));
         };
 
         let value = match (value, option.mode) {
             (ArgValue::Null, OptionMode::Required) => {
-                return Err(InvalidInputException::new(format!("The \"--{name}\" option requires a value.")));
+                return Err(InvalidInputException::new(format!(
+                    "The \"--{name}\" option requires a value."
+                )));
             }
             (ArgValue::Null, OptionMode::Optional) if option.array => InputValue::Array(Vec::new()),
             (ArgValue::Null, OptionMode::Optional) => InputValue::Null,
             (ArgValue::Null, _) => InputValue::Bool(true),
-            (ArgValue::Bool(flag), OptionMode::None | OptionMode::Negatable) => InputValue::Bool(*flag),
+            (ArgValue::Bool(flag), OptionMode::None | OptionMode::Negatable) => {
+                InputValue::Bool(*flag)
+            }
             (other, OptionMode::None | OptionMode::Negatable) => {
                 InputValue::Bool(arg_to_input(other).as_bool())
             }
@@ -967,24 +1045,33 @@ impl Input {
         let arguments = self.definition.arguments().to_vec();
 
         if let Some(argument) = arguments.get(count) {
-            let value = if argument.array { InputValue::Array(vec![token]) } else { InputValue::String(token) };
+            let value = if argument.array {
+                InputValue::Array(vec![token])
+            } else {
+                InputValue::String(token)
+            };
             self.arguments.insert(argument.name.clone(), value);
             return Ok(());
         }
 
-        if count > 0 {
-            if let Some(last) = arguments.get(count - 1).filter(|argument| argument.array) {
-                if let Some(InputValue::Array(values)) = self.arguments.get_mut(&last.name) {
-                    values.push(token);
-                    return Ok(());
-                }
-            }
+        if count > 0
+            && let Some(last) = arguments.get(count - 1).filter(|argument| argument.array)
+            && let Some(InputValue::Array(values)) = self.arguments.get_mut(&last.name)
+        {
+            values.push(token);
+            return Ok(());
         }
 
         let mut all: Vec<&InputArgument> = arguments.iter().collect();
         let mut command_name = None;
-        if all.first().is_some_and(|argument| argument.name == "command") {
-            command_name = self.arguments.get("command").and_then(InputValue::as_string);
+        if all
+            .first()
+            .is_some_and(|argument| argument.name == "command")
+        {
+            command_name = self
+                .arguments
+                .get("command")
+                .and_then(InputValue::as_string);
             all.remove(0);
         }
 
@@ -995,8 +1082,13 @@ impl Input {
                 "Too many arguments to \"{command}\" command, expected arguments \"{}\".",
                 names.join("\" \"")
             ),
-            (false, None) => format!("Too many arguments, expected arguments \"{}\".", names.join("\" \"")),
-            (true, Some(command)) => format!("No arguments expected for \"{command}\" command, got \"{token}\"."),
+            (false, None) => format!(
+                "Too many arguments, expected arguments \"{}\".",
+                names.join("\" \"")
+            ),
+            (true, Some(command)) => {
+                format!("No arguments expected for \"{command}\" command, got \"{token}\".")
+            }
             (true, None) => format!("No arguments expected, got \"{token}\"."),
         };
 
@@ -1013,7 +1105,9 @@ impl Input {
         match name.split_once('=') {
             Some((name, value)) => {
                 if name.is_empty() {
-                    return Err(InvalidInputException::new(format!("The \"--{name}\" option does not exist.")));
+                    return Err(InvalidInputException::new(format!(
+                        "The \"--{name}\" option does not exist."
+                    )));
                 }
                 self.add_long_option(name, Some(value.to_string()), rest)
             }
@@ -1051,7 +1145,9 @@ impl Input {
             for (index, c) in all.iter().enumerate() {
                 let shortcut = c.to_string();
                 let Some(option) = self.definition.option_for_shortcut(&shortcut).cloned() else {
-                    return Err(InvalidInputException::new(format!("The \"-{c}\" option does not exist.")));
+                    return Err(InvalidInputException::new(format!(
+                        "The \"-{c}\" option does not exist."
+                    )));
                 };
 
                 if option.accepts_value() {
@@ -1082,7 +1178,9 @@ impl Input {
             .definition
             .option_for_shortcut(shortcut)
             .map(|option| option.name.clone())
-            .ok_or_else(|| InvalidInputException::new(format!("The \"-{shortcut}\" option does not exist.")))?;
+            .ok_or_else(|| {
+                InvalidInputException::new(format!("The \"-{shortcut}\" option does not exist."))
+            })?;
 
         self.add_long_option(&name, value, rest)
     }
@@ -1104,7 +1202,9 @@ impl Input {
                 self.options.insert(name, InputValue::Bool(false));
                 return Ok(());
             }
-            return Err(InvalidInputException::new(format!("The \"--{name}\" option does not exist.")));
+            return Err(InvalidInputException::new(format!(
+                "The \"--{name}\" option does not exist."
+            )));
         };
 
         if value.is_some() && !option.accepts_value() {
@@ -1113,18 +1213,20 @@ impl Input {
             )));
         }
 
-        if value.as_deref().is_none_or(str::is_empty) && option.accepts_value() {
-            if let Some(next) = rest.front() {
-                if next.is_empty() || !next.starts_with('-') {
-                    value = rest.pop_front();
-                }
-            }
+        if value.as_deref().is_none_or(str::is_empty)
+            && option.accepts_value()
+            && let Some(next) = rest.front()
+            && (next.is_empty() || !next.starts_with('-'))
+        {
+            value = rest.pop_front();
         }
 
         let value = match value {
             Some(value) => InputValue::String(value),
             None if option.mode == OptionMode::Required => {
-                return Err(InvalidInputException::new(format!("The \"--{name}\" option requires a value.")));
+                return Err(InvalidInputException::new(format!(
+                    "The \"--{name}\" option requires a value."
+                )));
             }
             None if !option.array && !option.is_value_optional() => InputValue::Bool(true),
             None => InputValue::Null,
@@ -1135,10 +1237,10 @@ impl Input {
                 .options
                 .entry(option.name.clone())
                 .or_insert_with(|| InputValue::Array(Vec::new()));
-            if let InputValue::Array(values) = entry {
-                if let InputValue::String(value) = value {
-                    values.push(value);
-                }
+            if let InputValue::Array(values) = entry
+                && let InputValue::String(value) = value
+            {
+                values.push(value);
             }
         } else {
             self.options.insert(option.name.clone(), value);
@@ -1175,13 +1277,23 @@ impl Input {
     /// The value of an argument (given or default). `None` if it isn't defined.
     pub fn argument(&self, name: &str) -> Option<InputValue> {
         let argument = self.definition.argument(name)?;
-        Some(self.arguments.get(name).cloned().unwrap_or_else(|| argument.default.clone()))
+        Some(
+            self.arguments
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| argument.default.clone()),
+        )
     }
 
     /// The value of an option (given or default). `None` if it isn't defined.
     pub fn option(&self, name: &str) -> Option<InputValue> {
         let option = self.definition.option(name)?;
-        Some(self.options.get(name).cloned().unwrap_or_else(|| option.default.clone()))
+        Some(
+            self.options
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| option.default.clone()),
+        )
     }
 
     /// Determine if the argument was explicitly given.
@@ -1199,7 +1311,12 @@ impl Input {
         self.definition
             .arguments()
             .iter()
-            .map(|argument| (argument.name.clone(), self.argument(&argument.name).unwrap_or_default()))
+            .map(|argument| {
+                (
+                    argument.name.clone(),
+                    self.argument(&argument.name).unwrap_or_default(),
+                )
+            })
             .collect()
     }
 
@@ -1208,23 +1325,40 @@ impl Input {
         self.definition
             .options()
             .iter()
-            .map(|option| (option.name.clone(), self.option(&option.name).unwrap_or_default()))
+            .map(|option| {
+                (
+                    option.name.clone(),
+                    self.option(&option.name).unwrap_or_default(),
+                )
+            })
             .collect()
     }
 
     /// Set an argument's value.
-    pub fn set_argument(&mut self, name: &str, value: impl Into<InputValue>) -> Result<(), InvalidInputException> {
+    pub fn set_argument(
+        &mut self,
+        name: &str,
+        value: impl Into<InputValue>,
+    ) -> Result<(), InvalidInputException> {
         if self.definition.argument(name).is_none() {
-            return Err(InvalidInputException::new(format!("The \"{name}\" argument does not exist.")));
+            return Err(InvalidInputException::new(format!(
+                "The \"{name}\" argument does not exist."
+            )));
         }
         self.arguments.insert(name.to_string(), value.into());
         Ok(())
     }
 
     /// Set an option's value.
-    pub fn set_option(&mut self, name: &str, value: impl Into<InputValue>) -> Result<(), InvalidInputException> {
+    pub fn set_option(
+        &mut self,
+        name: &str,
+        value: impl Into<InputValue>,
+    ) -> Result<(), InvalidInputException> {
         if self.definition.option(name).is_none() {
-            return Err(InvalidInputException::new(format!("The \"--{name}\" option does not exist.")));
+            return Err(InvalidInputException::new(format!(
+                "The \"--{name}\" option does not exist."
+            )));
         }
         self.options.insert(name.to_string(), value.into());
         Ok(())
@@ -1329,14 +1463,26 @@ mod tests {
     fn it_binds_arguments() {
         let input = Input::from_tokens(["taylor", "a", "b"], &definition()).unwrap();
         assert_eq!(input.argument("user"), Some(InputValue::from("taylor")));
-        assert_eq!(input.argument("names"), Some(InputValue::from(vec!["a", "b"])));
+        assert_eq!(
+            input.argument("names"),
+            Some(InputValue::from(vec!["a", "b"]))
+        );
         assert_eq!(input.argument("missing"), None);
     }
 
     #[test]
     fn it_binds_long_options() {
         let input = Input::from_tokens(
-            ["u", "--force", "--queue=high", "--connection", "redis", "--id=1", "--id", "2"],
+            [
+                "u",
+                "--force",
+                "--queue=high",
+                "--connection",
+                "redis",
+                "--id=1",
+                "--id",
+                "2",
+            ],
             &definition(),
         )
         .unwrap();
@@ -1390,28 +1536,51 @@ mod tests {
 
     #[test]
     fn it_reports_invalid_input() {
-        let error = |tokens: &[&str]| Input::from_tokens(tokens.iter().copied(), &definition()).unwrap_err().message;
+        let error = |tokens: &[&str]| {
+            Input::from_tokens(tokens.iter().copied(), &definition())
+                .unwrap_err()
+                .message
+        };
 
         assert_eq!(error(&["--nope"]), "The \"--nope\" option does not exist.");
         assert_eq!(error(&["-x"]), "The \"-x\" option does not exist.");
-        assert_eq!(error(&["--force=1"]), "The \"--force\" option does not accept a value.");
-        assert_eq!(error(&["--connection"]), "The \"--connection\" option requires a value.");
-        assert_eq!(error(&["--no-ansi=1"]), "The \"--no-ansi\" option does not accept a value.");
+        assert_eq!(
+            error(&["--force=1"]),
+            "The \"--force\" option does not accept a value."
+        );
+        assert_eq!(
+            error(&["--connection"]),
+            "The \"--connection\" option requires a value."
+        );
+        assert_eq!(
+            error(&["--no-ansi=1"]),
+            "The \"--no-ansi\" option does not accept a value."
+        );
 
         let input = Input::from_tokens(Vec::<String>::new(), &definition()).unwrap();
-        assert_eq!(input.validate().unwrap_err().message, "Not enough arguments (missing: \"user\").");
+        assert_eq!(
+            input.validate().unwrap_err().message,
+            "Not enough arguments (missing: \"user\")."
+        );
 
         let single = InputDefinition::new(vec![InputArgument::required("user")], vec![]).unwrap();
         let error = Input::from_tokens(["a", "b"], &single).unwrap_err();
-        assert_eq!(error.message, "Too many arguments, expected arguments \"user\".");
+        assert_eq!(
+            error.message,
+            "Too many arguments, expected arguments \"user\"."
+        );
 
         let none = InputDefinition::default();
         let error = Input::from_tokens(["a"], &none).unwrap_err();
         assert_eq!(error.message, "No arguments expected, got \"a\".");
 
-        let with_command = InputDefinition::new(vec![InputArgument::required("command")], vec![]).unwrap();
+        let with_command =
+            InputDefinition::new(vec![InputArgument::required("command")], vec![]).unwrap();
         let error = Input::from_tokens(["inspire", "extra"], &with_command).unwrap_err();
-        assert_eq!(error.message, "No arguments expected for \"inspire\" command, got \"extra\".");
+        assert_eq!(
+            error.message,
+            "No arguments expected for \"inspire\" command, got \"extra\"."
+        );
     }
 
     #[test]
@@ -1430,7 +1599,8 @@ mod tests {
         assert_eq!(input.option("id"), Some(InputValue::from(vec!["5", "13"])));
         assert_eq!(input.option("ansi"), Some(InputValue::Bool(false)));
 
-        let error = Input::from_named(&[("nope".to_string(), ArgValue::Null)], &definition()).unwrap_err();
+        let error =
+            Input::from_named(&[("nope".to_string(), ArgValue::Null)], &definition()).unwrap_err();
         assert_eq!(error.message, "The \"nope\" argument does not exist.");
     }
 
@@ -1441,35 +1611,60 @@ mod tests {
             vec![],
         )
         .unwrap_err();
-        assert_eq!(error.message, "Cannot add a required argument \"b\" after an optional one \"a\".");
+        assert_eq!(
+            error.message,
+            "Cannot add a required argument \"b\" after an optional one \"a\"."
+        );
 
         let error = InputDefinition::new(
-            vec![InputArgument::optional("a").array(), InputArgument::optional("b")],
+            vec![
+                InputArgument::optional("a").array(),
+                InputArgument::optional("b"),
+            ],
             vec![],
         )
         .unwrap_err();
-        assert_eq!(error.message, "Cannot add a required argument \"b\" after an array argument \"a\".");
+        assert_eq!(
+            error.message,
+            "Cannot add a required argument \"b\" after an array argument \"a\"."
+        );
 
         let error = InputDefinition::new(
             vec![],
-            vec![InputOption::flag("a").shortcut("x"), InputOption::flag("b").shortcut("x")],
+            vec![
+                InputOption::flag("a").shortcut("x"),
+                InputOption::flag("b").shortcut("x"),
+            ],
         )
         .unwrap_err();
-        assert_eq!(error.message, "An option with shortcut \"x\" already exists.");
+        assert_eq!(
+            error.message,
+            "An option with shortcut \"x\" already exists."
+        );
     }
 
     #[test]
     fn it_builds_synopses() {
         let definition = definition();
-        assert_eq!(definition.synopsis(true), "[options] [--] <user> [<names>...]");
-        assert!(definition.synopsis(false).starts_with("[--force] [-Q|--queue [QUEUE]] [--connection CONNECTION]"));
+        assert_eq!(
+            definition.synopsis(true),
+            "[options] [--] <user> [<names>...]"
+        );
+        assert!(
+            definition
+                .synopsis(false)
+                .starts_with("[--force] [-Q|--queue [QUEUE]] [--connection CONNECTION]")
+        );
         assert!(definition.synopsis(false).contains("[--ansi|--no-ansi]"));
     }
 
     #[test]
     fn it_tokenizes_strings() {
         assert_eq!(tokenize("a  b\tc"), vec!["a", "b", "c"]);
-        assert_eq!(tokenize("--name=\"Taylor Otwell\""), vec!["--name=Taylor Otwell"]);
+        assert_eq!(
+            tokenize("--name=\"Taylor Otwell\""),
+            vec!["--name=Taylor Otwell"]
+        );
         assert_eq!(tokenize("'single quoted' x"), vec!["single quoted", "x"]);
         assert_eq!(tokenize("a\\ b"), vec!["a b"]);
         assert_eq!(tokenize("\"\""), vec![""]);
@@ -1488,7 +1683,9 @@ mod tests {
         let args: ArtisanArgs = [("--id", vec!["1", "2"])].into();
         assert_eq!(args.to_command_line(), "--id=1 --id=2");
 
-        let args = ArtisanArgs::new().with("name", "Taylor Otwell").with("--queue", "high");
+        let args = ArtisanArgs::new()
+            .with("name", "Taylor Otwell")
+            .with("--queue", "high");
         assert_eq!(args.to_command_line(), "'Taylor Otwell' --queue=high");
         assert!(ArtisanArgs::from(()).is_empty());
     }

@@ -16,7 +16,8 @@ use crate::rule::ValidationContext;
 
 /// A custom string rule registered with `Validator::extend`: receives the
 /// attribute, its value, the rule parameters, and the validation context.
-pub type ExtensionFn = Arc<dyn Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool + Send + Sync>;
+pub type ExtensionFn =
+    Arc<dyn Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool + Send + Sync>;
 
 /// A custom placeholder replacer registered with `Validator::replacer`:
 /// receives the message, attribute, rule and parameters.
@@ -83,7 +84,10 @@ impl Factory {
     pub fn extend(
         &self,
         rule: &str,
-        extension: impl Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool + Send + Sync + 'static,
+        extension: impl Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool
+        + Send
+        + Sync
+        + 'static,
     ) {
         self.extensions
             .write()
@@ -97,10 +101,17 @@ impl Factory {
     pub fn extend_implicit(
         &self,
         rule: &str,
-        extension: impl Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool + Send + Sync + 'static,
+        extension: impl Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool
+        + Send
+        + Sync
+        + 'static,
     ) {
         self.extend(rule, extension);
-        self.extensions.write().unwrap().implicit.push(Str::studly(rule));
+        self.extensions
+            .write()
+            .unwrap()
+            .implicit
+            .push(Str::studly(rule));
     }
 
     /// Register a custom dependent rule (its parameters name other fields,
@@ -108,10 +119,17 @@ impl Factory {
     pub fn extend_dependent(
         &self,
         rule: &str,
-        extension: impl Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool + Send + Sync + 'static,
+        extension: impl Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool
+        + Send
+        + Sync
+        + 'static,
     ) {
         self.extend(rule, extension);
-        self.extensions.write().unwrap().dependent.push(Str::studly(rule));
+        self.extensions
+            .write()
+            .unwrap()
+            .dependent
+            .push(Str::studly(rule));
     }
 
     /// Set the fallback message of a custom rule.
@@ -124,7 +142,11 @@ impl Factory {
     }
 
     /// Register a custom placeholder replacer for a rule.
-    pub fn replacer(&self, rule: &str, replacer: impl Fn(&str, &str, &str, &[String]) -> String + Send + Sync + 'static) {
+    pub fn replacer(
+        &self,
+        rule: &str,
+        replacer: impl Fn(&str, &str, &str, &[String]) -> String + Send + Sync + 'static,
+    ) {
         self.extensions
             .write()
             .unwrap()
@@ -164,13 +186,15 @@ impl Factory {
 
     /// Include array keys that weren't validated in `validated()` output.
     pub fn include_unvalidated_array_keys(&self) {
-        self.exclude_unvalidated_array_keys.store(false, Ordering::SeqCst);
+        self.exclude_unvalidated_array_keys
+            .store(false, Ordering::SeqCst);
     }
 
     /// Exclude array keys that weren't validated from `validated()` output
     /// (the default).
     pub fn exclude_unvalidated_array_keys(&self) {
-        self.exclude_unvalidated_array_keys.store(true, Ordering::SeqCst);
+        self.exclude_unvalidated_array_keys
+            .store(true, Ordering::SeqCst);
     }
 
     pub(crate) fn excludes_unvalidated_array_keys(&self) -> bool {

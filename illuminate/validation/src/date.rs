@@ -54,7 +54,9 @@ pub(crate) fn is_valid_date(value: &str) -> bool {
     }
     // An absolute date followed by a relative modifier ("2024-01-01 +1 day").
     match split_relative_suffix(value) {
-        Some((base, rest)) => parse_absolute(base).is_some() && apply_relative(Carbon::now(), rest).is_some(),
+        Some((base, rest)) => {
+            parse_absolute(base).is_some() && apply_relative(Carbon::now(), rest).is_some()
+        }
         None => false,
     }
 }
@@ -79,10 +81,10 @@ fn parse_relative(value: &str) -> Option<Carbon> {
     if lower.is_empty() {
         return Some(Carbon::now());
     }
-    if let Some((base, rest)) = split_relative_suffix(value) {
-        if let Some(base) = parse_absolute(base) {
-            return apply_relative(base, rest);
-        }
+    if let Some((base, rest)) = split_relative_suffix(value)
+        && let Some(base) = parse_absolute(base)
+    {
+        return apply_relative(base, rest);
     }
     let mut words = lower.split_whitespace().peekable();
     let base = match words.peek().copied() {
@@ -203,7 +205,9 @@ impl Parsed {
             Some(offset) => self.datetime - Duration::seconds(offset as i64),
             None => {
                 let tz = Carbon::default_timezone();
-                tz.from_local_datetime(&self.datetime).earliest()?.naive_utc()
+                tz.from_local_datetime(&self.datetime)
+                    .earliest()?
+                    .naive_utc()
             }
         };
         let utc = utc.and_utc();
@@ -212,10 +216,28 @@ impl Parsed {
 }
 
 const MONTHS: [&str; 12] = [
-    "January", "February", "March", "April", "May", "June", "July", "August", "September", "October",
-    "November", "December",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
 ];
-const DAYS: [&str; 7] = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const DAYS: [&str; 7] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+];
 
 struct Cursor<'a> {
     input: &'a str,
@@ -229,7 +251,11 @@ impl<'a> Cursor<'a> {
 
     fn digits(&mut self, min: usize, max: usize) -> Option<i64> {
         let rest = self.rest();
-        let len = rest.bytes().take(max).take_while(u8::is_ascii_digit).count();
+        let len = rest
+            .bytes()
+            .take(max)
+            .take_while(u8::is_ascii_digit)
+            .count();
         if len < min {
             return None;
         }
@@ -285,7 +311,10 @@ fn month_from_name(name: &str) -> Option<u32> {
 }
 
 fn parse_offset(text: &str) -> Option<i32> {
-    if text.eq_ignore_ascii_case("z") || text.eq_ignore_ascii_case("utc") || text.eq_ignore_ascii_case("gmt") {
+    if text.eq_ignore_ascii_case("z")
+        || text.eq_ignore_ascii_case("utc")
+        || text.eq_ignore_ascii_case("gmt")
+    {
         return Some(0);
     }
     let (sign, rest) = match text.as_bytes().first()? {
@@ -296,8 +325,14 @@ fn parse_offset(text: &str) -> Option<i32> {
     let digits: String = rest.chars().filter(|c| c.is_ascii_digit()).collect();
     let (hours, minutes) = match digits.len() {
         1 | 2 => (digits.parse::<i32>().ok()?, 0),
-        3 => (digits[..1].parse::<i32>().ok()?, digits[1..].parse::<i32>().ok()?),
-        4 => (digits[..2].parse::<i32>().ok()?, digits[2..].parse::<i32>().ok()?),
+        3 => (
+            digits[..1].parse::<i32>().ok()?,
+            digits[1..].parse::<i32>().ok()?,
+        ),
+        4 => (
+            digits[..2].parse::<i32>().ok()?,
+            digits[2..].parse::<i32>().ok()?,
+        ),
         _ => return None,
     };
     Some(sign * (hours * 3600 + minutes * 60))
@@ -305,7 +340,10 @@ fn parse_offset(text: &str) -> Option<i32> {
 
 /// PHP's `DateTime::createFromFormat('!' . $format, $value)`.
 pub(crate) fn create_from_format(format: &str, value: &str) -> Option<Parsed> {
-    let mut cursor = Cursor { input: value, pos: 0 };
+    let mut cursor = Cursor {
+        input: value,
+        pos: 0,
+    };
     let (mut year, mut month, mut day) = (1970i64, 1i64, 1i64);
     let (mut hour, mut minute, mut second, mut micro) = (0i64, 0i64, 0i64, 0i64);
     let mut meridiem: Option<bool> = None;
@@ -340,7 +378,11 @@ pub(crate) fn create_from_format(format: &str, value: &str) -> Option<Parsed> {
             'Y' => year = cursor.signed_digits(4)?,
             'y' => {
                 let short = cursor.digits(2, 2)?;
-                year = if short < 70 { 2000 + short } else { 1900 + short };
+                year = if short < 70 {
+                    2000 + short
+                } else {
+                    1900 + short
+                };
             }
             'a' | 'A' => {
                 let text = cursor.rest().get(..2)?.to_ascii_lowercase();
@@ -370,7 +412,9 @@ pub(crate) fn create_from_format(format: &str, value: &str) -> Option<Parsed> {
                 let rest = cursor.rest();
                 let len = rest
                     .char_indices()
-                    .find(|(_, ch)| !(ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | ':' | '/' | '_')))
+                    .find(|(_, ch)| {
+                        !(ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | ':' | '/' | '_'))
+                    })
                     .map(|(i, _)| i)
                     .unwrap_or(rest.len());
                 let text = &rest[..len];
@@ -381,8 +425,9 @@ pub(crate) fn create_from_format(format: &str, value: &str) -> Option<Parsed> {
                     Some(o) => o,
                     None => {
                         let tz: chrono_tz::Tz = text.parse().ok()?;
-                        let probe = NaiveDate::from_ymd_opt(year as i32, month.clamp(1, 12) as u32, 1)?
-                            .and_time(NaiveTime::MIN);
+                        let probe =
+                            NaiveDate::from_ymd_opt(year as i32, month.clamp(1, 12) as u32, 1)?
+                                .and_time(NaiveTime::MIN);
                         use chrono::Offset;
                         tz.offset_from_utc_datetime(&probe).fix().local_minus_utc()
                     }
@@ -406,7 +451,9 @@ pub(crate) fn create_from_format(format: &str, value: &str) -> Option<Parsed> {
                 let rest = cursor.rest();
                 let len = rest
                     .char_indices()
-                    .find(|(_, ch)| matches!(ch, ' ' | ',' | ';' | ':' | '/' | '.' | '-' | '(' | ')'))
+                    .find(|(_, ch)| {
+                        matches!(ch, ' ' | ',' | ';' | ':' | '/' | '.' | '-' | '(' | ')')
+                    })
                     .map(|(i, _)| i)
                     .unwrap_or(rest.len());
                 cursor.pos += len;
@@ -449,7 +496,8 @@ pub(crate) fn create_from_format(format: &str, value: &str) -> Option<Parsed> {
         Some(doy) => NaiveDate::from_yo_opt(year as i32, (doy + 1) as u32)?,
         None => NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)?,
     };
-    let time = NaiveTime::from_hms_micro_opt(hour as u32, minute as u32, second as u32, micro as u32)?;
+    let time =
+        NaiveTime::from_hms_micro_opt(hour as u32, minute as u32, second as u32, micro as u32)?;
     Some(Parsed {
         datetime: date.and_time(time),
         offset,
@@ -500,10 +548,16 @@ pub(crate) fn format(parsed: &Parsed, format: &str) -> String {
                 } else {
                     NaiveDate::from_ymd_opt(dt.year(), dt.month() + 1, 1)
                 };
-                let days = next.map(|n| n.pred_opt().map(|d| d.day()).unwrap_or(30)).unwrap_or(30);
+                let days = next
+                    .map(|n| n.pred_opt().map(|d| d.day()).unwrap_or(30))
+                    .unwrap_or(30);
                 out.push_str(&days.to_string());
             }
-            'L' => out.push_str(if NaiveDate::from_ymd_opt(dt.year(), 2, 29).is_some() { "1" } else { "0" }),
+            'L' => out.push_str(if NaiveDate::from_ymd_opt(dt.year(), 2, 29).is_some() {
+                "1"
+            } else {
+                "0"
+            }),
             'Y' => {
                 let year = dt.year();
                 if year < 0 {
@@ -523,7 +577,12 @@ pub(crate) fn format(parsed: &Parsed, format: &str) -> String {
             's' => out.push_str(&format!("{:02}", dt.second())),
             'u' => out.push_str(&format!("{:06}", dt.nanosecond() / 1000)),
             'v' => out.push_str(&format!("{:03}", dt.nanosecond() / 1_000_000)),
-            'U' => out.push_str(&(dt - Duration::seconds(offset as i64)).and_utc().timestamp().to_string()),
+            'U' => out.push_str(
+                &(dt - Duration::seconds(offset as i64))
+                    .and_utc()
+                    .timestamp()
+                    .to_string(),
+            ),
             'e' | 'T' => match &parsed.tz_text {
                 Some(text) => out.push_str(text),
                 None => out.push_str(if c == 'e' { "UTC" } else { "GMT" }),
@@ -606,7 +665,10 @@ mod tests {
         assert!(!matches_format("Y-m-d", "2024-02-30"));
         assert!(matches_format("d/m/Y H:i", "12/03/2024 15:30"));
         assert!(matches_format("H:i", "09:05"));
-        assert!(matches_format("Y-m-d\\TH:i:sP", "2024-03-12T15:30:00+02:00"));
+        assert!(matches_format(
+            "Y-m-d\\TH:i:sP",
+            "2024-03-12T15:30:00+02:00"
+        ));
         assert!(matches_format("D, d M Y", "Tue, 12 Mar 2024"));
         assert!(!matches_format("D, d M Y", "Wed, 12 Mar 2024"));
         assert!(matches_format("g:i A", "3:04 PM"));

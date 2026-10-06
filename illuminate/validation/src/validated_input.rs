@@ -30,7 +30,11 @@ pub struct ValidatedInput {
 impl ValidatedInput {
     /// Wrap validated data.
     pub fn new(input: Value) -> Self {
-        let input = if input.is_object() { input } else { Value::Object(Map::new()) };
+        let input = if input.is_object() {
+            input
+        } else {
+            Value::Object(Map::new())
+        };
         Self {
             input,
             files: IndexMap::new(),
@@ -133,7 +137,10 @@ impl ValidatedInput {
 
     /// The top-level keys of the validated data.
     pub fn keys(&self) -> Vec<String> {
-        self.input.as_object().map(|m| m.keys().cloned().collect()).unwrap_or_default()
+        self.input
+            .as_object()
+            .map(|m| m.keys().cloned().collect())
+            .unwrap_or_default()
     }
 
     /// Determine if the validated data contains the key.

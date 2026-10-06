@@ -15,6 +15,7 @@ illuminate-config.workspace = true
 async-trait.workspace = true
 tokio.workspace = true
 futures.workspace = true
+regex.workspace = true
 indexmap.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
@@ -23,3 +24,6 @@ thiserror.workspace = true
 anyhow.workspace = true
 sha1.workspace = true
 hex.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

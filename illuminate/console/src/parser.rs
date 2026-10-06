@@ -25,7 +25,9 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
-use crate::input::{InputArgument, InputDefinition, InputOption, InputValue, InvalidDefinitionException, OptionMode};
+use crate::input::{
+    InputArgument, InputDefinition, InputOption, InputValue, InvalidDefinitionException, OptionMode,
+};
 
 /// A parsed command signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -85,14 +87,15 @@ impl Parser {
     }
 
     fn name(expression: &str) -> Result<String, InvalidDefinitionException> {
-        let name = expression
-            .split_whitespace()
-            .next()
-            .ok_or_else(|| InvalidDefinitionException::new("Unable to determine command name from signature."))?;
+        let name = expression.split_whitespace().next().ok_or_else(|| {
+            InvalidDefinitionException::new("Unable to determine command name from signature.")
+        })?;
 
         let valid = !name.starts_with('{') && name.split(':').all(|part| !part.is_empty());
         if !valid {
-            return Err(InvalidDefinitionException::new(format!("Command name \"{name}\" is invalid.")));
+            return Err(InvalidDefinitionException::new(format!(
+                "Command name \"{name}\" is invalid."
+            )));
         }
 
         Ok(name.to_string())
@@ -101,7 +104,8 @@ impl Parser {
     /// Parse an argument expression, such as `user?*` or `user=foo`.
     pub fn parse_argument(token: &str) -> Result<InputArgument, InvalidDefinitionException> {
         let (token, description) = Self::extract_description(token);
-        let trim = |value: &str, chars: &[char]| value.trim_matches(|c| chars.contains(&c)).to_string();
+        let trim =
+            |value: &str, chars: &[char]| value.trim_matches(|c| chars.contains(&c)).to_string();
 
         let argument = if token.ends_with("?*") {
             InputArgument::optional(trim(&token, &['?', '*'])).array()
@@ -116,13 +120,16 @@ impl Parser {
                 .array()
                 .default_value(Self::split_list(&captures[2]))
         } else if let Some(captures) = VALUE_DEFAULT.captures(&token) {
-            InputArgument::optional(&captures[1]).default_value(InputValue::String(captures[2].to_string()))
+            InputArgument::optional(&captures[1])
+                .default_value(InputValue::String(captures[2].to_string()))
         } else {
             InputArgument::required(token.clone())
         };
 
         if argument.name.is_empty() {
-            return Err(InvalidDefinitionException::new("An argument name cannot be empty."));
+            return Err(InvalidDefinitionException::new(
+                "An argument name cannot be empty.",
+            ));
         }
 
         Ok(argument.describe(description))
@@ -140,13 +147,25 @@ impl Parser {
             None => (None, first),
         };
 
-        let trim = |value: &str, chars: &[char]| value.trim_matches(|c| chars.contains(&c)).to_string();
+        let trim =
+            |value: &str, chars: &[char]| value.trim_matches(|c| chars.contains(&c)).to_string();
         let shortcut = shortcut.as_deref();
 
         let option = if token.ends_with('=') {
-            InputOption::new(trim(&token, &['=']), shortcut, OptionMode::Optional, description)
+            InputOption::new(
+                trim(&token, &['=']),
+                shortcut,
+                OptionMode::Optional,
+                description,
+            )
         } else if token.ends_with("=*") {
-            InputOption::new(trim(&token, &['=', '*']), shortcut, OptionMode::Optional, description).array()
+            InputOption::new(
+                trim(&token, &['=', '*']),
+                shortcut,
+                OptionMode::Optional,
+                description,
+            )
+            .array()
         } else if let Some(captures) = ARRAY_DEFAULT.captures(&token) {
             InputOption::new(&captures[1], shortcut, OptionMode::Optional, description)
                 .array()
@@ -159,7 +178,9 @@ impl Parser {
         };
 
         if option.name.is_empty() {
-            return Err(InvalidDefinitionException::new("An option name cannot be empty."));
+            return Err(InvalidDefinitionException::new(
+                "An option name cannot be empty.",
+            ));
         }
 
         Ok(option)
@@ -186,17 +207,26 @@ mod tests {
     use super::*;
 
     fn argument(signature: &str) -> InputArgument {
-        Parser::parse(&format!("cmd {{{signature}}}")).unwrap().arguments.remove(0)
+        Parser::parse(&format!("cmd {{{signature}}}"))
+            .unwrap()
+            .arguments
+            .remove(0)
     }
 
     fn option(signature: &str) -> InputOption {
-        Parser::parse(&format!("cmd {{{signature}}}")).unwrap().options.remove(0)
+        Parser::parse(&format!("cmd {{{signature}}}"))
+            .unwrap()
+            .options
+            .remove(0)
     }
 
     #[test]
     fn it_parses_the_name() {
         assert_eq!(Parser::parse("inspire").unwrap().name, "inspire");
-        assert_eq!(Parser::parse("  mail:send {user}").unwrap().name, "mail:send");
+        assert_eq!(
+            Parser::parse("  mail:send {user}").unwrap().name,
+            "mail:send"
+        );
         assert!(Parser::parse("   ").is_err());
         assert_eq!(
             Parser::parse("").unwrap_err().message,
@@ -313,7 +343,10 @@ mod tests {
         assert_eq!(signature.name, "mail:send");
         assert_eq!(signature.arguments.len(), 1);
         assert_eq!(signature.options.len(), 1);
-        assert_eq!(signature.options[0].description, "Whether the job should be queued");
+        assert_eq!(
+            signature.options[0].description,
+            "Whether the job should be queued"
+        );
     }
 
     #[test]

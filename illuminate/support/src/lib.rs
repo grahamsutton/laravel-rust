@@ -34,8 +34,8 @@ mod transliteration;
 pub mod value;
 
 pub use arr::Arr;
-pub use carbon::{Carbon, CarbonInterval};
-pub use collection::Collection;
+pub use carbon::{Carbon, CarbonImmutable, CarbonInterval, CarbonPeriod};
+pub use collection::{Collection, LazyCollection};
 pub use env::Env;
 pub use error::{Error, Result};
 pub use fluent::Fluent;

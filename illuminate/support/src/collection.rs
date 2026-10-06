@@ -24,6 +24,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::traits::{Conditionable, Tappable};
 use crate::value::{Value, ValueExt, to_value};
 
+pub mod lazy;
+mod methods;
+
+pub use lazy::LazyCollection;
+
 /// A fluent wrapper around a list of items.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Collection<T> {

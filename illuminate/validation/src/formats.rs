@@ -22,7 +22,9 @@ fn valid_dot_atom(local: &str, allow_unicode: bool) -> bool {
         && !local.starts_with('.')
         && !local.ends_with('.')
         && !local.contains("..")
-        && local.chars().all(|c| c == '.' || is_atext(c, allow_unicode))
+        && local
+            .chars()
+            .all(|c| c == '.' || is_atext(c, allow_unicode))
 }
 
 fn valid_quoted_local(local: &str) -> bool {
@@ -57,9 +59,11 @@ fn valid_hostname(domain: &str, allow_unicode: bool, require_dot: bool) -> bool 
             && label.chars().count() <= 63
             && !label.starts_with('-')
             && !label.ends_with('-')
-            && label
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || (allow_unicode && !c.is_ascii() && c.is_alphanumeric()))
+            && label.chars().all(|c| {
+                c.is_ascii_alphanumeric()
+                    || c == '-'
+                    || (allow_unicode && !c.is_ascii() && c.is_alphanumeric())
+            })
     })
 }
 
@@ -89,12 +93,18 @@ pub(crate) fn is_email(value: &str, modes: &[String]) -> bool {
         return false;
     }
 
-    let modes: Vec<&str> = modes.iter().map(|m| m.trim()).filter(|m| !m.is_empty()).collect();
+    let modes: Vec<&str> = modes
+        .iter()
+        .map(|m| m.trim())
+        .filter(|m| !m.is_empty())
+        .collect();
     let modes = if modes.is_empty() { vec!["rfc"] } else { modes };
 
     modes.iter().all(|mode| match *mode {
         "strict" => {
-            local.chars().count() <= 64 && valid_dot_atom(local, true) && valid_hostname(domain, true, false)
+            local.chars().count() <= 64
+                && valid_dot_atom(local, true)
+                && valid_hostname(domain, true, false)
         }
         "filter" => {
             value.is_ascii()
@@ -146,9 +156,17 @@ fn url_regex(protocols: &[String]) -> Arc<Regex> {
         return regex.clone();
     }
     let list = if protocols.is_empty() {
-        PROTOCOLS.split('|').map(regex::escape).collect::<Vec<_>>().join("|")
+        PROTOCOLS
+            .split('|')
+            .map(regex::escape)
+            .collect::<Vec<_>>()
+            .join("|")
     } else {
-        protocols.iter().map(|p| regex::escape(p.trim())).collect::<Vec<_>>().join("|")
+        protocols
+            .iter()
+            .map(|p| regex::escape(p.trim()))
+            .collect::<Vec<_>>()
+            .join("|")
     };
     let regex = Arc::new(Regex::new(&url_pattern(&list)).expect("the URL pattern is valid"));
     URL_PATTERNS.lock().unwrap().insert(key, regex.clone());
@@ -173,7 +191,10 @@ pub(crate) fn url_host(value: &str) -> Option<String> {
     let authority = rest.split(['/', '?', '#']).next().unwrap_or_default();
     let host = authority.rsplit('@').next().unwrap_or_default();
     let host = if host.starts_with('[') {
-        host.split(']').next().map(|h| format!("{h}]")).unwrap_or_default()
+        host.split(']')
+            .next()
+            .map(|h| format!("{h}]"))
+            .unwrap_or_default()
     } else {
         host.split(':').next().unwrap_or_default().to_string()
     };
@@ -209,15 +230,17 @@ pub(crate) fn is_mac_address(value: &str) -> bool {
 }
 
 pub(crate) fn is_hex_color(value: &str) -> bool {
-    static HEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"(?i)^#(?:(?:[0-9a-f]{3}){1,2}|(?:[0-9a-f]{4}){1,2})$").unwrap());
+    static HEX: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?i)^#(?:(?:[0-9a-f]{3}){1,2}|(?:[0-9a-f]{4}){1,2})$").unwrap()
+    });
     HEX.is_match(value)
 }
 
 /// Laravel's `Str::isUuid($value, $version)`.
 pub(crate) fn is_uuid(value: &str, version: Option<&str>) -> bool {
     static UUID: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r"^[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}$").unwrap()
+        Regex::new(r"^[\da-fA-F]{8}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{12}$")
+            .unwrap()
     });
     let Some(version) = version else {
         return UUID.is_match(value);
@@ -228,7 +251,9 @@ pub(crate) fn is_uuid(value: &str, version: Option<&str>) -> bool {
     match version.trim() {
         "max" => uuid.is_max(),
         "nil" | "0" => uuid.is_nil(),
-        v => v.parse::<usize>().is_ok_and(|v| uuid.get_version_num() == v && !uuid.is_nil() && !uuid.is_max()),
+        v => v
+            .parse::<usize>()
+            .is_ok_and(|v| uuid.get_version_num() == v && !uuid.is_nil() && !uuid.is_max()),
     }
 }
 
@@ -249,8 +274,16 @@ pub(crate) fn is_timezone(value: &str, group: Option<&str>) -> bool {
         return false;
     }
     const REGIONS: [&str; 10] = [
-        "Africa/", "America/", "Antarctica/", "Arctic/", "Asia/", "Atlantic/", "Australia/", "Europe/",
-        "Indian/", "Pacific/",
+        "Africa/",
+        "America/",
+        "Antarctica/",
+        "Arctic/",
+        "Asia/",
+        "Atlantic/",
+        "Australia/",
+        "Europe/",
+        "Indian/",
+        "Pacific/",
     ];
     let canonical = name == "UTC" || REGIONS.iter().any(|r| name.starts_with(r));
     match group.map(|g| g.trim().to_ascii_uppercase()) {
@@ -275,7 +308,9 @@ static REGEX_CACHE: LazyLock<Mutex<HashMap<String, Arc<Regex>>>> = LazyLock::new
 
 /// Thrown when a `regex` / `not_regex` pattern can't be used.
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("The regular expression [{pattern}] is invalid or uses features Rust's regex engine doesn't support: {reason}")]
+#[error(
+    "The regular expression [{pattern}] is invalid or uses features Rust's regex engine doesn't support: {reason}"
+)]
 pub struct InvalidPatternException {
     pub pattern: String,
     pub reason: String,
@@ -305,7 +340,9 @@ pub(crate) fn php_regex(pattern: &str) -> Result<Arc<Regex>, InvalidPatternExcep
         other => other,
     };
     let body = &trimmed[open.len_utf8()..];
-    let end = body.rfind(close).ok_or_else(|| fail("no ending delimiter"))?;
+    let end = body
+        .rfind(close)
+        .ok_or_else(|| fail("no ending delimiter"))?;
     let (inner, flags) = (&body[..end], &body[end + close.len_utf8()..]);
 
     let mut prefix = String::new();
@@ -329,8 +366,12 @@ pub(crate) fn php_regex(pattern: &str) -> Result<Arc<Regex>, InvalidPatternExcep
     while let Some(c) = iter.next() {
         if c == '\\' {
             match iter.next() {
-                Some(next) if (next == open || next == close) && !is_regex_meta(next) => translated.push(next),
-                Some(next) if next.is_ascii_punctuation() && !is_regex_meta(next) => translated.push(next),
+                Some(next) if (next == open || next == close) && !is_regex_meta(next) => {
+                    translated.push(next)
+                }
+                Some(next) if next.is_ascii_punctuation() && !is_regex_meta(next) => {
+                    translated.push(next)
+                }
                 Some(next) => {
                     translated.push('\\');
                     translated.push(next);
@@ -354,14 +395,33 @@ pub(crate) fn php_regex(pattern: &str) -> Result<Arc<Regex>, InvalidPatternExcep
         source.push_str(&translated);
     }
     let regex = Arc::new(Regex::new(&source).map_err(|e| fail(&e.to_string()))?);
-    REGEX_CACHE.lock().unwrap().insert(pattern.to_string(), regex.clone());
+    REGEX_CACHE
+        .lock()
+        .unwrap()
+        .insert(pattern.to_string(), regex.clone());
     Ok(regex)
 }
 
 fn is_regex_meta(c: char) -> bool {
     matches!(
         c,
-        '\\' | '.' | '+' | '*' | '?' | '(' | ')' | '|' | '[' | ']' | '{' | '}' | '^' | '$' | '#' | '&' | '-' | '~'
+        '\\' | '.'
+            | '+'
+            | '*'
+            | '?'
+            | '('
+            | ')'
+            | '|'
+            | '['
+            | ']'
+            | '{'
+            | '}'
+            | '^'
+            | '$'
+            | '#'
+            | '&'
+            | '-'
+            | '~'
     )
 }
 
@@ -417,13 +477,22 @@ mod tests {
         ] {
             assert!(is_url(ok, &none), "{ok}");
         }
-        for bad in ["laravel.com", "http://", "https://exa mple.com", "javascript:alert(1)", "http://[zz::1]"] {
+        for bad in [
+            "laravel.com",
+            "http://",
+            "https://exa mple.com",
+            "javascript:alert(1)",
+            "http://[zz::1]",
+        ] {
             assert!(!is_url(bad, &none), "{bad}");
         }
         let only = vec!["https".to_string()];
         assert!(is_url("https://laravel.com", &only));
         assert!(!is_url("http://laravel.com", &only));
-        assert_eq!(url_host("https://user@laravel.com:8080/docs").as_deref(), Some("laravel.com"));
+        assert_eq!(
+            url_host("https://user@laravel.com:8080/docs").as_deref(),
+            Some("laravel.com")
+        );
     }
 
     #[test]

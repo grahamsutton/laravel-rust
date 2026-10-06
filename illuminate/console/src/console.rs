@@ -32,12 +32,19 @@ pub struct Console {
 
 impl std::fmt::Debug for Console {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Console").field("name", &self.inner.name).finish()
+        f.debug_struct("Console")
+            .field("name", &self.inner.name)
+            .finish()
     }
 }
 
 impl Console {
-    pub(crate) fn new(name: String, input: Input, output: Output, application: Arc<Application>) -> Self {
+    pub(crate) fn new(
+        name: String,
+        input: Input,
+        output: Output,
+        application: Arc<Application>,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 name,
@@ -85,7 +92,9 @@ impl Console {
 
     /// Get the values of an array argument (`{user*}`).
     pub fn argument_list(&self, key: &str) -> Vec<String> {
-        self.argument_value(key).map(|value| value.as_list()).unwrap_or_default()
+        self.argument_value(key)
+            .map(|value| value.as_list())
+            .unwrap_or_default()
     }
 
     /// Get all of the arguments passed to the command.
@@ -102,7 +111,13 @@ impl Console {
 
     /// Determine if the command defines the given argument.
     pub fn has_argument(&self, key: &str) -> bool {
-        self.inner.input.read().unwrap().definition().argument(key).is_some()
+        self.inner
+            .input
+            .read()
+            .unwrap()
+            .definition()
+            .argument(key)
+            .is_some()
     }
 
     /// The raw value of an option.
@@ -123,7 +138,9 @@ impl Console {
 
     /// Get the values of an array option (`{--id=*}`).
     pub fn option_list(&self, key: &str) -> Vec<String> {
-        self.option_value(key).map(|value| value.as_list()).unwrap_or_default()
+        self.option_value(key)
+            .map(|value| value.as_list())
+            .unwrap_or_default()
     }
 
     /// Get all of the options passed to the command.
@@ -140,7 +157,13 @@ impl Console {
 
     /// Determine if the command defines the given option.
     pub fn has_option(&self, key: &str) -> bool {
-        self.inner.input.read().unwrap().definition().option(key).is_some()
+        self.inner
+            .input
+            .read()
+            .unwrap()
+            .definition()
+            .option(key)
+            .is_some()
     }
 
     /// Set an argument's value.
@@ -223,7 +246,10 @@ impl Console {
         C: IntoIterator<Item = S>,
         S: ToString,
     {
-        Table::new().headers(headers).rows(rows).render(&self.inner.output);
+        Table::new()
+            .headers(headers)
+            .rows(rows)
+            .render(&self.inner.output);
     }
 
     /// Format input to a textual table using one of the named styles
@@ -311,7 +337,11 @@ impl Console {
     }
 
     /// Prompt the user for input, falling back to the given default.
-    pub fn ask_with_default(&self, question: impl AsRef<str>, default: impl Into<String>) -> String {
+    pub fn ask_with_default(
+        &self,
+        question: impl AsRef<str>,
+        default: impl Into<String>,
+    ) -> String {
         let question = Question::new(question.as_ref()).default(Some(default.into()));
         self.inner
             .output
@@ -337,12 +367,22 @@ impl Console {
 
     /// Give the user a single choice from a list of options. The default
     /// is the index of the default option.
-    pub fn choice<I, S>(&self, question: impl AsRef<str>, choices: I, default: Option<usize>) -> String
+    pub fn choice<I, S>(
+        &self,
+        question: impl AsRef<str>,
+        choices: I,
+        default: Option<usize>,
+    ) -> String
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let question = choice_question(question.as_ref(), choices, default.map(|d| d.to_string()), false);
+        let question = choice_question(
+            question.as_ref(),
+            choices,
+            default.map(|d| d.to_string()),
+            false,
+        );
         self.inner
             .output
             .ask_choice(&question, false, PromptStyle::Symfony)
@@ -352,14 +392,27 @@ impl Console {
     }
 
     /// Give the user several choices from a list of options.
-    pub fn choice_multiple<I, S>(&self, question: impl AsRef<str>, choices: I, default: &[usize]) -> Vec<String>
+    pub fn choice_multiple<I, S>(
+        &self,
+        question: impl AsRef<str>,
+        choices: I,
+        default: &[usize],
+    ) -> Vec<String>
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
     {
-        let default = (!default.is_empty()).then(|| default.iter().map(usize::to_string).collect::<Vec<_>>().join(","));
+        let default = (!default.is_empty()).then(|| {
+            default
+                .iter()
+                .map(usize::to_string)
+                .collect::<Vec<_>>()
+                .join(",")
+        });
         let question = choice_question(question.as_ref(), choices, default, true);
-        self.inner.output.ask_choice(&question, false, PromptStyle::Symfony)
+        self.inner
+            .output
+            .ask_choice(&question, false, PromptStyle::Symfony)
     }
 
     /// Prompt the user for input with auto-completion suggestions.
@@ -372,7 +425,12 @@ impl Console {
     }
 
     /// Prompt the user for input with auto-completion suggestions and a default.
-    pub fn ask_with_completion<I, S>(&self, question: impl AsRef<str>, suggestions: I, default: Option<&str>) -> String
+    pub fn ask_with_completion<I, S>(
+        &self,
+        question: impl AsRef<str>,
+        suggestions: I,
+        default: Option<&str>,
+    ) -> String
     where
         I: IntoIterator<Item = S>,
         S: Into<String>,
@@ -417,8 +475,18 @@ impl Console {
     /// Fail the command manually: the message is displayed as an error
     /// and the command exits with `1`.
     ///
-    /// ```ignore
-    /// return cmd.fail("Something went wrong.");
+    /// ```
+    /// # #[tokio::main(flavor = "current_thread")]
+    /// # async fn main() {
+    /// let artisan = illuminate_console::Application::new();
+    ///
+    /// artisan.command("deploy", |cmd| async move {
+    ///     cmd.fail("Something went wrong.")
+    /// });
+    ///
+    /// assert_eq!(artisan.call("deploy", ()).await.unwrap(), 1);
+    /// assert_eq!(artisan.output(), "\n   ERROR  Something went wrong.\n\n");
+    /// # }
     /// ```
     pub fn fail<T>(&self, message: impl Into<String>) -> Result<T> {
         Err(ManuallyFailedException::new(message).into())
@@ -426,8 +494,18 @@ impl Console {
 
     /// End the command with the given exit code.
     ///
-    /// ```ignore
-    /// return cmd.exit(3);
+    /// ```
+    /// # #[tokio::main(flavor = "current_thread")]
+    /// # async fn main() {
+    /// let artisan = illuminate_console::Application::new();
+    ///
+    /// artisan.command("check", |cmd| async move {
+    ///     cmd.error("The check did not pass.");
+    ///     cmd.exit(3)
+    /// });
+    ///
+    /// assert_eq!(artisan.call("check", ()).await.unwrap(), 3);
+    /// # }
     /// ```
     pub fn exit<T>(&self, code: i32) -> Result<T> {
         Err(CommandExit { code }.into())

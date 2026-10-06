@@ -125,11 +125,31 @@ pub(crate) fn extensions_for_mime(mime: &str) -> Vec<String> {
 
 /// Read the width and height of an image from its header.
 pub(crate) fn dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
-    let be16 = |i: usize| bytes.get(i..i + 2).map(|b| u16::from_be_bytes([b[0], b[1]]) as u32);
-    let le16 = |i: usize| bytes.get(i..i + 2).map(|b| u16::from_le_bytes([b[0], b[1]]) as u32);
-    let be32 = |i: usize| bytes.get(i..i + 4).map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]));
-    let le32 = |i: usize| bytes.get(i..i + 4).map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]));
-    let le24 = |i: usize| bytes.get(i..i + 3).map(|b| u32::from_le_bytes([b[0], b[1], b[2], 0]));
+    let be16 = |i: usize| {
+        bytes
+            .get(i..i + 2)
+            .map(|b| u16::from_be_bytes([b[0], b[1]]) as u32)
+    };
+    let le16 = |i: usize| {
+        bytes
+            .get(i..i + 2)
+            .map(|b| u16::from_le_bytes([b[0], b[1]]) as u32)
+    };
+    let be32 = |i: usize| {
+        bytes
+            .get(i..i + 4)
+            .map(|b| u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    let le32 = |i: usize| {
+        bytes
+            .get(i..i + 4)
+            .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    };
+    let le24 = |i: usize| {
+        bytes
+            .get(i..i + 3)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], 0]))
+    };
 
     match sniff_mime(bytes)? {
         "image/png" => Some((be32(16)?, be32(20)?)),
@@ -140,7 +160,10 @@ pub(crate) fn dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
             b"VP8L" => {
                 let b = bytes.get(21..25)?;
                 let width = 1 + (((b[1] as u32 & 0x3F) << 8) | b[0] as u32);
-                let height = 1 + (((b[3] as u32 & 0xF) << 10) | ((b[2] as u32) << 2) | ((b[1] as u32 & 0xC0) >> 6));
+                let height = 1
+                    + (((b[3] as u32 & 0xF) << 10)
+                        | ((b[2] as u32) << 2)
+                        | ((b[1] as u32 & 0xC0) >> 6));
                 Some((width, height))
             }
             b"VP8X" => Some((1 + le24(24)?, 1 + le24(27)?)),
@@ -203,7 +226,9 @@ pub(crate) mod fixtures {
         bytes.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x11, 0x08]);
         bytes.extend_from_slice(&height.to_be_bytes());
         bytes.extend_from_slice(&width.to_be_bytes());
-        bytes.extend_from_slice(&[0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01, 0xFF, 0xD9]);
+        bytes.extend_from_slice(&[
+            0x03, 0x01, 0x22, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01, 0xFF, 0xD9,
+        ]);
         bytes
     }
 }
@@ -225,7 +250,10 @@ mod tests {
     fn it_sniffs_mime_types() {
         assert_eq!(sniff_mime(&png(1, 1)), Some("image/png"));
         assert_eq!(sniff_mime(b"%PDF-1.7"), Some("application/pdf"));
-        assert_eq!(sniff_mime(b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"), Some("image/svg+xml"));
+        assert_eq!(
+            sniff_mime(b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"),
+            Some("image/svg+xml")
+        );
         assert_eq!(sniff_mime(b"hello"), None);
         assert!(extensions_for_mime("image/jpeg").contains(&"jpg".to_string()));
     }

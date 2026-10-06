@@ -32,7 +32,10 @@ impl AnyOf {
     /// Create the rule from rule sets that apply to the value itself.
     pub fn new<T: Into<RuleSet>>(alternatives: impl IntoIterator<Item = T>) -> Self {
         Self {
-            alternatives: alternatives.into_iter().map(|a| Alternative::Set(a.into())).collect(),
+            alternatives: alternatives
+                .into_iter()
+                .map(|a| Alternative::Set(a.into()))
+                .collect(),
         }
     }
 
@@ -40,7 +43,10 @@ impl AnyOf {
     /// an array value.
     pub fn keyed<T: Into<Rules>>(alternatives: impl IntoIterator<Item = T>) -> Self {
         Self {
-            alternatives: alternatives.into_iter().map(|a| Alternative::Keyed(a.into())).collect(),
+            alternatives: alternatives
+                .into_iter()
+                .map(|a| Alternative::Keyed(a.into()))
+                .collect(),
         }
     }
 }

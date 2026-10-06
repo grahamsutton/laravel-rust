@@ -98,7 +98,11 @@ impl ProgressBar {
     pub fn finish(&self) {
         let max = {
             let state = self.state.lock().unwrap();
-            if state.max == 0 { state.step } else { state.max }
+            if state.max == 0 {
+                state.step
+            } else {
+                state.max
+            }
         };
         self.state.lock().unwrap().max = max;
         self.set_progress(max);
