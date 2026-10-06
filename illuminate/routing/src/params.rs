@@ -132,7 +132,11 @@ impl<'a> RouteParameters<'a> {
     }
 
     pub(crate) fn insert(&mut self, key: String, value: RouteParameter<'a>) {
-        match self.items.iter_mut().find(|(k, _)| k.as_deref() == Some(key.as_str())) {
+        match self
+            .items
+            .iter_mut()
+            .find(|(k, _)| k.as_deref() == Some(key.as_str()))
+        {
             Some(slot) => slot.1 = value,
             None => self.items.push((Some(key), value)),
         }
@@ -239,7 +243,9 @@ macro_rules! scalar_parameter {
     };
 }
 
-scalar_parameter!(i8, i16, i32, i64, isize, u8, u16, u32, u64, usize, f32, f64, bool);
+scalar_parameter!(
+    i8, i16, i32, i64, isize, u8, u16, u32, u64, usize, f32, f64, bool
+);
 
 /// Anything usable as the parameters of a route.
 pub trait IntoRouteParameters<'a> {
@@ -310,17 +316,23 @@ impl<'a, T: UrlRoutable> IntoRouteParameters<'a> for &'a T {
     }
 }
 
-impl<'a, K: Into<String>, P: IntoRouteParameter<'a>, const N: usize> IntoRouteParameters<'a> for [(K, P); N] {
+impl<'a, K: Into<String>, P: IntoRouteParameter<'a>, const N: usize> IntoRouteParameters<'a>
+    for [(K, P); N]
+{
     fn into_route_parameters(self) -> RouteParameters<'a> {
         self.into_iter()
-            .fold(RouteParameters::new(), |parameters, (key, value)| parameters.with(key, value))
+            .fold(RouteParameters::new(), |parameters, (key, value)| {
+                parameters.with(key, value)
+            })
     }
 }
 
 impl<'a, K: Into<String>, P: IntoRouteParameter<'a>> IntoRouteParameters<'a> for Vec<(K, P)> {
     fn into_route_parameters(self) -> RouteParameters<'a> {
         self.into_iter()
-            .fold(RouteParameters::new(), |parameters, (key, value)| parameters.with(key, value))
+            .fold(RouteParameters::new(), |parameters, (key, value)| {
+                parameters.with(key, value)
+            })
     }
 }
 
@@ -382,7 +394,10 @@ mod tests {
     fn values_become_named_or_positional_parameters() {
         assert_eq!(
             describe(json!({"id": 1, "tab": "posts"}).into_route_parameters()),
-            vec![(Some("id".into()), json!(1)), (Some("tab".into()), json!("posts"))]
+            vec![
+                (Some("id".into()), json!(1)),
+                (Some("tab".into()), json!("posts"))
+            ]
         );
         assert_eq!(
             describe(json!([1, 2]).into_route_parameters()),
@@ -393,7 +408,10 @@ mod tests {
 
     #[test]
     fn models_resolve_to_their_route_key_or_binding_field() {
-        let post = Post { id: 7, slug: "hello-world" };
+        let post = Post {
+            id: 7,
+            slug: "hello-world",
+        };
         let parameters = (&post, "draft").into_route_parameters().into_items();
         assert_eq!(parameters[0].1.resolve(None), json!("7"));
         assert_eq!(parameters[0].1.resolve(Some("slug")), json!("hello-world"));

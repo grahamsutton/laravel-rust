@@ -72,7 +72,9 @@ impl InvalidSignatureException {
 /// Thrown when a route refers to a middleware alias or group that hasn't
 /// been registered with the router.
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("Middleware [{name}] is not defined. Did you forget to register an alias for it with Router::alias_middleware()?")]
+#[error(
+    "Middleware [{name}] is not defined. Did you forget to register an alias for it with Router::alias_middleware()?"
+)]
 pub struct MiddlewareNotFoundException {
     pub name: String,
 }
@@ -142,6 +144,9 @@ mod tests {
         let error = method_not_allowed("DELETE", "users", &["GET".into(), "HEAD".into()]);
         let http = error.downcast_ref::<HttpException>().unwrap();
         assert_eq!(http.status, 405);
-        assert_eq!(http.headers, vec![("Allow".to_string(), "GET, HEAD".to_string())]);
+        assert_eq!(
+            http.headers,
+            vec![("Allow".to_string(), "GET, HEAD".to_string())]
+        );
     }
 }

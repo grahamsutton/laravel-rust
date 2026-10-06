@@ -171,7 +171,11 @@ impl<T: DeserializeOwned + Send> FromRequest for Path<T> {
                 std::any::type_name::<T>()
             ))
             .into()),
-            Err(error) => Err(HttpException::with_message(404, format!("Invalid route parameter: {error}")).into()),
+            Err(error) => Err(HttpException::with_message(
+                404,
+                format!("Invalid route parameter: {error}"),
+            )
+            .into()),
         }
     }
 }
@@ -331,7 +335,13 @@ mod tests {
     async fn query_strings_are_extracted_leniently() {
         let request = Request::create("/search?q=rust&page=3", "GET");
         let Query(search) = Query::<Search>::from_request(&request).await.unwrap();
-        assert_eq!(search, Search { q: "rust".into(), page: Some(3) });
+        assert_eq!(
+            search,
+            Search {
+                q: "rust".into(),
+                page: Some(3)
+            }
+        );
 
         let request = Request::create("/search?page=3", "GET");
         let error = Query::<Search>::from_request(&request).await.err().unwrap();
@@ -341,9 +351,20 @@ mod tests {
 
     #[tokio::test]
     async fn input_merges_query_and_body() {
-        let request = Request::create_with("/search?page=2", "POST", json!({"q": "laravel"}), HeaderMap::new());
+        let request = Request::create_with(
+            "/search?page=2",
+            "POST",
+            json!({"q": "laravel"}),
+            HeaderMap::new(),
+        );
         let Input(search) = Input::<Search>::from_request(&request).await.unwrap();
-        assert_eq!(search, Search { q: "laravel".into(), page: Some(2) });
+        assert_eq!(
+            search,
+            Search {
+                q: "laravel".into(),
+                page: Some(2)
+            }
+        );
         let request = Request::create("/search", "POST");
         let error = Input::<Search>::from_request(&request).await.err().unwrap();
         assert_eq!(status(&error), Some(422));
@@ -353,11 +374,19 @@ mod tests {
     async fn json_bodies_require_a_json_content_type() {
         let mut headers = HeaderMap::new();
         headers.insert("content-type", HeaderValue::from_static("application/json"));
-        let request = Request::create_with("/search", "POST", json!({"q": "php", "page": 1}), headers);
+        let request =
+            Request::create_with("/search", "POST", json!({"q": "php", "page": 1}), headers);
         let Json(search) = Json::<Search>::from_request(&request).await.unwrap();
-        assert_eq!(search, Search { q: "php".into(), page: Some(1) });
+        assert_eq!(
+            search,
+            Search {
+                q: "php".into(),
+                page: Some(1)
+            }
+        );
 
-        let request = Request::create_with("/search", "POST", json!({"q": "php"}), HeaderMap::new());
+        let request =
+            Request::create_with("/search", "POST", json!({"q": "php"}), HeaderMap::new());
         let error = Json::<Search>::from_request(&request).await.err().unwrap();
         assert_eq!(status(&error), Some(415));
     }
@@ -371,11 +400,17 @@ mod tests {
         let _guard = Container::set_local_instance(container.clone());
         container.instance(Greeter { greeting: "hi" });
 
-        let greeter = Inject::<Greeter>::from_request(&Request::default()).await.unwrap();
+        let greeter = Inject::<Greeter>::from_request(&Request::default())
+            .await
+            .unwrap();
         assert_eq!(greeter.greeting, "hi");
 
         struct Missing;
-        assert!(Inject::<Missing>::from_request(&Request::default()).await.is_err());
+        assert!(
+            Inject::<Missing>::from_request(&Request::default())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

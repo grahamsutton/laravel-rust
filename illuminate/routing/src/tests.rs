@@ -110,7 +110,10 @@ async fn options_requests_are_answered_automatically() {
     assert_eq!(response.header("allow").unwrap(), "GET,HEAD,DELETE");
 
     Route::options("/explicit", || async { "Custom" });
-    assert_eq!(send("/explicit", "OPTIONS").await.content_string(), "Custom");
+    assert_eq!(
+        send("/explicit", "OPTIONS").await.content_string(),
+        "Custom"
+    );
 }
 
 #[tokio::test]
@@ -125,7 +128,12 @@ async fn routes_match_in_registration_order() {
 async fn form_method_spoofing_is_respected() {
     let _app = app();
     Route::put("/posts/1", || async { "Updated" });
-    let request = Request::create_with("/posts/1", "POST", json!({"_method": "PUT"}), HeaderMap::new());
+    let request = Request::create_with(
+        "/posts/1",
+        "POST",
+        json!({"_method": "PUT"}),
+        HeaderMap::new(),
+    );
     let response = Route::router().dispatch(request).await;
     assert_eq!(response.content_string(), "Updated");
 }
@@ -137,27 +145,39 @@ async fn form_method_spoofing_is_respected() {
 #[tokio::test]
 async fn parameters_are_bound_and_extracted() {
     let _app = app();
-    Route::get("/posts/{post}/comments/{comment}", |Path((post, comment)): Path<(u32, String)>| async move {
-        format!("{post}:{comment}")
-    });
-    assert_eq!(get("/posts/1/comments/great").await.content_string(), "1:great");
+    Route::get(
+        "/posts/{post}/comments/{comment}",
+        |Path((post, comment)): Path<(u32, String)>| async move { format!("{post}:{comment}") },
+    );
+    assert_eq!(
+        get("/posts/1/comments/great").await.content_string(),
+        "1:great"
+    );
 
     #[derive(Deserialize)]
     struct Params {
         user: String,
         id: u64,
     }
-    Route::get("/users/{user}/items/{id}", |Path(params): Path<Params>| async move {
-        format!("{} owns {}", params.user, params.id)
-    });
-    assert_eq!(get("/users/taylor/items/9").await.content_string(), "taylor owns 9");
+    Route::get(
+        "/users/{user}/items/{id}",
+        |Path(params): Path<Params>| async move { format!("{} owns {}", params.user, params.id) },
+    );
+    assert_eq!(
+        get("/users/taylor/items/9").await.content_string(),
+        "taylor owns 9"
+    );
 }
 
 #[tokio::test]
 async fn request_route_parameters_are_set() {
     let _app = app();
     Route::get("/users/{id}", |request: Request| async move {
-        format!("{} {}", request.route_or("id", "?"), request.route_name().unwrap_or_default())
+        format!(
+            "{} {}",
+            request.route_or("id", "?"),
+            request.route_name().unwrap_or_default()
+        )
     })
     .name("users.show");
     assert_eq!(get("/users/5").await.content_string(), "5 users.show");
@@ -166,14 +186,17 @@ async fn request_route_parameters_are_set() {
 #[tokio::test]
 async fn optional_parameters_may_be_omitted() {
     let _app = app();
-    Route::get("/user/{name?}", |Path(name): Path<Option<String>>| async move {
-        name.unwrap_or_else(|| "John".to_string())
-    });
+    Route::get(
+        "/user/{name?}",
+        |Path(name): Path<Option<String>>| async move { name.unwrap_or_else(|| "John".to_string()) },
+    );
     assert_eq!(get("/user").await.content_string(), "John");
     assert_eq!(get("/user/taylor").await.content_string(), "taylor");
 
-    Route::get("/page/{number?}", |Path(number): Path<u32>| async move { number.to_string() })
-        .defaults("number", "1");
+    Route::get("/page/{number?}", |Path(number): Path<u32>| async move {
+        number.to_string()
+    })
+    .defaults("number", "1");
     assert_eq!(get("/page").await.content_string(), "1");
     assert_eq!(get("/page/4").await.content_string(), "4");
 }
@@ -194,9 +217,19 @@ async fn constraints_restrict_matching() {
     assert_eq!(get("/user/taylor42").await.status_code(), 404);
     assert_eq!(get("/category/song").await.content_string(), "category");
     assert_eq!(get("/category/book").await.status_code(), 404);
-    assert_eq!(get("/token/2b3d9a5e-3d7c-4b6e-8f53-1c8a9b9f0e11").await.content_string(), "uuid");
+    assert_eq!(
+        get("/token/2b3d9a5e-3d7c-4b6e-8f53-1c8a9b9f0e11")
+            .await
+            .content_string(),
+        "uuid"
+    );
     assert_eq!(get("/token/nope").await.status_code(), 404);
-    assert_eq!(get("/ulid/01ARZ3NDEKTSV4RRFFQ69G5FAV").await.content_string(), "ulid");
+    assert_eq!(
+        get("/ulid/01ARZ3NDEKTSV4RRFFQ69G5FAV")
+            .await
+            .content_string(),
+        "ulid"
+    );
     assert_eq!(get("/code/abc123").await.content_string(), "code");
     assert_eq!(get("/code/abc-123").await.status_code(), 404);
 }
@@ -204,8 +237,11 @@ async fn constraints_restrict_matching() {
 #[tokio::test]
 async fn where_allows_slashes_in_parameters() {
     let _app = app();
-    Route::get("/search/{search}", |Path(search): Path<String>| async move { search })
-        .where_("search", ".*");
+    Route::get(
+        "/search/{search}",
+        |Path(search): Path<String>| async move { search },
+    )
+    .where_("search", ".*");
     assert_eq!(get("/search/a/b/c").await.content_string(), "a/b/c");
 }
 
@@ -221,14 +257,20 @@ async fn global_patterns_apply_to_every_route() {
 #[tokio::test]
 async fn invalid_parameter_types_are_404() {
     let _app = app();
-    Route::get("/user/{id}", |Path(id): Path<u64>| async move { id.to_string() });
+    Route::get(
+        "/user/{id}",
+        |Path(id): Path<u64>| async move { id.to_string() },
+    );
     assert_eq!(get("/user/abc").await.status_code(), 404);
 }
 
 #[tokio::test]
 async fn path_shape_mismatches_are_server_errors() {
     let _app = app();
-    Route::get("/a/{x}/{y}", |Path(x): Path<u64>| async move { x.to_string() });
+    Route::get(
+        "/a/{x}/{y}",
+        |Path(x): Path<u64>| async move { x.to_string() },
+    );
     assert_eq!(get("/a/1/2").await.status_code(), 500);
 }
 
@@ -236,11 +278,21 @@ async fn path_shape_mismatches_are_server_errors() {
 async fn binding_fields_are_recorded() {
     let _app = app();
     Route::get("/posts/{post:slug}", |route: CurrentRoute| async move {
-        format!("{} by {}", route.parameter("post").unwrap(), route.binding_field_for("post").unwrap())
+        format!(
+            "{} by {}",
+            route.parameter("post").unwrap(),
+            route.binding_field_for("post").unwrap()
+        )
     })
     .name("posts.show");
-    assert_eq!(get("/posts/hello-world").await.content_string(), "hello-world by slug");
-    assert_eq!(Route::get_by_name("posts.show").unwrap().uri(), "posts/{post}");
+    assert_eq!(
+        get("/posts/hello-world").await.content_string(),
+        "hello-world by slug"
+    );
+    assert_eq!(
+        Route::get_by_name("posts.show").unwrap().uri(),
+        "posts/{post}"
+    );
 }
 
 // ----------------------------------------------------------------------
@@ -250,17 +302,23 @@ async fn binding_fields_are_recorded() {
 #[tokio::test]
 async fn groups_share_prefixes_names_and_constraints() {
     let _app = app();
-    Route::prefix("admin").name("admin.").where_number("id").group(|| {
-        Route::get("/users/{id}", || async { "admin user" }).name("users.show");
-        Route::prefix("reports").name("reports.").group(|| {
-            Route::get("/", || async { "reports" }).name("index");
+    Route::prefix("admin")
+        .name("admin.")
+        .where_number("id")
+        .group(|| {
+            Route::get("/users/{id}", || async { "admin user" }).name("users.show");
+            Route::prefix("reports").name("reports.").group(|| {
+                Route::get("/", || async { "reports" }).name("index");
+            });
         });
-    });
 
     let route = Route::get_by_name("admin.users.show").unwrap();
     assert_eq!(route.uri(), "admin/users/{id}");
     assert_eq!(route.get_prefix().as_deref(), Some("admin"));
-    assert_eq!(Route::get_by_name("admin.reports.index").unwrap().uri(), "admin/reports");
+    assert_eq!(
+        Route::get_by_name("admin.reports.index").unwrap().uri(),
+        "admin/reports"
+    );
     assert_eq!(get("/admin/users/1").await.content_string(), "admin user");
     assert_eq!(get("/admin/users/x").await.status_code(), 404);
     assert_eq!(get("/admin/reports").await.content_string(), "reports");
@@ -269,7 +327,9 @@ async fn groups_share_prefixes_names_and_constraints() {
 #[tokio::test]
 async fn registrars_can_register_single_routes() {
     let _app = app();
-    Route::middleware("auth").get("/dashboard", || async { "Dashboard" }).name("dashboard");
+    Route::middleware("auth")
+        .get("/dashboard", || async { "Dashboard" })
+        .name("dashboard");
     let route = Route::get_by_name("dashboard").unwrap();
     assert_eq!(route.middleware_names(), vec!["auth"]);
     assert!(!Route::router().has_group_stack());
@@ -279,9 +339,10 @@ async fn registrars_can_register_single_routes() {
 async fn subdomain_routing_captures_parameters() {
     let _app = app();
     Route::domain("{account}.example.com").group(|| {
-        Route::get("/user/{id}", |Path((account, id)): Path<(String, u32)>| async move {
-            format!("{account}:{id}")
-        })
+        Route::get(
+            "/user/{id}",
+            |Path((account, id)): Path<(String, u32)>| async move { format!("{account}:{id}") },
+        )
         .name("account.user");
     });
 
@@ -315,7 +376,11 @@ async fn route_names_append_to_group_name_prefixes() {
 
 fn tagging(tag: &'static str) -> Arc<dyn Middleware> {
     middleware_fn(move |request: Request, next: Next| async move {
-        let mut trail = request.attribute("trail").as_str().unwrap_or_default().to_string();
+        let mut trail = request
+            .attribute("trail")
+            .as_str()
+            .unwrap_or_default()
+            .to_string();
         trail.push_str(tag);
         request.set_attribute("trail", trail);
         let response = next.run(request).await;
@@ -324,7 +389,11 @@ fn tagging(tag: &'static str) -> Arc<dyn Middleware> {
 }
 
 async fn trail(request: Request) -> String {
-    request.attribute("trail").as_str().unwrap_or_default().to_string()
+    request
+        .attribute("trail")
+        .as_str()
+        .unwrap_or_default()
+        .to_string()
 }
 
 #[tokio::test]
@@ -361,8 +430,10 @@ async fn middleware_receives_parameters() {
             }
         })
     });
-    Route::get("/posts", |request: Request| async move { request.attribute("roles").to_string() })
-        .middleware("role:editor,publisher");
+    Route::get("/posts", |request: Request| async move {
+        request.attribute("roles").to_string()
+    })
+    .middleware("role:editor,publisher");
     assert_eq!(get("/posts").await.content_string(), "\"editor|publisher\"");
 }
 
@@ -381,7 +452,10 @@ async fn can_is_sugar_for_the_can_middleware() {
         vec!["can:update,post"]
     );
     send("/posts/1", "PUT").await;
-    assert_eq!(*seen.lock().unwrap(), vec![vec!["update".to_string(), "post".to_string()]]);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![vec!["update".to_string(), "post".to_string()]]
+    );
 }
 
 #[tokio::test]
@@ -390,11 +464,13 @@ async fn unknown_middleware_is_a_clear_error() {
     Route::get("/secret", || async { "secret" }).middleware("nope");
     let response = get("/secret").await;
     assert_eq!(response.status_code(), 500);
-    assert!(response
-        .exception()
-        .unwrap()
-        .to_string()
-        .contains("Middleware [nope] is not defined"));
+    assert!(
+        response
+            .exception()
+            .unwrap()
+            .to_string()
+            .contains("Middleware [nope] is not defined")
+    );
 }
 
 #[tokio::test]
@@ -420,7 +496,10 @@ async fn groups_can_be_modified() {
     router.prepend_middleware_to_group("web", "cookies");
     router.remove_middleware_from_group("web", "csrf");
     router.push_middleware_to_group("api", "throttle:api");
-    assert_eq!(router.get_middleware_groups()["web"], vec!["cookies", "session", "bindings"]);
+    assert_eq!(
+        router.get_middleware_groups()["web"],
+        vec!["cookies", "session", "bindings"]
+    );
     assert_eq!(router.get_middleware_groups()["api"], vec!["throttle:api"]);
     assert!(router.has_middleware_group("api"));
     router.flush_middleware_groups();
@@ -524,10 +603,21 @@ struct Search {
 #[tokio::test]
 async fn extractors_compose_in_handlers() {
     let _app = app();
-    Route::get("/search/{scope}", |Path(scope): Path<String>, Query(search): Query<Search>, request: Request| async move {
-        format!("{scope}:{}:{}:{}", search.q, search.page.unwrap_or(1), request.method())
-    });
-    assert_eq!(get("/search/posts?q=rust&page=2").await.content_string(), "posts:rust:2:GET");
+    Route::get(
+        "/search/{scope}",
+        |Path(scope): Path<String>, Query(search): Query<Search>, request: Request| async move {
+            format!(
+                "{scope}:{}:{}:{}",
+                search.q,
+                search.page.unwrap_or(1),
+                request.method()
+            )
+        },
+    );
+    assert_eq!(
+        get("/search/posts?q=rust&page=2").await.content_string(),
+        "posts:rust:2:GET"
+    );
     assert_eq!(get("/search/posts").await.status_code(), 400);
 }
 
@@ -539,19 +629,42 @@ async fn json_and_input_extractors() {
         name: String,
         age: u8,
     }
-    Route::post("/users", |Json(user): Json<NewUser>| async move { Json(user) });
-    Route::post("/form", |Input(user): Input<NewUser>| async move { format!("{} ({})", user.name, user.age) });
+    Route::post(
+        "/users",
+        |Json(user): Json<NewUser>| async move { Json(user) },
+    );
+    Route::post("/form", |Input(user): Input<NewUser>| async move {
+        format!("{} ({})", user.name, user.age)
+    });
 
     let mut headers = HeaderMap::new();
     headers.insert("content-type", HeaderValue::from_static("application/json"));
-    let request = Request::create_with("/users", "POST", json!({"name": "Taylor", "age": 36}), headers);
+    let request = Request::create_with(
+        "/users",
+        "POST",
+        json!({"name": "Taylor", "age": 36}),
+        headers,
+    );
     let response = Route::router().dispatch(request).await;
     assert_eq!(response.json_body(), json!({"name": "Taylor", "age": 36}));
 
-    let request = Request::create_with("/form", "POST", json!({"name": "Abigail", "age": "30"}), HeaderMap::new());
-    assert_eq!(Route::router().dispatch(request).await.content_string(), "Abigail (30)");
+    let request = Request::create_with(
+        "/form",
+        "POST",
+        json!({"name": "Abigail", "age": "30"}),
+        HeaderMap::new(),
+    );
+    assert_eq!(
+        Route::router().dispatch(request).await.content_string(),
+        "Abigail (30)"
+    );
 
-    let request = Request::create_with("/form", "POST", json!({"name": "Abigail"}), HeaderMap::new());
+    let request = Request::create_with(
+        "/form",
+        "POST",
+        json!({"name": "Abigail"}),
+        HeaderMap::new(),
+    );
     assert_eq!(Route::router().dispatch(request).await.status_code(), 422);
 }
 
@@ -562,14 +675,18 @@ async fn services_are_injected() {
         text: &'static str,
     }
     container.instance(Greeting { text: "Howdy" });
-    Route::get("/hello", |greeting: Inject<Greeting>| async move { greeting.text });
+    Route::get("/hello", |greeting: Inject<Greeting>| async move {
+        greeting.text
+    });
     assert_eq!(get("/hello").await.content_string(), "Howdy");
 }
 
 #[tokio::test]
 async fn handlers_returning_errors_are_rendered() {
     let _app = app();
-    Route::get("/teapot", || async { Err::<&str, _>(HttpException::new(418)) });
+    Route::get("/teapot", || async {
+        Err::<&str, _>(HttpException::new(418))
+    });
     Route::get("/json", || async { json!({"framework": "Laravel"}) });
     assert_eq!(get("/teapot").await.status_code(), 418);
     let response = get("/json").await;
@@ -611,8 +728,10 @@ async fn missing_handlers_run_when_bindings_fail() {
         }
     }
 
-    Route::get("/locations/{location:slug}", |_model: Model| async { "found" })
-        .missing(|| async { Redirect::to("/locations") });
+    Route::get("/locations/{location:slug}", |_model: Model| async {
+        "found"
+    })
+    .missing(|| async { Redirect::to("/locations") });
     assert_eq!(get("/locations/home").await.content_string(), "found");
     let response = get("/locations/mars").await;
     assert!(response.is_redirect());
@@ -635,7 +754,8 @@ async fn missing_model_detectors_extend_missing_handling() {
         }
     }
 
-    Route::get("/flights/{flight}", |_flight: Flight| async { "flight" }).missing(|| async { "no flight" });
+    Route::get("/flights/{flight}", |_flight: Flight| async { "flight" })
+        .missing(|| async { "no flight" });
     assert_eq!(get("/flights/1").await.status_code(), 500);
 
     Route::set_missing_model_detector(|error| error.downcast_ref::<ModelNotFound>().is_some());
@@ -655,7 +775,10 @@ async fn the_current_route_is_available() {
         )
     })
     .name("admin.users");
-    assert_eq!(get("/admin/users").await.content_string(), "Some(\"admin.users\") true Closure");
+    assert_eq!(
+        get("/admin/users").await.content_string(),
+        "Some(\"admin.users\") true Closure"
+    );
     assert!(Route::current().is_none());
 }
 
@@ -689,21 +812,34 @@ async fn redirect_routes() {
     assert_eq!(response.status_code(), 301);
     assert_eq!(response.target_url().unwrap(), "/new/5");
 
-    assert_eq!(get("/temp").await.target_url().unwrap(), "https://laravel.com");
+    assert_eq!(
+        get("/temp").await.target_url().unwrap(),
+        "https://laravel.com"
+    );
     assert_eq!(Route::routes()[0].action, "RedirectController");
 }
 
 #[tokio::test]
 async fn view_routes_use_the_registered_renderer() {
     let _app = app();
-    Route::view("/welcome/{name}", "welcome", json!({"framework": "Laravel"}));
+    Route::view(
+        "/welcome/{name}",
+        "welcome",
+        json!({"framework": "Laravel"}),
+    );
     assert_eq!(get("/welcome/taylor").await.status_code(), 500);
 
     Route::set_view_renderer(Arc::new(|view: &str, data: Value| {
-        Ok(Response::new(format!("{view}: {} {}", data["framework"], data["name"])))
+        Ok(Response::new(format!(
+            "{view}: {} {}",
+            data["framework"], data["name"]
+        )))
     }));
     assert!(Route::router().has_view_renderer());
-    assert_eq!(get("/welcome/taylor").await.content_string(), "welcome: \"Laravel\" \"taylor\"");
+    assert_eq!(
+        get("/welcome/taylor").await.content_string(),
+        "welcome: \"Laravel\" \"taylor\""
+    );
     assert_eq!(send("/welcome/taylor", "POST").await.status_code(), 405);
 }
 
@@ -741,7 +877,10 @@ impl ResourceController for PhotoController {
     }
 
     async fn update(&self, request: Request) -> Result<Response> {
-        Ok(Response::new(format!("update {}", request.route_or("photo", ""))))
+        Ok(Response::new(format!(
+            "update {}",
+            request.route_or("photo", "")
+        )))
     }
 }
 
@@ -755,7 +894,13 @@ fn names() -> Vec<String> {
 fn listing() -> Vec<(String, String, String)> {
     Route::routes()
         .into_iter()
-        .map(|route| (route.methods.join("|"), route.uri, route.name.unwrap_or_default()))
+        .map(|route| {
+            (
+                route.methods.join("|"),
+                route.uri,
+                route.name.unwrap_or_default(),
+            )
+        })
         .collect()
 }
 
@@ -767,17 +912,40 @@ async fn resources_register_the_crud_routes() {
         listing(),
         vec![
             ("GET|HEAD".into(), "photos".into(), "photos.index".into()),
-            ("GET|HEAD".into(), "photos/create".into(), "photos.create".into()),
+            (
+                "GET|HEAD".into(),
+                "photos/create".into(),
+                "photos.create".into()
+            ),
             ("POST".into(), "photos".into(), "photos.store".into()),
-            ("GET|HEAD".into(), "photos/{photo}".into(), "photos.show".into()),
-            ("GET|HEAD".into(), "photos/{photo}/edit".into(), "photos.edit".into()),
-            ("PUT|PATCH".into(), "photos/{photo}".into(), "photos.update".into()),
-            ("DELETE".into(), "photos/{photo}".into(), "photos.destroy".into()),
+            (
+                "GET|HEAD".into(),
+                "photos/{photo}".into(),
+                "photos.show".into()
+            ),
+            (
+                "GET|HEAD".into(),
+                "photos/{photo}/edit".into(),
+                "photos.edit".into()
+            ),
+            (
+                "PUT|PATCH".into(),
+                "photos/{photo}".into(),
+                "photos.update".into()
+            ),
+            (
+                "DELETE".into(),
+                "photos/{photo}".into(),
+                "photos.destroy".into()
+            ),
         ]
     );
     assert_eq!(get("/photos").await.content_string(), "index");
     assert_eq!(get("/photos/7").await.content_string(), "show 7");
-    assert_eq!(send("/photos/7", "PATCH").await.content_string(), "update 7");
+    assert_eq!(
+        send("/photos/7", "PATCH").await.content_string(),
+        "update 7"
+    );
     assert_eq!(get("/photos/create").await.status_code(), 404);
     assert_eq!(Route::routes()[0].action, "PhotoController@index");
 }
@@ -814,14 +982,32 @@ async fn partial_and_api_resources() {
 async fn nested_and_shallow_resources() {
     let _app = app();
     Route::resource("photos.comments", PhotoController).only(&["index", "show"]);
-    Route::resource("posts.comments", PhotoController).shallow().only(&["index", "show"]);
+    Route::resource("posts.comments", PhotoController)
+        .shallow()
+        .only(&["index", "show"]);
     assert_eq!(
         listing(),
         vec![
-            ("GET|HEAD".into(), "photos/{photo}/comments".into(), "photos.comments.index".into()),
-            ("GET|HEAD".into(), "photos/{photo}/comments/{comment}".into(), "photos.comments.show".into()),
-            ("GET|HEAD".into(), "posts/{post}/comments".into(), "posts.comments.index".into()),
-            ("GET|HEAD".into(), "comments/{comment}".into(), "comments.show".into()),
+            (
+                "GET|HEAD".into(),
+                "photos/{photo}/comments".into(),
+                "photos.comments.index".into()
+            ),
+            (
+                "GET|HEAD".into(),
+                "photos/{photo}/comments/{comment}".into(),
+                "photos.comments.show".into()
+            ),
+            (
+                "GET|HEAD".into(),
+                "posts/{post}/comments".into(),
+                "posts.comments.index".into()
+            ),
+            (
+                "GET|HEAD".into(),
+                "comments/{comment}".into(),
+                "comments.show".into()
+            ),
         ]
     );
 }
@@ -844,7 +1030,10 @@ async fn resource_names_parameters_and_middleware() {
     assert_eq!(show.wheres()["admin_user"], "[0-9]+");
 
     Route::resource("admin/posts", PhotoController).only(&["index"]);
-    assert_eq!(Route::get_by_name("posts.index").unwrap().uri(), "admin/posts");
+    assert_eq!(
+        Route::get_by_name("posts.index").unwrap().uri(),
+        "admin/posts"
+    );
 
     Route::resource("photos.comments", PhotoController)
         .only(&["show"])
@@ -857,15 +1046,25 @@ async fn resource_names_parameters_and_middleware() {
 #[tokio::test]
 async fn resources_inside_groups() {
     let _app = app();
-    Route::prefix("admin").name("admin.").middleware("auth").group(|| {
-        Route::resource("photos", PhotoController).only(&["index"]);
-    });
+    Route::prefix("admin")
+        .name("admin.")
+        .middleware("auth")
+        .group(|| {
+            Route::resource("photos", PhotoController).only(&["index"]);
+        });
     let route = Route::get_by_name("admin.photos.index").unwrap();
     assert_eq!(route.uri(), "admin/photos");
     assert_eq!(route.middleware_names(), vec!["auth"]);
 
-    Route::middleware("verified").resource("videos", PhotoController).only(&["index"]);
-    assert_eq!(Route::get_by_name("videos.index").unwrap().middleware_names(), vec!["verified"]);
+    Route::middleware("verified")
+        .resource("videos", PhotoController)
+        .only(&["index"]);
+    assert_eq!(
+        Route::get_by_name("videos.index")
+            .unwrap()
+            .middleware_names(),
+        vec!["verified"]
+    );
 }
 
 #[tokio::test]
@@ -877,7 +1076,12 @@ async fn resource_missing_handlers_cover_member_routes() {
     let response = get("/photos/404").await;
     assert!(response.is_redirect());
     assert_eq!(response.target_url().unwrap(), "http://localhost/photos");
-    assert!(Route::get_by_name("photos.index").unwrap().missing_handler().is_none());
+    assert!(
+        Route::get_by_name("photos.index")
+            .unwrap()
+            .missing_handler()
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -891,18 +1095,58 @@ async fn singleton_resources() {
         listing(),
         vec![
             ("GET|HEAD".into(), "profile".into(), "profile.show".into()),
-            ("GET|HEAD".into(), "profile/edit".into(), "profile.edit".into()),
-            ("PUT|PATCH".into(), "profile".into(), "profile.update".into()),
-            ("GET|HEAD".into(), "photos/{photo}/thumbnail".into(), "photos.thumbnail.show".into()),
-            ("GET|HEAD".into(), "photos/{photo}/thumbnail/edit".into(), "photos.thumbnail.edit".into()),
-            ("PUT|PATCH".into(), "photos/{photo}/thumbnail".into(), "photos.thumbnail.update".into()),
-            ("GET|HEAD".into(), "photos/{photo}/thumbnail/create".into(), "photos.thumbnail.create".into()),
-            ("POST".into(), "photos/{photo}/thumbnail".into(), "photos.thumbnail.store".into()),
-            ("DELETE".into(), "photos/{photo}/thumbnail".into(), "photos.thumbnail.destroy".into()),
+            (
+                "GET|HEAD".into(),
+                "profile/edit".into(),
+                "profile.edit".into()
+            ),
+            (
+                "PUT|PATCH".into(),
+                "profile".into(),
+                "profile.update".into()
+            ),
+            (
+                "GET|HEAD".into(),
+                "photos/{photo}/thumbnail".into(),
+                "photos.thumbnail.show".into()
+            ),
+            (
+                "GET|HEAD".into(),
+                "photos/{photo}/thumbnail/edit".into(),
+                "photos.thumbnail.edit".into()
+            ),
+            (
+                "PUT|PATCH".into(),
+                "photos/{photo}/thumbnail".into(),
+                "photos.thumbnail.update".into()
+            ),
+            (
+                "GET|HEAD".into(),
+                "photos/{photo}/thumbnail/create".into(),
+                "photos.thumbnail.create".into()
+            ),
+            (
+                "POST".into(),
+                "photos/{photo}/thumbnail".into(),
+                "photos.thumbnail.store".into()
+            ),
+            (
+                "DELETE".into(),
+                "photos/{photo}/thumbnail".into(),
+                "photos.thumbnail.destroy".into()
+            ),
             ("GET|HEAD".into(), "settings".into(), "settings.show".into()),
-            ("PUT|PATCH".into(), "settings".into(), "settings.update".into()),
+            (
+                "PUT|PATCH".into(),
+                "settings".into(),
+                "settings.update".into()
+            ),
             ("GET|HEAD".into(), "avatar".into(), "avatar.show".into()),
-            ("GET|HEAD".into(), "avatar/edit".into(), "avatar.edit".into()),
+            (
+                "GET|HEAD".into(),
+                "avatar/edit".into(),
+                "avatar.edit".into()
+            ),
             ("PUT|PATCH".into(), "avatar".into(), "avatar.update".into()),
             ("DELETE".into(), "avatar".into(), "avatar.destroy".into()),
         ]
@@ -914,18 +1158,30 @@ async fn resource_verbs_can_be_localized() {
     let _app = app();
     Route::resource_verbs("crear", "editar");
     Route::resource("publicacion", PhotoController).only(&["create", "edit"]);
-    let uris: Vec<String> = Route::get_routes().iter().map(RouteDefinition::uri).collect();
-    assert_eq!(uris, vec!["publicacion/crear", "publicacion/{publicacion}/editar"]);
+    let uris: Vec<String> = Route::get_routes()
+        .iter()
+        .map(RouteDefinition::uri)
+        .collect();
+    assert_eq!(
+        uris,
+        vec!["publicacion/crear", "publicacion/{publicacion}/editar"]
+    );
 }
 
 #[tokio::test]
 async fn many_resources_at_once() {
     let _app = app();
     Route::resources(vec![
-        ("photos", Arc::new(PhotoController) as Arc<dyn ResourceController>),
+        (
+            "photos",
+            Arc::new(PhotoController) as Arc<dyn ResourceController>,
+        ),
         ("posts", Arc::new(PhotoController)),
     ]);
-    Route::api_resources(vec![("tags", Arc::new(PhotoController) as Arc<dyn ResourceController>)]);
+    Route::api_resources(vec![(
+        "tags",
+        Arc::new(PhotoController) as Arc<dyn ResourceController>,
+    )]);
     assert_eq!(Route::get_routes().len(), 7 + 7 + 5);
 }
 
@@ -965,7 +1221,12 @@ async fn the_request_root_wins_during_http() {
     let (container, _guard) = app();
     configure(&container, json!({"app": {"url": "https://example.com"}}));
     Route::get("/where", |request: Request| async move {
-        format!("{} {} {}", url("/home"), URL::current(), URL::full().replace(&request.root(), ""))
+        format!(
+            "{} {} {}",
+            url("/home"),
+            URL::current(),
+            URL::full().replace(&request.root(), "")
+        )
     });
     let request = request_with_headers("/where?x=1", "GET", &[("host", "laravel.test:8000")]);
     let response = Route::router().dispatch(request).await;
@@ -978,9 +1239,18 @@ async fn the_request_root_wins_during_http() {
 #[tokio::test]
 async fn assets_use_the_asset_url() {
     let (container, _guard) = app();
-    configure(&container, json!({"app": {"url": "http://example.com", "asset_url": "https://cdn.example.com"}}));
-    assert_eq!(asset("/img/logo.png"), "https://cdn.example.com/img/logo.png");
-    assert_eq!(URL::asset_from("http://static.test", "app.js"), "http://static.test/app.js");
+    configure(
+        &container,
+        json!({"app": {"url": "http://example.com", "asset_url": "https://cdn.example.com"}}),
+    );
+    assert_eq!(
+        asset("/img/logo.png"),
+        "https://cdn.example.com/img/logo.png"
+    );
+    assert_eq!(
+        URL::asset_from("http://static.test", "app.js"),
+        "http://static.test/app.js"
+    );
     assert_eq!(secure_asset("x.css"), "https://cdn.example.com/x.css");
 }
 
@@ -991,14 +1261,26 @@ async fn named_routes_generate_urls() {
     Route::get("/post/{post}/comment/{comment}", || async { "" }).name("comment.show");
     Route::get("/posts", || async { "" }).name("posts.index");
 
-    assert_eq!(route("profile", json!({"id": 1})).unwrap(), "http://localhost/user/1/profile");
+    assert_eq!(
+        route("profile", json!({"id": 1})).unwrap(),
+        "http://localhost/user/1/profile"
+    );
     assert_eq!(
         route("profile", json!({"id": 1, "photos": "yes"})).unwrap(),
         "http://localhost/user/1/profile?photos=yes"
     );
-    assert_eq!(route("profile", 5).unwrap(), "http://localhost/user/5/profile");
-    assert_eq!(route("profile", "taylor").unwrap(), "http://localhost/user/taylor/profile");
-    assert_eq!(route("comment.show", (1, 3)).unwrap(), "http://localhost/post/1/comment/3");
+    assert_eq!(
+        route("profile", 5).unwrap(),
+        "http://localhost/user/5/profile"
+    );
+    assert_eq!(
+        route("profile", "taylor").unwrap(),
+        "http://localhost/user/taylor/profile"
+    );
+    assert_eq!(
+        route("comment.show", (1, 3)).unwrap(),
+        "http://localhost/post/1/comment/3"
+    );
     assert_eq!(
         route("comment.show", [("comment", 3), ("post", 1), ("page", 2)]).unwrap(),
         "http://localhost/post/1/comment/3?page=2"
@@ -1008,7 +1290,10 @@ async fn named_routes_generate_urls() {
         route("posts.index", json!({"filter": {"tags": ["a b", "c"]}})).unwrap(),
         "http://localhost/posts?filter%5Btags%5D%5B0%5D=a%20b&filter%5Btags%5D%5B1%5D=c"
     );
-    assert_eq!(URL::route_with("profile", 1, false).unwrap(), "/user/1/profile");
+    assert_eq!(
+        URL::route_with("profile", 1, false).unwrap(),
+        "/user/1/profile"
+    );
 }
 
 #[tokio::test]
@@ -1032,24 +1317,41 @@ async fn optional_parameters_and_defaults() {
     Route::get("/archive/{year?}/{month?}", || async { "" }).name("archive");
     Route::get("/{locale}/posts", || async { "" }).name("posts.index");
     assert_eq!(route("archive", ()).unwrap(), "http://localhost/archive");
-    assert_eq!(route("archive", 2024).unwrap(), "http://localhost/archive/2024");
-    assert_eq!(route("archive", (2024, 5)).unwrap(), "http://localhost/archive/2024/5");
+    assert_eq!(
+        route("archive", 2024).unwrap(),
+        "http://localhost/archive/2024"
+    );
+    assert_eq!(
+        route("archive", (2024, 5)).unwrap(),
+        "http://localhost/archive/2024/5"
+    );
 
     URL::defaults([("locale", "en")]);
-    assert_eq!(route("posts.index", ()).unwrap(), "http://localhost/en/posts");
-    assert_eq!(route("posts.index", json!({"locale": "fr"})).unwrap(), "http://localhost/fr/posts");
+    assert_eq!(
+        route("posts.index", ()).unwrap(),
+        "http://localhost/en/posts"
+    );
+    assert_eq!(
+        route("posts.index", json!({"locale": "fr"})).unwrap(),
+        "http://localhost/fr/posts"
+    );
 }
 
 #[tokio::test]
 async fn url_defaults_are_request_scoped_during_http() {
     let _app = app();
-    Route::get("/{locale}/posts", || async { route("posts.index", ()).unwrap() })
-        .name("posts.index")
-        .middleware(middleware_fn(|request: Request, next: Next| async move {
-            URL::defaults([("locale", request.route_or("locale", "en"))]);
-            Ok(next.run(request).await)
-        }));
-    assert_eq!(get("/de/posts").await.content_string(), "http://localhost/de/posts");
+    Route::get("/{locale}/posts", || async {
+        route("posts.index", ()).unwrap()
+    })
+    .name("posts.index")
+    .middleware(middleware_fn(|request: Request, next: Next| async move {
+        URL::defaults([("locale", request.route_or("locale", "en"))]);
+        Ok(next.run(request).await)
+    }));
+    assert_eq!(
+        get("/de/posts").await.content_string(),
+        "http://localhost/de/posts"
+    );
     assert!(URL::generator().get_default_parameters().is_empty());
 }
 
@@ -1058,11 +1360,26 @@ async fn models_are_route_parameters() {
     let _app = app();
     Route::get("/posts/{post}", || async { "" }).name("posts.show");
     Route::get("/blog/{post:slug}", || async { "" }).name("blog.show");
-    let post = Post { id: 42, slug: "hello-world" };
-    assert_eq!(route("posts.show", &post).unwrap(), "http://localhost/posts/42");
-    assert_eq!(route("blog.show", &post).unwrap(), "http://localhost/blog/hello-world");
+    let post = Post {
+        id: 42,
+        slug: "hello-world",
+    };
     assert_eq!(
-        route("blog.show", RouteParameters::new().with("post", &post).with("ref", "home")).unwrap(),
+        route("posts.show", &post).unwrap(),
+        "http://localhost/posts/42"
+    );
+    assert_eq!(
+        route("blog.show", &post).unwrap(),
+        "http://localhost/blog/hello-world"
+    );
+    assert_eq!(
+        route(
+            "blog.show",
+            RouteParameters::new()
+                .with("post", &post)
+                .with("ref", "home")
+        )
+        .unwrap(),
         "http://localhost/blog/hello-world?ref=home"
     );
 }
@@ -1075,14 +1392,23 @@ async fn parameters_are_encoded() {
         route("search", "rock & roll?").unwrap(),
         "http://localhost/search/rock%20&%20roll%3F"
     );
-    assert_eq!(route("search", "café").unwrap(), "http://localhost/search/caf%C3%A9");
+    assert_eq!(
+        route("search", "café").unwrap(),
+        "http://localhost/search/caf%C3%A9"
+    );
 }
 
 #[tokio::test]
 async fn query_urls_and_valid_urls() {
     let _app = app();
-    assert_eq!(URL::query("/posts?sort=latest", json!({"sort": "oldest"})), "http://localhost/posts?sort=oldest");
-    assert_eq!(URL::to("mailto:taylor@laravel.com"), "mailto:taylor@laravel.com");
+    assert_eq!(
+        URL::query("/posts?sort=latest", json!({"sort": "oldest"})),
+        "http://localhost/posts?sort=oldest"
+    );
+    assert_eq!(
+        URL::to("mailto:taylor@laravel.com"),
+        "mailto:taylor@laravel.com"
+    );
     assert!(URL::is_valid_url("https://laravel.com"));
     assert!(URL::is_valid_url("//cdn.test/app.js"));
     assert!(!URL::is_valid_url("posts/1"));
@@ -1109,7 +1435,11 @@ fn signing_app() -> (Arc<Container>, LocalInstanceGuard) {
 async fn signed_urls_validate() {
     let _app = signing_app();
     Route::get("/unsubscribe/{user}", |request: Request| async move {
-        if URL::has_valid_signature(&request) { "valid" } else { "invalid" }
+        if URL::has_valid_signature(&request) {
+            "valid"
+        } else {
+            "invalid"
+        }
     })
     .name("unsubscribe");
 
@@ -1131,7 +1461,10 @@ async fn signatures_match_laravels_algorithm() {
     let url = URL::signed_route("unsubscribe", json!({"user": 1, "list": "news"})).unwrap();
     let (unsigned, signature) = url.split_once("&signature=").unwrap();
     assert_eq!(unsigned, "http://localhost/unsubscribe/1?list=news");
-    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(b"base64:c2VjcmV0LWtleS1zZWNyZXQta2V5LXNlY3JldC1rZXk=").unwrap();
+    let mut mac = Hmac::<sha2::Sha256>::new_from_slice(
+        b"base64:c2VjcmV0LWtleS1zZWNyZXQta2V5LXNlY3JldC1rZXk=",
+    )
+    .unwrap();
     mac.update(unsigned.as_bytes());
     assert_eq!(signature, hex::encode(mac.finalize().into_bytes()));
 }
@@ -1139,9 +1472,13 @@ async fn signatures_match_laravels_algorithm() {
 #[tokio::test]
 async fn temporary_signed_urls_expire() {
     let _app = signing_app();
-    Route::get("/download/{file}", || async { "file" }).name("download").middleware("signed");
+    Route::get("/download/{file}", || async { "file" })
+        .name("download")
+        .middleware("signed");
 
-    let url = URL::temporary_signed_route("download", std::time::Duration::from_secs(60), "report.pdf").unwrap();
+    let url =
+        URL::temporary_signed_route("download", std::time::Duration::from_secs(60), "report.pdf")
+            .unwrap();
     assert!(url.contains("?expires="));
     let path = url.trim_start_matches("http://localhost").to_string();
     assert_eq!(get(&path).await.content_string(), "file");
@@ -1151,20 +1488,31 @@ async fn temporary_signed_urls_expire() {
     let response = get(expired.trim_start_matches("http://localhost")).await;
     assert_eq!(response.status_code(), 403);
     let exception = response.exception().unwrap();
-    assert!(exception.downcast_ref::<InvalidSignatureException>().is_some());
+    assert!(
+        exception
+            .downcast_ref::<InvalidSignatureException>()
+            .is_some()
+    );
     assert_eq!(exception.to_string(), "Invalid signature.");
 }
 
 #[tokio::test]
 async fn relative_and_ignored_signatures() {
     let _app = signing_app();
-    Route::get("/relative/{id}", || async { "ok" }).name("relative").middleware("signed:relative");
-    Route::get("/paged/{id}", || async { "ok" }).name("paged").middleware("signed:relative,page");
+    Route::get("/relative/{id}", || async { "ok" })
+        .name("relative")
+        .middleware("signed:relative");
+    Route::get("/paged/{id}", || async { "ok" })
+        .name("paged")
+        .middleware("signed:relative,page");
 
     let url = URL::signed_route_with("relative", 1, None::<std::time::Duration>, false).unwrap();
     assert!(url.starts_with("/relative/1?signature="));
     let request = request_with_headers(&url, "GET", &[("host", "elsewhere.test")]);
-    assert_eq!(Route::router().dispatch(request).await.content_string(), "ok");
+    assert_eq!(
+        Route::router().dispatch(request).await.content_string(),
+        "ok"
+    );
 
     let url = URL::signed_route_with("paged", 1, None::<std::time::Duration>, false).unwrap();
     assert_eq!(get(&format!("{url}&page=3")).await.content_string(), "ok");
@@ -1174,14 +1522,29 @@ async fn relative_and_ignored_signatures() {
 #[tokio::test]
 async fn previous_keys_still_validate() {
     let (container, _guard) = signing_app();
-    Route::get("/old/{id}", |request: Request| async move { URL::has_valid_signature(&request).to_string() })
-        .name("old");
+    Route::get("/old/{id}", |request: Request| async move {
+        URL::has_valid_signature(&request).to_string()
+    })
+    .name("old");
     configure(&container, json!({"app": {"key": "old-key"}}));
     let url = URL::signed_route("old", 1).unwrap();
-    configure(&container, json!({"app": {"key": "new-key", "previous_keys": ["old-key"]}}));
-    assert_eq!(get(url.trim_start_matches("http://localhost")).await.content_string(), "true");
+    configure(
+        &container,
+        json!({"app": {"key": "new-key", "previous_keys": ["old-key"]}}),
+    );
+    assert_eq!(
+        get(url.trim_start_matches("http://localhost"))
+            .await
+            .content_string(),
+        "true"
+    );
     configure(&container, json!({"app": {"key": "new-key"}}));
-    assert_eq!(get(url.trim_start_matches("http://localhost")).await.content_string(), "false");
+    assert_eq!(
+        get(url.trim_start_matches("http://localhost"))
+            .await
+            .content_string(),
+        "false"
+    );
 }
 
 #[tokio::test]
@@ -1197,7 +1560,10 @@ async fn signing_requires_an_application_key() {
     let _app = app();
     Route::get("/x", || async { "" }).name("x");
     let error = URL::signed_route("x", ()).unwrap_err();
-    assert_eq!(error.to_string(), "No application encryption key has been specified.");
+    assert_eq!(
+        error.to_string(),
+        "No application encryption key has been specified."
+    );
 }
 
 // ----------------------------------------------------------------------
@@ -1213,15 +1579,30 @@ async fn redirect_helpers() {
     assert_eq!(response.status_code(), 302);
     assert_eq!(response.target_url().unwrap(), "http://localhost/dashboard");
 
-    assert_eq!(to_route("profile", 1).target_url().unwrap(), "http://localhost/profile/1");
-    assert_eq!(redirect_to_route("profile", 2).target_url().unwrap(), "http://localhost/profile/2");
+    assert_eq!(
+        to_route("profile", 1).target_url().unwrap(),
+        "http://localhost/profile/1"
+    );
+    assert_eq!(
+        redirect_to_route("profile", 2).target_url().unwrap(),
+        "http://localhost/profile/2"
+    );
     assert_eq!(to_route("missing", ()).status_code(), 500);
-    assert_eq!(Redirect::secure("/login").target_url().unwrap(), "https://localhost/login");
+    assert_eq!(
+        Redirect::secure("/login").target_url().unwrap(),
+        "https://localhost/login"
+    );
     assert_eq!(Redirect::permanent("/new").status_code(), 301);
     assert_eq!(Redirect::temporary("/new").status_code(), 307);
-    assert_eq!(Redirect::away("https://laravel.com").target_url().unwrap(), "https://laravel.com");
+    assert_eq!(
+        Redirect::away("https://laravel.com").target_url().unwrap(),
+        "https://laravel.com"
+    );
     assert_eq!(Redirect::to_with_status("/x", 303).status_code(), 303);
-    assert_eq!(Redirect::route_with_status("profile", 3, 301).status_code(), 301);
+    assert_eq!(
+        Redirect::route_with_status("profile", 3, 301).status_code(),
+        301
+    );
 }
 
 #[tokio::test]
@@ -1234,25 +1615,51 @@ async fn back_uses_the_referer_or_the_session() {
     });
     Route::post("/fallback", || async { Redirect::back_or("/home") });
 
-    let request = request_with_headers("/form", "POST", &[("referer", "http://localhost/form/create")]);
+    let request = request_with_headers(
+        "/form",
+        "POST",
+        &[("referer", "http://localhost/form/create")],
+    );
     let response = Route::router().dispatch(request).await;
-    assert_eq!(response.target_url().unwrap(), "http://localhost/form/create");
+    assert_eq!(
+        response.target_url().unwrap(),
+        "http://localhost/form/create"
+    );
     assert_eq!(response.flashed()[0].0, "status");
 
-    assert_eq!(send("/session", "POST").await.target_url().unwrap(), "http://localhost/from-session");
-    assert_eq!(send("/fallback", "POST").await.target_url().unwrap(), "http://localhost/home");
-    assert_eq!(send("/form", "POST").await.target_url().unwrap(), "http://localhost");
+    assert_eq!(
+        send("/session", "POST").await.target_url().unwrap(),
+        "http://localhost/from-session"
+    );
+    assert_eq!(
+        send("/fallback", "POST").await.target_url().unwrap(),
+        "http://localhost/home"
+    );
+    assert_eq!(
+        send("/form", "POST").await.target_url().unwrap(),
+        "http://localhost"
+    );
 }
 
 #[tokio::test]
 async fn refresh_and_previous_path() {
     let _app = app();
     Route::get("/current/page", || async { Redirect::refresh() });
-    assert_eq!(get("/current/page?x=1").await.target_url().unwrap(), "http://localhost/current/page");
+    assert_eq!(
+        get("/current/page?x=1").await.target_url().unwrap(),
+        "http://localhost/current/page"
+    );
 
     Route::get("/previous", || async { URL::previous_path() });
-    let request = request_with_headers("/previous", "GET", &[("referer", "http://localhost/users/1/?tab=a")]);
-    assert_eq!(Route::router().dispatch(request).await.content_string(), "/users/1");
+    let request = request_with_headers(
+        "/previous",
+        "GET",
+        &[("referer", "http://localhost/users/1/?tab=a")],
+    );
+    assert_eq!(
+        Route::router().dispatch(request).await.content_string(),
+        "/users/1"
+    );
 }
 
 // ----------------------------------------------------------------------
@@ -1283,14 +1690,39 @@ async fn routers_are_usable_as_kernel_destinations() {
     let _app = app();
     Route::get("/", || async { "kernel" });
     let destination = Route::router().as_destination();
-    let response = illuminate_http::run_middleware(Request::create("/", "GET"), Vec::new(), destination).await;
+    let response =
+        illuminate_http::run_middleware(Request::create("/", "GET"), Vec::new(), destination).await;
     assert_eq!(response.content_string(), "kernel");
 }
 
 #[tokio::test]
 async fn dispatch_works_on_multi_threaded_runtimes() {
     let router = Router::new();
-    router.get("/users/{id}", |Path(id): Path<u64>| async move { format!("User {id}") });
-    let handle = tokio::spawn(async move { router.dispatch(Request::create("/users/9", "GET")).await });
+    router.get("/users/{id}", |Path(id): Path<u64>| async move {
+        format!("User {id}")
+    });
+    let handle =
+        tokio::spawn(async move { router.dispatch(Request::create("/users/9", "GET")).await });
     assert_eq!(handle.await.unwrap().content_string(), "User 9");
+}
+
+#[tokio::test]
+async fn requests_validate_their_own_signatures() {
+    let _app = signing_app();
+    Route::get("/invite/{team}", |request: Request| async move {
+        format!(
+            "{} {} {}",
+            request.has_valid_signature(),
+            request.has_valid_signature_while_ignoring(&["utm"]),
+            request.current_route().unwrap().name().unwrap()
+        )
+    })
+    .name("invite");
+    let url = URL::signed_route("invite", 3).unwrap();
+    let path = url.trim_start_matches("http://localhost");
+    assert_eq!(get(path).await.content_string(), "true true invite");
+    assert_eq!(
+        get(&format!("{path}&utm=mail")).await.content_string(),
+        "false true invite"
+    );
 }

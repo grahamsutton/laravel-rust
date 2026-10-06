@@ -1,7 +1,8 @@
 //! Global helper functions: `route()`, `url()`, `asset()`, and friends.
 //!
 //! The redirect helpers (`redirect()`, `to_route()`, `back()`) live in
-//! [`crate::redirect`] and are re-exported from the crate root.
+//! [the `redirect` module](mod@crate::redirect) and are re-exported from
+//! the crate root.
 
 use illuminate_support::Result;
 

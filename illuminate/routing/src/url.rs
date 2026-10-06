@@ -18,7 +18,7 @@
 //! );
 //! ```
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, LazyLock, RwLock};
 use std::time::Duration;
 
 use hmac::{Hmac, Mac};
@@ -107,6 +107,21 @@ impl std::fmt::Debug for UrlGenerator {
         f.debug_struct("UrlGenerator").finish_non_exhaustive()
     }
 }
+
+static VALID_URL_PREFIX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(#|//|https?://|(mailto|tel|sms):)").expect("valid regex"));
+static VALID_URL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s]+$").expect("valid regex"));
+static NAMED_PLACEHOLDER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{(.*?)(\?)?\}").expect("valid regex"));
+static ANY_PLACEHOLDER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{(.*?)\}").expect("valid regex"));
+static OPTIONAL_PLACEHOLDER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{.*?\?\}").expect("valid regex"));
+static REPEATED_SLASHES: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("/{2,}").expect("valid regex"));
+static URL_ROOT: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^(//|[^/?])+").expect("valid regex"));
 
 /// The characters Laravel leaves unencoded in generated route URLs.
 const DONT_ENCODE: &[u8] = b"/@:;,=+!*|?&#%";
@@ -303,7 +318,11 @@ impl UrlGenerator {
         let root = self
             .asset_root()
             .unwrap_or_else(|| self.format_root(&self.format_scheme(secure), None));
-        format!("{}{}", Str::finish(&remove_index(&root), "/"), path.trim_matches('/'))
+        format!(
+            "{}{}",
+            Str::finish(&remove_index(&root), "/"),
+            path.trim_matches('/')
+        )
     }
 
     /// Generate a URL to a secure asset.
@@ -379,9 +398,7 @@ impl UrlGenerator {
 
     /// Determine if the given path is already a valid URL.
     pub fn is_valid_url(path: &str) -> bool {
-        let prefix = Regex::new(r"^(#|//|https?://|(mailto|tel|sms):)").expect("valid regex");
-        let url = Regex::new(r"^[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s]+$").expect("valid regex");
-        prefix.is_match(path) || url.is_match(path)
+        VALID_URL_PREFIX.is_match(path) || VALID_URL.is_match(path)
     }
 
     // ------------------------------------------------------------------
@@ -390,7 +407,8 @@ impl UrlGenerator {
 
     /// Force the scheme for generated URLs (`Some("https")`).
     pub fn force_scheme(&self, scheme: Option<&str>) {
-        self.state.write().unwrap().force_scheme = scheme.map(|s| format!("{}://", s.trim_end_matches("://")));
+        self.state.write().unwrap().force_scheme =
+            scheme.map(|s| format!("{}://", s.trim_end_matches("://")));
     }
 
     /// Force all generated URLs to use HTTPS.
@@ -479,7 +497,11 @@ impl UrlGenerator {
     /// string. Missing required parameters produce an
     /// [`UrlGenerationException`], and unknown names a
     /// [`RouteNotFoundException`].
-    pub fn route<'a>(&self, name: &str, parameters: impl IntoRouteParameters<'a>) -> Result<String> {
+    pub fn route<'a>(
+        &self,
+        name: &str,
+        parameters: impl IntoRouteParameters<'a>,
+    ) -> Result<String> {
         self.route_with(name, parameters, true)
     }
 
@@ -504,7 +526,8 @@ impl UrlGenerator {
         absolute: bool,
     ) -> Result<String> {
         let defaults = self.get_default_parameters();
-        let mut parameters = format_parameters(route, parameters.into_route_parameters(), &defaults);
+        let mut parameters =
+            format_parameters(route, parameters.into_route_parameters(), &defaults);
 
         let domain = route.get_domain().map(|domain| self.format_domain(&domain));
         let scheme = self.format_scheme(None);
@@ -513,12 +536,11 @@ impl UrlGenerator {
         // Optional parameters left out of the middle of a URI would leave
         // empty segments behind ("archive//2024"), so collapse them.
         let path = replace_route_parameters(&route.uri(), &mut parameters, &defaults);
-        let path = Regex::new("/{2,}").expect("valid regex").replace_all(&path, "/").into_owned();
+        let path = REPEATED_SLASHES.replace_all(&path, "/").into_owned();
 
         let uri = add_query_string(&self.format(&root, &path), &parameters);
 
-        let missing: Vec<String> = Regex::new(r"\{(.*?)\}")
-            .expect("valid regex")
+        let missing: Vec<String> = ANY_PLACEHOLDER
             .captures_iter(&uri)
             .map(|c| c[1].to_string())
             .collect();
@@ -537,10 +559,7 @@ impl UrlGenerator {
             return Ok(uri);
         }
 
-        let stripped = Regex::new(r"^(//|[^/?])+")
-            .expect("valid regex")
-            .replace(&uri, "")
-            .into_owned();
+        let stripped = URL_ROOT.replace(&uri, "").into_owned();
         Ok(format!("/{}", stripped.trim_start_matches('/')))
     }
 
@@ -565,7 +584,11 @@ impl UrlGenerator {
     // ------------------------------------------------------------------
 
     /// Create a signed URL to a named route.
-    pub fn signed_route<'a>(&self, name: &str, parameters: impl IntoRouteParameters<'a>) -> Result<String> {
+    pub fn signed_route<'a>(
+        &self,
+        name: &str,
+        parameters: impl IntoRouteParameters<'a>,
+    ) -> Result<String> {
         self.signed_route_with(name, parameters, None::<Duration>, true)
     }
 
@@ -628,7 +651,10 @@ impl UrlGenerator {
         let signature = sign(&url, &key);
 
         let mut signed: RouteParameters<'_> = clone_parameters(&items);
-        signed.insert("signature".to_string(), RouteParameter::Value(Value::String(signature)));
+        signed.insert(
+            "signature".to_string(),
+            RouteParameter::Value(Value::String(signature)),
+        );
         self.to_route(&route, signed, absolute)
     }
 
@@ -644,12 +670,23 @@ impl UrlGenerator {
 
     /// Determine if the request has a valid signature, ignoring the given
     /// query parameters.
-    pub fn has_valid_signature_while_ignoring(&self, request: &Request, ignore: &[&str], absolute: bool) -> bool {
-        self.has_correct_signature(request, absolute, ignore) && self.signature_has_not_expired(request)
+    pub fn has_valid_signature_while_ignoring(
+        &self,
+        request: &Request,
+        ignore: &[&str],
+        absolute: bool,
+    ) -> bool {
+        self.has_correct_signature(request, absolute, ignore)
+            && self.signature_has_not_expired(request)
     }
 
     /// Determine if the signature in the request is correct.
-    pub fn has_correct_signature(&self, request: &Request, absolute: bool, ignore: &[&str]) -> bool {
+    pub fn has_correct_signature(
+        &self,
+        request: &Request,
+        absolute: bool,
+        ignore: &[&str],
+    ) -> bool {
         let Value::String(signature) = request.query("signature") else {
             return false;
         };
@@ -710,7 +747,8 @@ fn clone_parameters<'a>(items: &[(Option<String>, RouteParameter<'a>)]) -> Route
 }
 
 fn sign(url: &str, key: &str) -> String {
-    let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC accepts keys of any length");
+    let mut mac =
+        Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC accepts keys of any length");
     mac.update(url.as_bytes());
     hex::encode(mac.finalize().into_bytes())
 }
@@ -720,9 +758,16 @@ fn url_path(url: &str) -> String {
         Some((_, rest)) => rest,
         None => url,
     };
-    let path_start = without_scheme.find('/').map(|i| &without_scheme[i..]).unwrap_or("/");
+    let path_start = without_scheme
+        .find('/')
+        .map(|i| &without_scheme[i..])
+        .unwrap_or("/");
     let path = path_start.split(['?', '#']).next().unwrap_or("/");
-    if path.is_empty() { "/".to_string() } else { path.to_string() }
+    if path.is_empty() {
+        "/".to_string()
+    } else {
+        path.to_string()
+    }
 }
 
 fn remove_index(root: &str) -> String {
@@ -745,7 +790,9 @@ pub(crate) fn raw_url_encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(byte as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
             _ => out.push_str(&format!("%{byte:02X}")),
         }
     }
@@ -757,7 +804,9 @@ fn encode_uri(uri: &str) -> String {
     let mut out = String::with_capacity(uri.len());
     for byte in uri.bytes() {
         match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => out.push(byte as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
             b if DONT_ENCODE.contains(&b) => out.push(b as char),
             _ => out.push_str(&format!("%{byte:02X}")),
         }
@@ -779,7 +828,13 @@ fn strip_nulls(value: &Value) -> Value {
                 .map(|(k, v)| (k.clone(), strip_nulls(v)))
                 .collect(),
         ),
-        Value::Array(items) => Value::Array(items.iter().filter(|v| !v.is_null()).map(strip_nulls).collect()),
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .filter(|v| !v.is_null())
+                .map(strip_nulls)
+                .collect(),
+        ),
         other => other.clone(),
     }
 }
@@ -817,7 +872,10 @@ fn format_parameters(
     let mut required_missing: Vec<String> = Vec::new();
 
     for name in &route_parameters {
-        if let Some(position) = named_input.iter().position(|(key, value)| key == name && !value.is_null()) {
+        if let Some(position) = named_input
+            .iter()
+            .position(|(key, value)| key == name && !value.is_null())
+        {
             let (_, value) = named_input.remove(position);
             named.insert(name.clone(), Some(value));
             continue;
@@ -876,7 +934,9 @@ fn format_parameters(
         let field = route.binding_field_for(&name);
         let value = match value {
             Some(value) => Some(value.resolve(field.as_deref())),
-            None => defaults.get(&default_key(&name)).map(|d| Value::String(d.clone())),
+            None => defaults
+                .get(&default_key(&name))
+                .map(|d| Value::String(d.clone())),
         };
         formatted.push((Some(name), value));
     }
@@ -898,11 +958,16 @@ fn encode_parameter(value: &Value) -> String {
 
 /// Replace the `{parameters}` in a path (or domain) with their values,
 /// removing them from the list as they are used.
-fn replace_route_parameters(path: &str, parameters: &mut Formatted, defaults: &IndexMap<String, String>) -> String {
-    let named = Regex::new(r"\{(.*?)(\?)?\}").expect("valid regex");
-    let path = named.replace_all(path, |captures: &regex::Captures<'_>| {
+fn replace_route_parameters(
+    path: &str,
+    parameters: &mut Formatted,
+    defaults: &IndexMap<String, String>,
+) -> String {
+    let path = NAMED_PLACEHOLDER.replace_all(path, |captures: &regex::Captures<'_>| {
         let name = &captures[1];
-        let position = parameters.iter().position(|(key, _)| key.as_deref() == Some(name));
+        let position = parameters
+            .iter()
+            .position(|(key, _)| key.as_deref() == Some(name));
         if let Some(position) = position {
             let filled = parameters[position]
                 .1
@@ -922,8 +987,7 @@ fn replace_route_parameters(path: &str, parameters: &mut Formatted, defaults: &I
         captures[0].to_string()
     });
 
-    let any = Regex::new(r"\{.*?\}").expect("valid regex");
-    let path = any.replace_all(&path, |captures: &regex::Captures<'_>| {
+    let path = ANY_PLACEHOLDER.replace_all(&path, |captures: &regex::Captures<'_>| {
         let placeholder = &captures[0];
         let position = parameters.iter().position(|(key, _)| key.is_none());
         match position {
@@ -936,8 +1000,10 @@ fn replace_route_parameters(path: &str, parameters: &mut Formatted, defaults: &I
         }
     });
 
-    let optional = Regex::new(r"\{.*?\?\}").expect("valid regex");
-    optional.replace_all(&path, "").trim_matches('/').to_string()
+    OPTIONAL_PLACEHOLDER
+        .replace_all(&path, "")
+        .trim_matches('/')
+        .to_string()
 }
 
 /// Append the remaining parameters as a query string, keeping any fragment
@@ -1076,12 +1142,19 @@ impl URL {
     }
 
     /// Generate the URL to a named route, absolute or relative.
-    pub fn route_with<'a>(name: &str, parameters: impl IntoRouteParameters<'a>, absolute: bool) -> Result<String> {
+    pub fn route_with<'a>(
+        name: &str,
+        parameters: impl IntoRouteParameters<'a>,
+        absolute: bool,
+    ) -> Result<String> {
         url_generator().route_with(name, parameters, absolute)
     }
 
     /// Create a signed URL to a named route.
-    pub fn signed_route<'a>(name: &str, parameters: impl IntoRouteParameters<'a>) -> Result<String> {
+    pub fn signed_route<'a>(
+        name: &str,
+        parameters: impl IntoRouteParameters<'a>,
+    ) -> Result<String> {
         url_generator().signed_route(name, parameters)
     }
 
@@ -1115,7 +1188,11 @@ impl URL {
     }
 
     /// Determine if the request has a valid signature, ignoring some query parameters.
-    pub fn has_valid_signature_while_ignoring(request: &Request, ignore: &[&str], absolute: bool) -> bool {
+    pub fn has_valid_signature_while_ignoring(
+        request: &Request,
+        ignore: &[&str],
+        absolute: bool,
+    ) -> bool {
         url_generator().has_valid_signature_while_ignoring(request, ignore, absolute)
     }
 

@@ -100,6 +100,8 @@ where
 
 type Continuation<T, R> = Box<dyn FnOnce(T) -> BoxFuture<'static, R> + Send>;
 
+type Finally<R> = Box<dyn FnOnce(&R) + Send>;
+
 /// The rest of the pipeline.
 ///
 /// Calling [`Next::run`] hands the value to the next stage (and, eventually,
@@ -186,7 +188,7 @@ tuple_pipes!(A, B, C, D, E, F, G, H, I, J, K, L);
 pub struct Pipeline<T, R = T> {
     passable: T,
     pipes: Vec<Arc<dyn Pipe<T, R>>>,
-    finally: Option<Box<dyn FnOnce(&R) + Send>>,
+    finally: Option<Finally<R>>,
 }
 
 impl<T, R> std::fmt::Debug for Pipeline<T, R> {
@@ -286,12 +288,16 @@ where
         let destination: Continuation<T, R> =
             Box::new(move |passable| Box::pin(destination(passable)) as BoxFuture<'static, R>);
 
-        let pipeline = self.pipes.into_iter().rev().fold(destination, |next, pipe| {
-            Box::new(move |passable: T| {
-                Box::pin(async move { pipe.handle(passable, Next { inner: next }).await })
-                    as BoxFuture<'static, R>
-            })
-        });
+        let pipeline = self
+            .pipes
+            .into_iter()
+            .rev()
+            .fold(destination, |next, pipe| {
+                Box::new(move |passable: T| {
+                    Box::pin(async move { pipe.handle(passable, Next { inner: next }).await })
+                        as BoxFuture<'static, R>
+                })
+            });
 
         let result = pipeline(self.passable).await;
 
@@ -428,14 +434,12 @@ mod tests {
     #[tokio::test]
     async fn result_pipelines_stop_at_the_first_error() {
         let outcome: Result<i32, String> = Pipeline::send(3)
-            .through((
-                |n: i32, next: Next<i32, Result<i32, String>>| async move {
-                    if n < 10 {
-                        return Err(format!("{n} is too small"));
-                    }
-                    next.run(n).await
-                },
-            ))
+            .through((|n: i32, next: Next<i32, Result<i32, String>>| async move {
+                if n < 10 {
+                    return Err(format!("{n} is too small"));
+                }
+                next.run(n).await
+            },))
             .then(|n| async move { Ok(n) })
             .await;
         assert_eq!(outcome.unwrap_err(), "3 is too small");

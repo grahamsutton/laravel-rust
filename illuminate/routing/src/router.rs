@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
 use indexmap::IndexMap;
 use regex::Regex;
@@ -24,7 +24,9 @@ use crate::middleware::{
     sort_middleware, unique_middleware,
 };
 use crate::registrar::RouteRegistrar;
-use crate::resource::{PendingResourceRegistration, PendingSingletonResourceRegistration, ResourceController};
+use crate::resource::{
+    PendingResourceRegistration, PendingSingletonResourceRegistration, ResourceController,
+};
 use crate::route::{CurrentRoute, RouteAction, RouteDefinition, RouteHandler, RouteListing};
 
 /// Renders a view into a response: `(view name, data) -> response`.
@@ -41,7 +43,9 @@ pub type MissingModelDetector = Arc<dyn Fn(&Error) -> bool + Send + Sync>;
 pub type MatchedCallback = Arc<dyn Fn(&CurrentRoute, &Request) + Send + Sync>;
 
 /// Every HTTP verb the router knows.
-pub const VERBS: [&str; 8] = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "QUERY"];
+pub const VERBS: [&str; 8] = [
+    "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "QUERY",
+];
 
 /// The attributes shared by a group of routes.
 #[derive(Clone, Default)]
@@ -80,13 +84,23 @@ impl std::fmt::Debug for GroupAttributes {
 impl GroupAttributes {
     /// Merge a nested group's attributes with its parent's: middleware and
     /// constraints are merged, while names and prefixes are appended.
-    pub fn merge(new: &GroupAttributes, old: &GroupAttributes, prepend_existing_prefix: bool) -> Self {
+    pub fn merge(
+        new: &GroupAttributes,
+        old: &GroupAttributes,
+        prepend_existing_prefix: bool,
+    ) -> Self {
         let old_prefix = old.prefix.clone().unwrap_or_default();
         let prefix = match &new.prefix {
-            Some(prefix) if prepend_existing_prefix => {
-                Some(format!("{}/{}", old_prefix.trim_matches('/'), prefix.trim_matches('/')))
-            }
-            Some(prefix) => Some(format!("{}/{}", prefix.trim_matches('/'), old_prefix.trim_matches('/'))),
+            Some(prefix) if prepend_existing_prefix => Some(format!(
+                "{}/{}",
+                old_prefix.trim_matches('/'),
+                prefix.trim_matches('/')
+            )),
+            Some(prefix) => Some(format!(
+                "{}/{}",
+                prefix.trim_matches('/'),
+                old_prefix.trim_matches('/')
+            )),
             None => old.prefix.clone(),
         };
 
@@ -259,7 +273,12 @@ impl Router {
     }
 
     /// Register a route responding to the given verbs.
-    pub fn match_<H: Handler<T>, T: 'static>(&self, methods: &[&str], uri: &str, handler: H) -> RouteDefinition {
+    pub fn match_<H: Handler<T>, T: 'static>(
+        &self,
+        methods: &[&str],
+        uri: &str,
+        handler: H,
+    ) -> RouteDefinition {
         self.add_route(methods, uri, handler.into_action())
     }
 
@@ -275,7 +294,8 @@ impl Router {
         let methods: Vec<String> = methods.iter().map(|m| m.to_ascii_uppercase()).collect();
         let methods: Vec<&str> = methods.iter().map(String::as_str).collect();
         let uri = self.prefix_uri(uri);
-        let mut route = RouteDefinition::with_changes(&methods, &uri, action, self.inner.changes.clone());
+        let mut route =
+            RouteDefinition::with_changes(&methods, &uri, action, self.inner.changes.clone());
 
         let group = self.inner.group_stack.lock().unwrap().last().cloned();
         if let Some(group) = group {
@@ -284,9 +304,10 @@ impl Router {
                     state.name = Some(format!("{prefix}{}", state.name.take().unwrap_or_default()));
                 }
                 if let Some(prefix) = group.prefix.as_deref().map(|p| p.trim_matches('/'))
-                    && !prefix.is_empty() {
-                        state.prefix = Some(prefix.to_string());
-                    }
+                    && !prefix.is_empty()
+                {
+                    state.prefix = Some(prefix.to_string());
+                }
                 let mut middleware = group.middleware.clone();
                 middleware.append(&mut state.middleware);
                 state.middleware = middleware;
@@ -304,9 +325,10 @@ impl Router {
                 }
             });
             if let Some(domain) = &group.domain
-                && route.get_domain().is_none() {
-                    route = route.domain(domain);
-                }
+                && route.get_domain().is_none()
+            {
+                route = route.domain(domain);
+            }
         }
 
         let patterns = self.inner.patterns.read().unwrap().clone();
@@ -335,9 +357,13 @@ impl Router {
 
     /// Register the fallback route, run when no other route matches.
     pub fn fallback<H: Handler<T>, T: 'static>(&self, handler: H) -> RouteDefinition {
-        self.add_route(&["GET", "HEAD"], "{fallbackPlaceholder}", handler.into_action())
-            .where_("fallbackPlaceholder", ".*")
-            .fallback()
+        self.add_route(
+            &["GET", "HEAD"],
+            "{fallbackPlaceholder}",
+            handler.into_action(),
+        )
+        .where_("fallbackPlaceholder", ".*")
+        .fallback()
     }
 
     /// Register a route that redirects to another URI (`302`). Parameters
@@ -347,7 +373,12 @@ impl Router {
     }
 
     /// Register a redirect route with a specific status code.
-    pub fn redirect_with_status(&self, uri: &str, destination: &str, status: u16) -> RouteDefinition {
+    pub fn redirect_with_status(
+        &self,
+        uri: &str,
+        destination: &str,
+        status: u16,
+    ) -> RouteDefinition {
         let destination = destination.to_string();
         let handler: RouteHandler = Arc::new(move |request: Request| {
             let destination = destination.clone();
@@ -371,7 +402,13 @@ impl Router {
     }
 
     /// Register a view route with a specific status code.
-    pub fn view_with_status(&self, uri: &str, view: &str, data: Value, status: u16) -> RouteDefinition {
+    pub fn view_with_status(
+        &self,
+        uri: &str,
+        view: &str,
+        data: Value,
+        status: u16,
+    ) -> RouteDefinition {
         let renderer = self.inner.view_renderer.clone();
         let view = view.to_string();
         let handler: RouteHandler = Arc::new(move |request: Request| {
@@ -391,24 +428,37 @@ impl Router {
                     data.insert(key, Value::String(value));
                 }
                 Ok(match renderer(&view, Value::Object(data)) {
-                    Ok(response) => response.with_status(status),
+                    Ok(response) if status != 200 => response.with_status(status),
+                    Ok(response) => response,
                     Err(error) => render_exception(error),
                 })
             })
         });
-        self.add_route(&["GET", "HEAD"], uri, RouteAction::new("ViewController", handler))
+        self.add_route(
+            &["GET", "HEAD"],
+            uri,
+            RouteAction::new("ViewController", handler),
+        )
     }
 
     /// Register a resource controller (`index`, `create`, `store`, `show`,
     /// `edit`, `update` and `destroy` routes). The routes are registered
     /// when the returned registration is dropped, after any options have
     /// been chained onto it.
-    pub fn resource<C: ResourceController>(&self, name: &str, controller: C) -> PendingResourceRegistration {
+    pub fn resource<C: ResourceController>(
+        &self,
+        name: &str,
+        controller: C,
+    ) -> PendingResourceRegistration {
         PendingResourceRegistration::new(self.clone(), name, Arc::new(controller), false)
     }
 
     /// Register an API resource controller (no `create` or `edit` routes).
-    pub fn api_resource<C: ResourceController>(&self, name: &str, controller: C) -> PendingResourceRegistration {
+    pub fn api_resource<C: ResourceController>(
+        &self,
+        name: &str,
+        controller: C,
+    ) -> PendingResourceRegistration {
         PendingResourceRegistration::new(self.clone(), name, Arc::new(controller), true)
     }
 
@@ -427,7 +477,11 @@ impl Router {
     }
 
     /// Register a singleton resource controller (`show`, `edit` and `update`).
-    pub fn singleton<C: ResourceController>(&self, name: &str, controller: C) -> PendingSingletonResourceRegistration {
+    pub fn singleton<C: ResourceController>(
+        &self,
+        name: &str,
+        controller: C,
+    ) -> PendingSingletonResourceRegistration {
         PendingSingletonResourceRegistration::new(self.clone(), name, Arc::new(controller), false)
     }
 
@@ -648,7 +702,12 @@ impl Router {
             .read()
             .unwrap()
             .iter()
-            .map(|(name, list)| (name.clone(), list.iter().map(|m| m.name().to_string()).collect()))
+            .map(|(name, list)| {
+                (
+                    name.clone(),
+                    list.iter().map(|m| m.name().to_string()).collect(),
+                )
+            })
             .collect()
     }
 
@@ -689,7 +748,11 @@ impl Router {
 
         let filtered: Vec<RouteMiddleware> = expanded
             .into_iter()
-            .filter(|candidate| !exclusions.iter().any(|excluded| excluded.excludes(candidate)))
+            .filter(|candidate| {
+                !exclusions
+                    .iter()
+                    .any(|excluded| excluded.excludes(candidate))
+            })
             .collect();
 
         let priority = self.inner.priority.read().unwrap().clone();
@@ -706,15 +769,25 @@ impl Router {
     }
 
     /// Resolve a route's middleware into instances, ready to run.
-    pub fn gather_route_middleware(&self, route: &RouteDefinition) -> Result<Vec<Arc<dyn Middleware>>> {
-        let resolved = self.resolve_middleware(&route.get_middleware(), &route.excluded_middleware())?;
+    pub fn gather_route_middleware(
+        &self,
+        route: &RouteDefinition,
+    ) -> Result<Vec<Arc<dyn Middleware>>> {
+        let resolved =
+            self.resolve_middleware(&route.get_middleware(), &route.excluded_middleware())?;
         let resolved = unique_middleware(resolved);
-        resolved.iter().map(|entry| self.resolve_middleware_instance(entry)).collect()
+        resolved
+            .iter()
+            .map(|entry| self.resolve_middleware_instance(entry))
+            .collect()
     }
 
     /// Build the middleware instance for a name (via its alias) or return
     /// the instance itself.
-    pub fn resolve_middleware_instance(&self, middleware: &RouteMiddleware) -> Result<Arc<dyn Middleware>> {
+    pub fn resolve_middleware_instance(
+        &self,
+        middleware: &RouteMiddleware,
+    ) -> Result<Arc<dyn Middleware>> {
         match middleware {
             RouteMiddleware::Instance { middleware, .. } => Ok(middleware.clone()),
             RouteMiddleware::Name(name) => {
@@ -745,17 +818,23 @@ impl Router {
     /// Teach the router which extraction errors mean "model not found",
     /// so routes' `missing` handlers run for them (a `404` `HttpException`
     /// always counts).
-    pub fn set_missing_model_detector(&self, detector: impl Fn(&Error) -> bool + Send + Sync + 'static) {
+    pub fn set_missing_model_detector(
+        &self,
+        detector: impl Fn(&Error) -> bool + Send + Sync + 'static,
+    ) {
         *self.inner.missing_detector.write().unwrap() = Some(Arc::new(detector));
     }
 
     /// Determine if the error means a bound model could not be found.
     pub fn is_missing_model_error(&self, error: &Error) -> bool {
         if let Some(detector) = self.inner.missing_detector.read().unwrap().clone()
-            && detector(error) {
-                return true;
-            }
-        error.downcast_ref::<HttpException>().is_some_and(|e| e.status == 404)
+            && detector(error)
+        {
+            return true;
+        }
+        error
+            .downcast_ref::<HttpException>()
+            .is_some_and(|e| e.status == 404)
     }
 
     /// Register a callback to run whenever a route is matched.
@@ -778,7 +857,10 @@ impl Router {
     }
 
     /// Set global resource parameter names (`"users" => "admin_user"`).
-    pub fn resource_parameters<'a>(&self, parameters: impl IntoIterator<Item = (&'a str, &'a str)>) {
+    pub fn resource_parameters<'a>(
+        &self,
+        parameters: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) {
         *self.inner.resource_parameters.write().unwrap() = parameters
             .into_iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -797,7 +879,9 @@ impl Router {
     }
 
     pub(crate) fn uses_singular_resource_parameters(&self) -> bool {
-        self.inner.singular_resource_parameters.load(Ordering::SeqCst)
+        self.inner
+            .singular_resource_parameters
+            .load(Ordering::SeqCst)
     }
 
     // ------------------------------------------------------------------
@@ -841,9 +925,10 @@ impl Router {
     pub fn get_by_name(&self, name: &str) -> Option<RouteDefinition> {
         let version = self.inner.changes.load(Ordering::SeqCst);
         if let Some((cached, names)) = self.inner.names.read().unwrap().as_ref()
-            && *cached == version {
-                return names.get(name).cloned();
-            }
+            && *cached == version
+        {
+            return names.get(name).cloned();
+        }
         let mut names = HashMap::new();
         for route in self.inner.routes.read().unwrap().iter() {
             if let Some(route_name) = route.get_name() {
@@ -857,7 +942,9 @@ impl Router {
 
     /// Find the first route using the given action (`"UserController@show"`).
     pub fn get_by_action(&self, action: &str) -> Option<RouteDefinition> {
-        self.get_routes().into_iter().find(|route| route.action_name() == action)
+        self.get_routes()
+            .into_iter()
+            .find(|route| route.action_name() == action)
     }
 
     /// Determine if a route with the given name exists.
@@ -882,7 +969,10 @@ impl Router {
     /// answered automatically. Errors are rendered by the exception handler.
     pub async fn dispatch(&self, request: Request) -> Response {
         let router = self.clone();
-        with_request(request.clone(), async move { router.dispatch_to_route(request).await }).await
+        with_request(request.clone(), async move {
+            router.dispatch_to_route(request).await
+        })
+        .await
     }
 
     async fn dispatch_to_route(&self, request: Request) -> Response {
@@ -902,7 +992,10 @@ impl Router {
     }
 
     /// Find the route matching the request, with its parameters.
-    pub fn find_route(&self, request: &Request) -> Result<(RouteDefinition, IndexMap<String, String>)> {
+    pub fn find_route(
+        &self,
+        request: &Request,
+    ) -> Result<(RouteDefinition, IndexMap<String, String>)> {
         let method = request.method().as_str().to_ascii_uppercase();
         let path = crate::compiled::normalize_path(&request.decoded_path());
         let host = request.host();
@@ -914,8 +1007,11 @@ impl Router {
 
         let mut others = Vec::new();
         for verb in VERBS.iter().filter(|verb| **verb != method) {
-            let candidates: Vec<RouteDefinition> =
-                routes.iter().filter(|route| route.has_method(verb)).cloned().collect();
+            let candidates: Vec<RouteDefinition> = routes
+                .iter()
+                .filter(|route| route.has_method(verb))
+                .cloned()
+                .collect();
             if match_against(&candidates, verb, &path, &host, false)?.is_some() {
                 others.push(verb.to_string());
             }
@@ -932,7 +1028,11 @@ impl Router {
                 let allow = allow.clone();
                 Box::pin(async move { Ok(Response::new("").with_header("Allow", &allow)) })
             });
-            let route = RouteDefinition::new(&["OPTIONS"], &request.path(), RouteAction::new("Closure", handler));
+            let route = RouteDefinition::new(
+                &["OPTIONS"],
+                &request.path(),
+                RouteAction::new("Closure", handler),
+            );
             return Ok((route, IndexMap::new()));
         }
 
@@ -1046,7 +1146,10 @@ fn expand(
     match entry {
         RouteMiddleware::Name(name) if groups.contains_key(name) => {
             if stack.contains(name) {
-                return Err(RecursiveMiddlewareGroupException { group: name.clone() }.into());
+                return Err(RecursiveMiddlewareGroupException {
+                    group: name.clone(),
+                }
+                .into());
             }
             stack.push(name.clone());
             for member in &groups[name] {
@@ -1059,31 +1162,45 @@ fn expand(
     Ok(())
 }
 
+static DESTINATION_PLACEHOLDER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{(\w+)(\??)\}").expect("valid regex"));
+
 /// Fill the `{parameters}` of a redirect destination from the request's
 /// route parameters.
 fn fill_destination(destination: &str, request: &Request) -> Result<String> {
     let parameters = request.route_parameters();
-    let placeholder = Regex::new(r"\{(\w+)(\??)\}").expect("valid regex");
     let mut missing = Vec::new();
-    let filled = placeholder.replace_all(destination, |captures: &regex::Captures<'_>| {
-        match parameters.get(&captures[1]) {
-            Some(value) => crate::url::raw_url_encode(value),
-            None if &captures[2] == "?" => String::new(),
-            None => {
-                missing.push(captures[1].to_string());
-                captures[0].to_string()
+    let filled =
+        DESTINATION_PLACEHOLDER.replace_all(destination, |captures: &regex::Captures<'_>| {
+            match parameters.get(&captures[1]) {
+                Some(value) => crate::url::raw_url_encode(value),
+                None if &captures[2] == "?" => String::new(),
+                None => {
+                    missing.push(captures[1].to_string());
+                    captures[0].to_string()
+                }
             }
-        }
-    });
+        });
     if !missing.is_empty() {
-        return Err(UrlGenerationException::for_missing_parameters(None, destination, &missing).into());
+        return Err(
+            UrlGenerationException::for_missing_parameters(None, destination, &missing).into(),
+        );
     }
-    let filled = filled.replace("//", "/").replace(":/", "://");
-    if filled.len() > 1 && filled.ends_with('/') && destination.starts_with('/') {
-        return Ok(filled.trim_end_matches('/').to_string());
+    // Optional parameters left out leave empty segments behind; collapse
+    // them (without touching the `scheme://` of absolute destinations).
+    let (scheme, rest) = match filled.split_once("://") {
+        Some((scheme, rest)) => (format!("{scheme}://"), rest.to_string()),
+        None => (String::new(), filled.into_owned()),
+    };
+    let mut rest = REPEATED_SLASHES.replace_all(&rest, "/").into_owned();
+    if rest.len() > 1 && rest.ends_with('/') && destination.starts_with('/') {
+        rest = rest.trim_end_matches('/').to_string();
     }
-    Ok(filled)
+    Ok(format!("{scheme}{rest}"))
 }
+
+static REPEATED_SLASHES: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("/{2,}").expect("valid regex"));
 
 /// Get the router from the container, registering one if the application
 /// hasn't bound it yet.
@@ -1106,7 +1223,9 @@ mod tests {
             prefix: Some("admin".into()),
             name: Some("admin.".into()),
             middleware: vec![RouteMiddleware::named("auth")],
-            wheres: [("id".to_string(), "[0-9]+".to_string())].into_iter().collect(),
+            wheres: [("id".to_string(), "[0-9]+".to_string())]
+                .into_iter()
+                .collect(),
             ..Default::default()
         };
         let inner = GroupAttributes {
@@ -1126,9 +1245,22 @@ mod tests {
     fn redirect_destinations_are_filled_from_parameters() {
         let request = Request::create("/here/5", "GET");
         request.set_route_parameter("id", "5");
-        assert_eq!(fill_destination("/there/{id}", &request).unwrap(), "/there/5");
-        assert_eq!(fill_destination("/there/{id}/{tab?}", &request).unwrap(), "/there/5");
-        assert_eq!(fill_destination("https://laravel.com", &request).unwrap(), "https://laravel.com");
+        assert_eq!(
+            fill_destination("/there/{id}", &request).unwrap(),
+            "/there/5"
+        );
+        assert_eq!(
+            fill_destination("/there/{id}/{tab?}", &request).unwrap(),
+            "/there/5"
+        );
+        assert_eq!(
+            fill_destination("https://laravel.com", &request).unwrap(),
+            "https://laravel.com"
+        );
+        assert_eq!(
+            fill_destination("https://laravel.com/{tab?}/{id}", &request).unwrap(),
+            "https://laravel.com/5"
+        );
         assert!(fill_destination("/there/{user}", &request).is_err());
     }
 }

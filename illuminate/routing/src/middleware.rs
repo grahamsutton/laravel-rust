@@ -100,13 +100,12 @@ impl RouteMiddleware {
     /// parameters (`without_middleware("throttle")` removes
     /// `"throttle:60,1"`). Instances match by identity, or by type name.
     pub(crate) fn excludes(&self, candidate: &RouteMiddleware) -> bool {
-        if let (
-            Self::Instance { middleware: a, .. },
-            Self::Instance { middleware: b, .. },
-        ) = (self, candidate)
-            && same_instance(a, b) {
-                return true;
-            }
+        if let (Self::Instance { middleware: a, .. }, Self::Instance { middleware: b, .. }) =
+            (self, candidate)
+            && same_instance(a, b)
+        {
+            return true;
+        }
         if self.is_instance() && self.name() == "Closure" {
             return false;
         }
@@ -202,13 +201,17 @@ impl IntoMiddleware for () {
 
 impl<T: IntoMiddleware> IntoMiddleware for Vec<T> {
     fn into_middleware(self) -> Vec<RouteMiddleware> {
-        self.into_iter().flat_map(IntoMiddleware::into_middleware).collect()
+        self.into_iter()
+            .flat_map(IntoMiddleware::into_middleware)
+            .collect()
     }
 }
 
 impl<T: IntoMiddleware, const N: usize> IntoMiddleware for [T; N] {
     fn into_middleware(self) -> Vec<RouteMiddleware> {
-        self.into_iter().flat_map(IntoMiddleware::into_middleware).collect()
+        self.into_iter()
+            .flat_map(IntoMiddleware::into_middleware)
+            .collect()
     }
 }
 
@@ -247,7 +250,10 @@ tuple_middleware!(A, B, C, D, E, F, G, H);
 /// Sort middleware by the router's priority list, keeping the relative order
 /// of everything else (a port of Laravel's `SortedMiddleware`), then remove
 /// duplicates.
-pub(crate) fn sort_middleware(priority: &[String], middleware: Vec<RouteMiddleware>) -> Vec<RouteMiddleware> {
+pub(crate) fn sort_middleware(
+    priority: &[String],
+    middleware: Vec<RouteMiddleware>,
+) -> Vec<RouteMiddleware> {
     let mut middleware = middleware;
 
     if !priority.is_empty() {
@@ -258,11 +264,12 @@ pub(crate) fn sort_middleware(priority: &[String], middleware: Vec<RouteMiddlewa
                     continue;
                 };
                 if let Some((last_index, last_priority)) = last
-                    && priority_index < last_priority {
-                        let item = middleware.remove(index);
-                        middleware.insert(last_index, item);
-                        continue 'restart;
-                    }
+                    && priority_index < last_priority
+                {
+                    let item = middleware.remove(index);
+                    middleware.insert(last_index, item);
+                    continue 'restart;
+                }
                 last = Some((index, priority_index));
             }
             break;
@@ -298,7 +305,9 @@ pub struct RouteMiddlewareStack(pub Vec<Arc<dyn Middleware>>);
 
 impl std::fmt::Debug for RouteMiddlewareStack {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_tuple("RouteMiddlewareStack").field(&self.0.len()).finish()
+        f.debug_tuple("RouteMiddlewareStack")
+            .field(&self.0.len())
+            .finish()
     }
 }
 
@@ -337,7 +346,11 @@ impl ValidateSignature {
     /// Build the middleware from route middleware parameters.
     pub fn from_parameters(parameters: &[String]) -> Self {
         let relative = parameters.first().is_some_and(|p| p == "relative");
-        let ignore = parameters.iter().skip(usize::from(relative)).cloned().collect();
+        let ignore = parameters
+            .iter()
+            .skip(usize::from(relative))
+            .cloned()
+            .collect();
         Self { relative, ignore }
     }
 
@@ -370,10 +383,16 @@ mod tests {
     #[test]
     fn many_shapes_convert_into_middleware() {
         assert_eq!(names(&"auth".into_middleware()), vec!["auth"]);
-        assert_eq!(names(&["auth", "verified"].into_middleware()), vec!["auth", "verified"]);
+        assert_eq!(
+            names(&["auth", "verified"].into_middleware()),
+            vec!["auth", "verified"]
+        );
         assert_eq!(names(&vec!["a".to_string()].into_middleware()), vec!["a"]);
         let inline = middleware_fn(|request, next| async move { Ok(next.run(request).await) });
-        assert_eq!(names(&("web", inline).into_middleware()), vec!["web", "Closure"]);
+        assert_eq!(
+            names(&("web", inline).into_middleware()),
+            vec!["web", "Closure"]
+        );
         assert!(().into_middleware().is_empty());
     }
 
@@ -413,7 +432,10 @@ mod tests {
                 RouteMiddleware::named("log"),
             ],
         );
-        assert_eq!(names(&sorted), vec!["log", "session", "auth", "can:update,post"]);
+        assert_eq!(
+            names(&sorted),
+            vec!["log", "session", "auth", "can:update,post"]
+        );
     }
 
     #[test]

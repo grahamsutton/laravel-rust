@@ -67,7 +67,11 @@ impl Redirect {
     }
 
     /// Redirect to a named route with a specific status code.
-    pub fn route_with_status<'a>(name: &str, parameters: impl IntoRouteParameters<'a>, status: u16) -> Response {
+    pub fn route_with_status<'a>(
+        name: &str,
+        parameters: impl IntoRouteParameters<'a>,
+        status: u16,
+    ) -> Response {
         redirect_or_render(url_generator().route(name, parameters), status)
     }
 
@@ -82,7 +86,10 @@ impl Redirect {
         expiration: impl Expiration,
         parameters: impl IntoRouteParameters<'a>,
     ) -> Response {
-        redirect_or_render(url_generator().temporary_signed_route(name, expiration, parameters), 302)
+        redirect_or_render(
+            url_generator().temporary_signed_route(name, expiration, parameters),
+            302,
+        )
     }
 
     /// Redirect back to the previous location: the `Referer`, or the

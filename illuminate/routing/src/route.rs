@@ -1,7 +1,7 @@
 //! Routes: the URI, verbs, handler and attributes registered with the router.
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, LazyLock, RwLock};
 
 use indexmap::IndexMap;
 use regex::Regex;
@@ -41,7 +41,9 @@ impl RouteAction {
 
 impl std::fmt::Debug for RouteAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("RouteAction").field("name", &self.name).finish()
+        f.debug_struct("RouteAction")
+            .field("name", &self.name)
+            .finish()
     }
 }
 
@@ -229,7 +231,9 @@ impl RouteDefinition {
     /// Constrain a parameter with a regular expression.
     pub fn where_(self, parameter: &str, expression: &str) -> Self {
         self.update(|state| {
-            state.wheres.insert(parameter.to_string(), expression.to_string());
+            state
+                .wheres
+                .insert(parameter.to_string(), expression.to_string());
         });
         self
     }
@@ -300,13 +304,21 @@ impl RouteDefinition {
             let new_prefix = format!(
                 "{}/{}",
                 prefix.trim_end_matches('/'),
-                state.prefix.as_deref().unwrap_or_default().trim_start_matches('/')
+                state
+                    .prefix
+                    .as_deref()
+                    .unwrap_or_default()
+                    .trim_start_matches('/')
             );
             let new_prefix = new_prefix.trim_matches('/');
             if !new_prefix.is_empty() {
                 state.prefix = Some(new_prefix.to_string());
             }
-            let uri = format!("{}/{}", prefix.trim_end_matches('/'), state.uri.trim_start_matches('/'));
+            let uri = format!(
+                "{}/{}",
+                prefix.trim_end_matches('/'),
+                state.uri.trim_start_matches('/')
+            );
             let (uri, fields) = parse_uri(&uri);
             state.uri = normalize_uri(&uri);
             state.binding_fields.extend(fields);
@@ -366,7 +378,10 @@ impl RouteDefinition {
 
     /// Determine if the route responds to the given verb.
     pub fn has_method(&self, method: &str) -> bool {
-        self.state().methods.iter().any(|m| m.eq_ignore_ascii_case(method))
+        self.state()
+            .methods
+            .iter()
+            .any(|m| m.eq_ignore_ascii_case(method))
     }
 
     /// The route's name.
@@ -474,8 +489,12 @@ impl RouteDefinition {
     /// The names of the route's parameters (domain first, then the URI).
     pub fn parameter_names(&self) -> Vec<String> {
         let state = self.state();
-        let source = format!("{}{}", state.domain.as_deref().unwrap_or_default(), state.uri);
-        parameter_regex()
+        let source = format!(
+            "{}{}",
+            state.domain.as_deref().unwrap_or_default(),
+            state.uri
+        );
+        PARAMETER
             .captures_iter(&source)
             .map(|c| c[1].trim_end_matches('?').to_string())
             .collect()
@@ -512,7 +531,12 @@ impl RouteDefinition {
         including_method: bool,
     ) -> Result<Option<IndexMap<String, String>>, InvalidRouteException> {
         let path = crate::compiled::normalize_path(&request.decoded_path());
-        self.matches_parts(request.method().as_ref(), &path, &request.host(), including_method)
+        self.matches_parts(
+            request.method().as_ref(),
+            &path,
+            &request.host(),
+            including_method,
+        )
     }
 
     pub(crate) fn matches_parts(
@@ -531,19 +555,25 @@ impl RouteDefinition {
         }
         let mut parameters = compiled.bind(path, host).unwrap_or_default();
         for (key, value) in self.state().defaults.iter() {
-            parameters.entry(key.clone()).or_insert_with(|| value.clone());
+            parameters
+                .entry(key.clone())
+                .or_insert_with(|| value.clone());
         }
         Ok(Some(parameters))
     }
 }
 
-fn parameter_regex() -> Regex {
-    Regex::new(r"\{(\w+\??)\}").expect("valid parameter regex")
-}
+static PARAMETER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{(\w+\??)\}").expect("valid parameter regex"));
+
+static OPTIONAL_PARAMETER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{(\w+?)\?\}").expect("valid optional regex"));
+
+static BINDING_FIELD: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{([\w:]+?)(\??)\}").expect("valid binding regex"));
 
 fn optional_parameters(uri: &str) -> Vec<String> {
-    Regex::new(r"\{(\w+?)\?\}")
-        .expect("valid optional regex")
+    OPTIONAL_PARAMETER
         .captures_iter(uri)
         .map(|c| c[1].to_string())
         .collect()
@@ -562,9 +592,8 @@ pub(crate) fn normalize_uri(uri: &str) -> String {
 /// Strip custom binding fields from a URI (`{post:slug}` → `{post}`),
 /// returning them alongside the cleaned URI.
 pub(crate) fn parse_uri(uri: &str) -> (String, IndexMap<String, String>) {
-    let regex = Regex::new(r"\{([\w:]+?)(\??)\}").expect("valid binding regex");
     let mut fields = IndexMap::new();
-    let cleaned = regex.replace_all(uri, |captures: &regex::Captures<'_>| {
+    let cleaned = BINDING_FIELD.replace_all(uri, |captures: &regex::Captures<'_>| {
         let inner = &captures[1];
         let optional = &captures[2];
         match inner.split_once(':') {
@@ -696,7 +725,9 @@ mod tests {
 
     #[test]
     fn names_are_appended() {
-        let route = RouteDefinition::new(&["GET"], "users", action()).name("admin.").name("users");
+        let route = RouteDefinition::new(&["GET"], "users", action())
+            .name("admin.")
+            .name("users");
         assert_eq!(route.get_name().as_deref(), Some("admin.users"));
         assert!(route.named(&["admin.*"]));
         assert!(!route.named(&["users.*"]));
@@ -720,7 +751,9 @@ mod tests {
 
     #[test]
     fn prefixes_are_prepended() {
-        let route = RouteDefinition::new(&["GET"], "users", action()).prefix("admin").prefix("api");
+        let route = RouteDefinition::new(&["GET"], "users", action())
+            .prefix("admin")
+            .prefix("api");
         assert_eq!(route.uri(), "api/admin/users");
         assert_eq!(route.get_prefix().as_deref(), Some("api/admin"));
     }
@@ -731,15 +764,33 @@ mod tests {
         let request = Request::create("/users/7/", "GET");
         let parameters = route.matches(&request, true).unwrap().unwrap();
         assert_eq!(parameters["id"], "7");
-        assert!(route.matches(&Request::create("/users/x", "GET"), true).unwrap().is_none());
-        assert!(route.matches(&Request::create("/users/7", "POST"), true).unwrap().is_none());
-        assert!(route.matches(&Request::create("/users/7", "POST"), false).unwrap().is_some());
+        assert!(
+            route
+                .matches(&Request::create("/users/x", "GET"), true)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            route
+                .matches(&Request::create("/users/7", "POST"), true)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            route
+                .matches(&Request::create("/users/7", "POST"), false)
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]
     fn defaults_fill_in_missing_parameters() {
         let route = RouteDefinition::new(&["GET"], "posts/{page?}", action()).defaults("page", "1");
-        let parameters = route.matches(&Request::create("/posts", "GET"), true).unwrap().unwrap();
+        let parameters = route
+            .matches(&Request::create("/posts", "GET"), true)
+            .unwrap()
+            .unwrap();
         assert_eq!(parameters["page"], "1");
     }
 
@@ -756,18 +807,35 @@ mod tests {
     fn where_in_escapes_values() {
         let route = RouteDefinition::new(&["GET"], "category/{category}", action())
             .where_in("category", &["movie", "song", "c++"]);
-        assert!(route.matches(&Request::create("/category/song", "GET"), true).unwrap().is_some());
-        assert!(route.matches(&Request::create("/category/c++", "GET"), true).unwrap().is_some());
-        assert!(route.matches(&Request::create("/category/book", "GET"), true).unwrap().is_none());
+        assert!(
+            route
+                .matches(&Request::create("/category/song", "GET"), true)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            route
+                .matches(&Request::create("/category/c++", "GET"), true)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            route
+                .matches(&Request::create("/category/book", "GET"), true)
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
     fn current_routes_know_parent_parameters() {
         let route = RouteDefinition::new(&["GET"], "users/{user}/posts/{post}", action());
-        let parameters: IndexMap<String, String> =
-            [("user".to_string(), "1".to_string()), ("post".to_string(), "2".to_string())]
-                .into_iter()
-                .collect();
+        let parameters: IndexMap<String, String> = [
+            ("user".to_string(), "1".to_string()),
+            ("post".to_string(), "2".to_string()),
+        ]
+        .into_iter()
+        .collect();
         let current = CurrentRoute::new(route, parameters);
         assert_eq!(current.parent_of_parameter("post"), Some(("user", "1")));
         assert_eq!(current.parent_of_parameter("user"), None);

@@ -6,7 +6,9 @@ use illuminate_support::Value;
 
 use crate::handler::Handler;
 use crate::middleware::IntoMiddleware;
-use crate::resource::{PendingResourceRegistration, PendingSingletonResourceRegistration, ResourceController};
+use crate::resource::{
+    PendingResourceRegistration, PendingSingletonResourceRegistration, ResourceController,
+};
 use crate::route::{RouteDefinition, patterns};
 use crate::router::{GroupAttributes, Router};
 
@@ -79,7 +81,9 @@ impl RouteRegistrar {
 
     /// Attach middleware to the group's routes.
     pub fn middleware(mut self, middleware: impl IntoMiddleware) -> Self {
-        self.attributes.middleware.extend(middleware.into_middleware());
+        self.attributes
+            .middleware
+            .extend(middleware.into_middleware());
         self
     }
 
@@ -166,8 +170,9 @@ impl RouteRegistrar {
 
     fn register(&self, callback: impl FnOnce(&Router) -> RouteDefinition) -> RouteDefinition {
         let mut route = None;
-        self.router
-            .group(self.attributes.clone(), || route = Some(callback(&self.router)));
+        self.router.group(self.attributes.clone(), || {
+            route = Some(callback(&self.router))
+        });
         route.expect("the route was registered inside the group")
     }
 
@@ -207,7 +212,12 @@ impl RouteRegistrar {
     }
 
     /// Register a route for the given verbs with the collected attributes.
-    pub fn match_<H: Handler<T>, T: 'static>(&self, methods: &[&str], uri: &str, handler: H) -> RouteDefinition {
+    pub fn match_<H: Handler<T>, T: 'static>(
+        &self,
+        methods: &[&str],
+        uri: &str,
+        handler: H,
+    ) -> RouteDefinition {
         self.register(|router| router.match_(methods, uri, handler))
     }
 
@@ -227,20 +237,37 @@ impl RouteRegistrar {
     }
 
     /// Register a resource controller with the collected attributes.
-    pub fn resource<C: ResourceController>(&self, name: &str, controller: C) -> PendingResourceRegistration {
+    pub fn resource<C: ResourceController>(
+        &self,
+        name: &str,
+        controller: C,
+    ) -> PendingResourceRegistration {
         PendingResourceRegistration::new(self.router.clone(), name, Arc::new(controller), false)
             .within(self.attributes.clone())
     }
 
     /// Register an API resource controller with the collected attributes.
-    pub fn api_resource<C: ResourceController>(&self, name: &str, controller: C) -> PendingResourceRegistration {
+    pub fn api_resource<C: ResourceController>(
+        &self,
+        name: &str,
+        controller: C,
+    ) -> PendingResourceRegistration {
         PendingResourceRegistration::new(self.router.clone(), name, Arc::new(controller), true)
             .within(self.attributes.clone())
     }
 
     /// Register a singleton resource controller with the collected attributes.
-    pub fn singleton<C: ResourceController>(&self, name: &str, controller: C) -> PendingSingletonResourceRegistration {
-        PendingSingletonResourceRegistration::new(self.router.clone(), name, Arc::new(controller), false)
-            .within(self.attributes.clone())
+    pub fn singleton<C: ResourceController>(
+        &self,
+        name: &str,
+        controller: C,
+    ) -> PendingSingletonResourceRegistration {
+        PendingSingletonResourceRegistration::new(
+            self.router.clone(),
+            name,
+            Arc::new(controller),
+            false,
+        )
+        .within(self.attributes.clone())
     }
 }

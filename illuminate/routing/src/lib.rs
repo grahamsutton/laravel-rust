@@ -57,6 +57,7 @@ pub mod params;
 pub mod provider;
 pub mod redirect;
 pub mod registrar;
+pub mod request_ext;
 pub mod resource;
 pub mod route;
 pub mod router;
@@ -71,14 +72,23 @@ pub use extract::{FromRequest, Inject, Input, Path, Query};
 pub use facade::Route;
 pub use handler::Handler;
 pub use helpers::{asset, route, secure_asset, secure_url, url};
-pub use middleware::{IntoMiddleware, MiddlewareFactory, RouteMiddleware, RouteMiddlewareStack, ValidateSignature};
-pub use params::{IntoRouteParameter, IntoRouteParameters, RouteParameter, RouteParameters, UrlRoutable};
+pub use middleware::{
+    IntoMiddleware, MiddlewareFactory, RouteMiddleware, RouteMiddlewareStack, ValidateSignature,
+};
+pub use params::{
+    IntoRouteParameter, IntoRouteParameters, RouteParameter, RouteParameters, UrlRoutable,
+};
 pub use provider::RoutingServiceProvider;
 pub use redirect::{Redirect, back, redirect, redirect_to_route, to_route};
 pub use registrar::RouteRegistrar;
-pub use resource::{PendingResourceRegistration, PendingSingletonResourceRegistration, ResourceController};
+pub use request_ext::RoutingRequestExt;
+pub use resource::{
+    PendingResourceRegistration, PendingSingletonResourceRegistration, ResourceController,
+};
 pub use route::{CurrentRoute, RouteAction, RouteDefinition, RouteHandler, RouteListing};
-pub use router::{GroupAttributes, MatchedCallback, MissingModelDetector, Router, VERBS, ViewRenderer, router};
+pub use router::{
+    GroupAttributes, MatchedCallback, MissingModelDetector, Router, VERBS, ViewRenderer, router,
+};
 pub use url::{Expiration, KeyResolver, URL, UrlDefaults, UrlGenerator, url_generator};
 
 /// `Json<T>` is both a response and an extractor.
@@ -87,6 +97,19 @@ pub use illuminate_http::Json;
 /// Re-exported so implementors of [`FromRequest`] and [`ResourceController`]
 /// don't need their own dependency.
 pub use async_trait::async_trait;
+
+/// Everything you need to define routes and generate URLs.
+///
+/// ```
+/// use illuminate_routing::prelude::*;
+/// ```
+pub mod prelude {
+    pub use crate::{
+        FromRequest, Inject, Input, Json, Path, Query, Redirect, ResourceController, Route,
+        RoutingRequestExt, URL, UrlRoutable, asset, back, redirect, route, secure_asset,
+        secure_url, to_route, url,
+    };
+}
 
 #[cfg(test)]
 mod tests;

@@ -5,6 +5,8 @@
 //! with `where` replace that default, and trailing optional parameters
 //! (`{name?}`) may be left off entirely.
 
+use std::sync::LazyLock;
+
 use indexmap::IndexMap;
 use regex::Regex;
 
@@ -40,23 +42,25 @@ impl CompiledRoute {
         wheres: &IndexMap<String, String>,
         optional: &[String],
     ) -> Result<Self, InvalidRouteException> {
-        let optional_marker = Regex::new(r"\{(\w+)\?\}").expect("valid optional regex");
-        let uri = optional_marker.replace_all(uri, "{$1}");
+        let uri = OPTIONAL_MARKER.replace_all(uri, "{$1}");
         let path = format!("/{}", uri.trim_start_matches('/'));
-        let (regex, path_variables) = compile_pattern(&path, wheres, optional, false)
-            .map_err(|reason| InvalidRouteException {
-                uri: uri.to_string(),
-                reason,
+        let (regex, path_variables) =
+            compile_pattern(&path, wheres, optional, false).map_err(|reason| {
+                InvalidRouteException {
+                    uri: uri.to_string(),
+                    reason,
+                }
             })?;
 
         let (host_regex, host_variables) = match domain.filter(|d| !d.is_empty()) {
             Some(domain) => {
-                let (regex, variables) = compile_pattern(domain, wheres, &[], true).map_err(|reason| {
-                    InvalidRouteException {
-                        uri: domain.to_string(),
-                        reason,
-                    }
-                })?;
+                let (regex, variables) =
+                    compile_pattern(domain, wheres, &[], true).map_err(|reason| {
+                        InvalidRouteException {
+                            uri: domain.to_string(),
+                            reason,
+                        }
+                    })?;
                 (Some(regex), variables)
             }
             None => (None, Vec::new()),
@@ -97,7 +101,9 @@ impl CompiledRoute {
 
     /// Determine if the given host matches (always true without a domain).
     pub fn matches_host(&self, host: &str) -> bool {
-        self.host_regex.as_ref().is_none_or(|regex| regex.is_match(host))
+        self.host_regex
+            .as_ref()
+            .is_none_or(|regex| regex.is_match(host))
     }
 
     /// Match the path and host, returning the bound parameters: host
@@ -138,9 +144,11 @@ pub fn normalize_path(decoded_path: &str) -> String {
     }
 }
 
-fn variable_regex() -> Regex {
-    Regex::new(r"\{(\w+)\}").expect("valid variable regex")
-}
+static OPTIONAL_MARKER: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{(\w+)\?\}").expect("valid optional regex"));
+
+static VARIABLE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{(\w+)\}").expect("valid variable regex"));
 
 fn compile_pattern(
     pattern: &str,
@@ -149,7 +157,7 @@ fn compile_pattern(
     is_host: bool,
 ) -> Result<(Regex, Vec<String>), String> {
     let default_separator = if is_host { "." } else { "/" };
-    let variables = variable_regex();
+    let variables = &*VARIABLE;
 
     let mut tokens = Vec::new();
     let mut names: Vec<String> = Vec::new();
@@ -169,9 +177,10 @@ fn compile_pattern(
         position = whole.end();
 
         let (text, separator) = match preceding.chars().last() {
-            Some(last) if SEPARATORS.contains(last) => {
-                (&preceding[..preceding.len() - last.len_utf8()], last.to_string())
-            }
+            Some(last) if SEPARATORS.contains(last) => (
+                &preceding[..preceding.len() - last.len_utf8()],
+                last.to_string(),
+            ),
             _ => (preceding, String::new()),
         };
 
@@ -183,7 +192,7 @@ fn compile_pattern(
             Some(requirement) => strip_anchors(requirement),
             None => {
                 let following = &pattern[position..];
-                let next_separator = next_separator(following, &variables);
+                let next_separator = next_separator(following, variables);
                 let mut class = regex::escape(default_separator);
                 if !next_separator.is_empty() && next_separator != default_separator {
                     class.push_str(&regex::escape(&next_separator));
@@ -245,7 +254,11 @@ fn compile_pattern(
     }
     regex.push('$');
 
-    let regex = if is_host { format!("(?i){regex}") } else { regex };
+    let regex = if is_host {
+        format!("(?i){regex}")
+    } else {
+        regex
+    };
 
     Regex::new(&regex)
         .map(|compiled| (compiled, names))
@@ -370,11 +383,17 @@ mod tests {
         let error = CompiledRoute::compile(
             "users/{id}",
             None,
-            &[("id".to_string(), "[0-9".to_string())].into_iter().collect(),
+            &[("id".to_string(), "[0-9".to_string())]
+                .into_iter()
+                .collect(),
             &[],
         )
         .unwrap_err();
-        assert!(error.to_string().contains("Unable to compile the route [users/{id}]"));
+        assert!(
+            error
+                .to_string()
+                .contains("Unable to compile the route [users/{id}]")
+        );
     }
 
     #[test]

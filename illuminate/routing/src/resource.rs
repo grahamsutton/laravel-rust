@@ -90,7 +90,9 @@ pub trait ResourceController: Send + Sync + 'static {
     }
 }
 
-const RESOURCE_DEFAULTS: [&str; 7] = ["index", "create", "store", "show", "edit", "update", "destroy"];
+const RESOURCE_DEFAULTS: [&str; 7] = [
+    "index", "create", "store", "show", "edit", "update", "destroy",
+];
 const API_RESOURCE_METHODS: [&str; 5] = ["index", "show", "store", "update", "destroy"];
 const SINGLETON_DEFAULTS: [&str; 3] = ["show", "edit", "update"];
 const API_SINGLETON_METHODS: [&str; 4] = ["store", "show", "update", "destroy"];
@@ -125,10 +127,20 @@ struct Pending {
 }
 
 impl Pending {
-    fn new(router: Router, name: &str, controller: Arc<dyn ResourceController>, singleton: bool, api: bool) -> Self {
+    fn new(
+        router: Router,
+        name: &str,
+        controller: Arc<dyn ResourceController>,
+        singleton: bool,
+        api: bool,
+    ) -> Self {
         let mut options = ResourceOptions::default();
         if api {
-            let only: &[&str] = if singleton { &API_SINGLETON_METHODS } else { &API_RESOURCE_METHODS };
+            let only: &[&str] = if singleton {
+                &API_SINGLETON_METHODS
+            } else {
+                &API_RESOURCE_METHODS
+            };
             options.only = Some(only.iter().map(|m| m.to_string()).collect());
         }
         Self {
@@ -165,7 +177,8 @@ impl Pending {
                 prefix: Some(prefix.to_string()),
                 ..GroupAttributes::default()
             };
-            self.router.group(attributes, || routes = self.register_routes(last));
+            self.router
+                .group(attributes, || routes = self.register_routes(last));
             return routes;
         }
 
@@ -183,7 +196,12 @@ impl Pending {
 
         let methods: Vec<&str> = defaults
             .into_iter()
-            .filter(|m| self.options.only.as_ref().is_none_or(|only| only.iter().any(|o| o == m)))
+            .filter(|m| {
+                self.options
+                    .only
+                    .as_ref()
+                    .is_none_or(|only| only.iter().any(|o| o == m))
+            })
             .filter(|m| !self.options.except.iter().any(|e| e == m))
             .collect();
 
@@ -192,7 +210,9 @@ impl Pending {
 
         let mut routes = Vec::new();
         for method in methods.iter().copied() {
-            let shallow_name = if self.options.shallow && matches!(method, "show" | "edit" | "update" | "destroy") {
+            let shallow_name = if self.options.shallow
+                && matches!(method, "show" | "edit" | "update" | "destroy")
+            {
                 name.rsplit('.').next().unwrap_or(name).to_string()
             } else {
                 name.to_string()
@@ -221,12 +241,11 @@ impl Pending {
             };
 
             let route = self.router.add_route(verbs, &uri, self.action(method));
-            let route_name = self
-                .options
-                .names
-                .get(method)
-                .cloned()
-                .unwrap_or_else(|| format!("{shallow_name}.{method}").trim_matches('.').to_string());
+            let route_name = self.options.names.get(method).cloned().unwrap_or_else(|| {
+                format!("{shallow_name}.{method}")
+                    .trim_matches('.')
+                    .to_string()
+            });
             let route = route.name(&route_name);
 
             let mut middleware = self.options.middleware.clone();
@@ -348,19 +367,28 @@ macro_rules! pending_methods {
         /// Override route names per action (`[("create", "photos.build")]`).
         pub fn names<'a>(mut self, names: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
             for (method, name) in names {
-                self.pending.options.names.insert(method.to_string(), name.to_string());
+                self.pending
+                    .options
+                    .names
+                    .insert(method.to_string(), name.to_string());
             }
             self
         }
 
         /// Override the route name of a single action.
         pub fn name(mut self, method: &str, name: &str) -> Self {
-            self.pending.options.names.insert(method.to_string(), name.to_string());
+            self.pending
+                .options
+                .names
+                .insert(method.to_string(), name.to_string());
             self
         }
 
         /// Override route parameter names (`[("users", "admin_user")]`).
-        pub fn parameters<'a>(mut self, parameters: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
+        pub fn parameters<'a>(
+            mut self,
+            parameters: impl IntoIterator<Item = (&'a str, &'a str)>,
+        ) -> Self {
             for (resource, parameter) in parameters {
                 self.pending
                     .options
@@ -399,12 +427,19 @@ macro_rules! pending_methods {
 
         /// Remove middleware from every route of the resource.
         pub fn without_middleware(mut self, middleware: impl IntoMiddleware) -> Self {
-            self.pending.options.excluded.extend(middleware.into_middleware());
+            self.pending
+                .options
+                .excluded
+                .extend(middleware.into_middleware());
             self
         }
 
         /// Remove middleware from specific actions.
-        pub fn without_middleware_for(mut self, methods: &[&str], middleware: impl IntoMiddleware) -> Self {
+        pub fn without_middleware_for(
+            mut self,
+            methods: &[&str],
+            middleware: impl IntoMiddleware,
+        ) -> Self {
             let middleware = middleware.into_middleware();
             for method in methods {
                 self.pending
@@ -482,7 +517,12 @@ pub struct PendingResourceRegistration {
 }
 
 impl PendingResourceRegistration {
-    pub(crate) fn new(router: Router, name: &str, controller: Arc<dyn ResourceController>, api: bool) -> Self {
+    pub(crate) fn new(
+        router: Router,
+        name: &str,
+        controller: Arc<dyn ResourceController>,
+        api: bool,
+    ) -> Self {
         Self {
             pending: Pending::new(router, name, controller, false, api),
         }
@@ -511,7 +551,12 @@ pub struct PendingSingletonResourceRegistration {
 }
 
 impl PendingSingletonResourceRegistration {
-    pub(crate) fn new(router: Router, name: &str, controller: Arc<dyn ResourceController>, api: bool) -> Self {
+    pub(crate) fn new(
+        router: Router,
+        name: &str,
+        controller: Arc<dyn ResourceController>,
+        api: bool,
+    ) -> Self {
         Self {
             pending: Pending::new(router, name, controller, true, api),
         }

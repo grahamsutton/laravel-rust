@@ -90,7 +90,9 @@ pub fn from_value<T: DeserializeOwned>(value: Value) -> Result<T, DeError> {
 
 /// Deserialize route parameters (in order) into `T`: a single value, a
 /// tuple (positionally), or a struct / map (by name).
-pub fn from_parameters<T: DeserializeOwned>(parameters: Vec<(String, String)>) -> Result<T, DeError> {
+pub fn from_parameters<T: DeserializeOwned>(
+    parameters: Vec<(String, String)>,
+) -> Result<T, DeError> {
     T::deserialize(Parameters(parameters))
 }
 
@@ -137,9 +139,11 @@ fn parse_i64(value: &Value) -> Option<i64> {
 
 fn parse_u64(value: &Value) -> Option<u64> {
     match value {
-        Value::Number(n) => n
-            .as_u64()
-            .or_else(|| n.as_f64().filter(|f| f.fract() == 0.0 && *f >= 0.0).map(|f| f as u64)),
+        Value::Number(n) => n.as_u64().or_else(|| {
+            n.as_f64()
+                .filter(|f| f.fract() == 0.0 && *f >= 0.0)
+                .map(|f| f as u64)
+        }),
         Value::String(s) => s.trim().parse().ok(),
         Value::Bool(b) => Some(u64::from(*b)),
         _ => None,
@@ -331,7 +335,11 @@ impl<'de> de::Deserializer<'de> for Lenient {
         }
     }
 
-    fn deserialize_tuple<V: Visitor<'de>>(self, _len: usize, visitor: V) -> Result<V::Value, DeError> {
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, DeError> {
         self.deserialize_seq(visitor)
     }
 
@@ -414,7 +422,10 @@ struct LenientSeq(std::vec::IntoIter<Value>);
 impl<'de> SeqAccess<'de> for LenientSeq {
     type Error = DeError;
 
-    fn next_element_seed<T: DeserializeSeed<'de>>(&mut self, seed: T) -> Result<Option<T::Value>, DeError> {
+    fn next_element_seed<T: DeserializeSeed<'de>>(
+        &mut self,
+        seed: T,
+    ) -> Result<Option<T::Value>, DeError> {
         match self.0.next() {
             Some(value) => seed.deserialize(Lenient(value)).map(Some),
             None => Ok(None),
@@ -443,7 +454,10 @@ impl LenientMap {
 impl<'de> MapAccess<'de> for LenientMap {
     type Error = DeError;
 
-    fn next_key_seed<K: DeserializeSeed<'de>>(&mut self, seed: K) -> Result<Option<K::Value>, DeError> {
+    fn next_key_seed<K: DeserializeSeed<'de>>(
+        &mut self,
+        seed: K,
+    ) -> Result<Option<K::Value>, DeError> {
         match self.entries.next() {
             Some((key, value)) => {
                 self.value = Some(value);
@@ -472,7 +486,10 @@ impl<'de> EnumAccess<'de> for LenientEnum {
     type Error = DeError;
     type Variant = LenientVariant;
 
-    fn variant_seed<V: DeserializeSeed<'de>>(self, seed: V) -> Result<(V::Value, LenientVariant), DeError> {
+    fn variant_seed<V: DeserializeSeed<'de>>(
+        self,
+        seed: V,
+    ) -> Result<(V::Value, LenientVariant), DeError> {
         let variant = seed.deserialize(self.variant.into_deserializer())?;
         Ok((variant, LenientVariant(self.value)))
     }
@@ -510,7 +527,9 @@ struct Parameters(Vec<(String, String)>);
 impl Parameters {
     fn single(self) -> Result<Lenient, DeError> {
         match self.0.len() {
-            1 => Ok(Lenient(Value::String(self.0.into_iter().next().expect("one").1))),
+            1 => Ok(Lenient(Value::String(
+                self.0.into_iter().next().expect("one").1,
+            ))),
             0 => Err(DeError::shape("The route has no parameters to extract.")),
             count => Err(DeError::shape(format!(
                 "Expected 1 route parameter but the route has {count}. Extract a tuple or a struct instead."
@@ -520,7 +539,10 @@ impl Parameters {
 
     fn object(self) -> Lenient {
         Lenient(Value::Object(
-            self.0.into_iter().map(|(k, v)| (k, Value::String(v))).collect(),
+            self.0
+                .into_iter()
+                .map(|(k, v)| (k, Value::String(v)))
+                .collect(),
         ))
     }
 
@@ -606,7 +628,11 @@ impl<'de> de::Deserializer<'de> for Parameters {
         self.array().deserialize_seq(visitor)
     }
 
-    fn deserialize_tuple<V: Visitor<'de>>(self, len: usize, visitor: V) -> Result<V::Value, DeError> {
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, DeError> {
         if len != self.0.len() {
             return Err(DeError::shape(format!(
                 "Expected {len} route parameters but the route has {}.",
@@ -673,7 +699,10 @@ mod tests {
     }
 
     fn params(items: &[(&str, &str)]) -> Vec<(String, String)> {
-        items.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        items
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
@@ -711,14 +740,20 @@ mod tests {
 
     #[test]
     fn enums_deserialize_from_strings() {
-        assert_eq!(from_value::<Category>(json!("fruits")).unwrap(), Category::Fruits);
+        assert_eq!(
+            from_value::<Category>(json!("fruits")).unwrap(),
+            Category::Fruits
+        );
         assert!(from_value::<Category>(json!("cars")).is_err());
     }
 
     #[test]
     fn single_parameters_extract_values() {
         assert_eq!(from_parameters::<u64>(params(&[("id", "5")])).unwrap(), 5);
-        assert_eq!(from_parameters::<String>(params(&[("name", "taylor")])).unwrap(), "taylor");
+        assert_eq!(
+            from_parameters::<String>(params(&[("name", "taylor")])).unwrap(),
+            "taylor"
+        );
         assert_eq!(
             from_parameters::<Category>(params(&[("category", "people")])).unwrap(),
             Category::People
@@ -738,11 +773,18 @@ mod tests {
         );
         assert_eq!(
             from_parameters::<Params>(list.clone()).unwrap(),
-            Params { user: 1, slug: "hello".into() }
+            Params {
+                user: 1,
+                slug: "hello".into()
+            }
         );
         let map = from_parameters::<HashMap<String, String>>(list.clone()).unwrap();
         assert_eq!(map["slug"], "hello");
-        assert!(from_parameters::<(u64, String, u8)>(list).unwrap_err().is_shape_error());
+        assert!(
+            from_parameters::<(u64, String, u8)>(list)
+                .unwrap_err()
+                .is_shape_error()
+        );
     }
 
     #[test]

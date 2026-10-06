@@ -8,7 +8,9 @@ use illuminate_support::{Error, Value};
 use crate::handler::Handler;
 use crate::middleware::IntoMiddleware;
 use crate::registrar::RouteRegistrar;
-use crate::resource::{PendingResourceRegistration, PendingSingletonResourceRegistration, ResourceController};
+use crate::resource::{
+    PendingResourceRegistration, PendingSingletonResourceRegistration, ResourceController,
+};
 use crate::route::{CurrentRoute, RouteDefinition, RouteListing};
 use crate::router::{GroupAttributes, Router, ViewRenderer, router};
 
@@ -89,7 +91,11 @@ impl Route {
     }
 
     /// Register a route responding to the given verbs.
-    pub fn match_<H: Handler<T>, T: 'static>(methods: &[&str], uri: &str, handler: H) -> RouteDefinition {
+    pub fn match_<H: Handler<T>, T: 'static>(
+        methods: &[&str],
+        uri: &str,
+        handler: H,
+    ) -> RouteDefinition {
         router().match_(methods, uri, handler)
     }
 
@@ -124,12 +130,18 @@ impl Route {
     }
 
     /// Register a resource controller.
-    pub fn resource<C: ResourceController>(name: &str, controller: C) -> PendingResourceRegistration {
+    pub fn resource<C: ResourceController>(
+        name: &str,
+        controller: C,
+    ) -> PendingResourceRegistration {
         router().resource(name, controller)
     }
 
     /// Register an API resource controller (no `create` or `edit`).
-    pub fn api_resource<C: ResourceController>(name: &str, controller: C) -> PendingResourceRegistration {
+    pub fn api_resource<C: ResourceController>(
+        name: &str,
+        controller: C,
+    ) -> PendingResourceRegistration {
         router().api_resource(name, controller)
     }
 
@@ -144,12 +156,18 @@ impl Route {
     }
 
     /// Register a singleton resource controller.
-    pub fn singleton<C: ResourceController>(name: &str, controller: C) -> PendingSingletonResourceRegistration {
+    pub fn singleton<C: ResourceController>(
+        name: &str,
+        controller: C,
+    ) -> PendingSingletonResourceRegistration {
         router().singleton(name, controller)
     }
 
     /// Register an API singleton resource controller.
-    pub fn api_singleton<C: ResourceController>(name: &str, controller: C) -> PendingSingletonResourceRegistration {
+    pub fn api_singleton<C: ResourceController>(
+        name: &str,
+        controller: C,
+    ) -> PendingSingletonResourceRegistration {
         router().api_singleton(name, controller)
     }
 
