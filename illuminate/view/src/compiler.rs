@@ -106,7 +106,11 @@ impl BladeCompiler {
     /// evaluated arguments and returns the HTML to output (unescaped).
     ///
     /// Directive names may only contain letters, numbers and underscores.
-    pub fn directive(&self, name: &str, handler: impl Fn(&[ViewValue]) -> Result<String> + Send + Sync + 'static) {
+    pub fn directive(
+        &self,
+        name: &str,
+        handler: impl Fn(&[ViewValue]) -> Result<String> + Send + Sync + 'static,
+    ) {
         assert!(
             is_valid_directive_name(name),
             "The directive name [{name}] is not valid. Directive names must only contain alphanumeric characters and underscores."
@@ -120,7 +124,11 @@ impl BladeCompiler {
     /// Register a custom conditional: `@name(...)`, `@elsename(...)`,
     /// `@unlessname(...)` and `@endname`. (`if` is a Rust keyword, hence the
     /// trailing underscore.)
-    pub fn if_(&self, name: &str, condition: impl Fn(&[ViewValue]) -> bool + Send + Sync + 'static) {
+    pub fn if_(
+        &self,
+        name: &str,
+        condition: impl Fn(&[ViewValue]) -> bool + Send + Sync + 'static,
+    ) {
         assert!(
             is_valid_directive_name(name),
             "The directive name [{name}] is not valid. Directive names must only contain alphanumeric characters and underscores."
@@ -133,12 +141,19 @@ impl BladeCompiler {
 
     /// Check a custom conditional registered with [`BladeCompiler::if_`].
     pub fn check(&self, name: &str, args: &[ViewValue]) -> bool {
-        self.registry().conditions.get(name).is_some_and(|condition| condition(args))
+        self.registry()
+            .conditions
+            .get(name)
+            .is_some_and(|condition| condition(args))
     }
 
     /// Register a function callable from templates, or override a built-in
     /// one. Names like `"Route::has"` register static calls.
-    pub fn function(&self, name: &str, function: impl Fn(&[ViewValue]) -> Result<ViewValue> + Send + Sync + 'static) {
+    pub fn function(
+        &self,
+        name: &str,
+        function: impl Fn(&[ViewValue]) -> Result<ViewValue> + Send + Sync + 'static,
+    ) {
         self.function_arc(name, Arc::new(function));
     }
 
@@ -165,9 +180,11 @@ impl BladeCompiler {
         F: Fn(&mut ComponentArgs) -> Result<C> + Send + Sync + 'static,
     {
         let alias = alias.to_string();
-        let factory = Arc::new(move |args: &mut ComponentArgs| -> Result<Arc<dyn Component>> {
-            Ok(Arc::new(factory(args)?))
-        });
+        let factory = Arc::new(
+            move |args: &mut ComponentArgs| -> Result<Arc<dyn Component>> {
+                Ok(Arc::new(factory(args)?))
+            },
+        );
         self.update(false, move |r| {
             r.components.insert(alias, factory);
         });
@@ -176,18 +193,48 @@ impl BladeCompiler {
     /// Register a directory of anonymous components, optionally under a
     /// prefix (`<x-dashboard::panel />`).
     pub fn anonymous_component_path(&self, path: impl Into<PathBuf>, prefix: Option<&str>) {
-        let path = AnonymousComponentPath { path: path.into(), prefix: prefix.map(str::to_string) };
+        let path = AnonymousComponentPath {
+            path: path.into(),
+            prefix: prefix.map(str::to_string),
+        };
         self.update(false, move |r| r.anonymous_paths.push(path));
     }
 
     /// Register a view directory (in dot notation) holding anonymous
     /// components under a prefix: `anonymous_component_namespace("flights.components", "flights")`.
     pub fn anonymous_component_namespace(&self, directory: &str, prefix: &str) {
-        let directory = directory.replace('/', ".").trim_matches(['.', ' ']).to_string();
+        let directory = directory
+            .replace('/', ".")
+            .trim_matches(['.', ' '])
+            .to_string();
         let prefix = prefix.to_string();
         self.update(false, move |r| {
             r.anonymous_namespaces.insert(prefix, directory);
         });
+    }
+
+    /// Register a custom echo handler: how objects of type `T` are turned
+    /// into strings when echoed.
+    ///
+    /// ```
+    /// use illuminate_view::{Factory, ViewObject, ViewValue, data};
+    ///
+    /// struct Money(i64);
+    /// impl ViewObject for Money {}
+    ///
+    /// let factory = Factory::new(Vec::<String>::new());
+    /// factory.blade().stringable(|money: &Money| format!("${:.2}", money.0 as f64 / 100.0));
+    ///
+    /// let html = factory.render_inline("Cost: {{ $money }}", data([("money", ViewValue::object(Money(1999)))])).unwrap();
+    /// assert_eq!(html, "Cost: $19.99");
+    /// ```
+    pub fn stringable<T: crate::value::ViewObject>(
+        &self,
+        handler: impl Fn(&T) -> String + Send + Sync + 'static,
+    ) {
+        let handler: crate::registry::EchoHandler =
+            Arc::new(move |value: &ViewValue| value.downcast_ref::<T>().map(&handler));
+        self.update(false, move |r| r.echo_handlers.push(handler));
     }
 
     /// Stop double-encoding HTML entities in `{{ }}` echoes.
@@ -233,26 +280,37 @@ impl BladeCompiler {
     /// file has changed. Plain `.html` (and `.css`) files are served as-is.
     pub(crate) fn compile_file(&self, path: &Path) -> Result<Arc<Template>> {
         let metadata = std::fs::metadata(path).map_err(|e| {
-            crate::exception::InvalidArgumentException::new(format!("File does not exist at path {}: {e}", path.display()))
+            crate::exception::InvalidArgumentException::new(format!(
+                "File does not exist at path {}: {e}",
+                path.display()
+            ))
         })?;
         let modified = metadata.modified().ok();
         let len = metadata.len();
-        if let Some(cached) = self.inner.files.read().unwrap().get(path) {
-            if cached.modified == modified && cached.len == len && modified.is_some() {
-                return Ok(cached.template.clone());
-            }
+        if let Some(cached) = self.inner.files.read().unwrap().get(path)
+            && cached.modified == modified
+            && cached.len == len
+            && modified.is_some()
+        {
+            return Ok(cached.template.clone());
         }
         let source = std::fs::read_to_string(path)?;
         let template = if is_blade(path) {
             Arc::new(template::parse(&source, &self.registry())?)
         } else {
-            Arc::new(Template { nodes: vec![Node::Text(source)], extends: Vec::new() })
+            Arc::new(Template {
+                nodes: vec![Node::Text(source)],
+                extends: Vec::new(),
+            })
         };
-        self.inner
-            .files
-            .write()
-            .unwrap()
-            .insert(path.to_path_buf(), CachedTemplate { modified, len, template: template.clone() });
+        self.inner.files.write().unwrap().insert(
+            path.to_path_buf(),
+            CachedTemplate {
+                modified,
+                len,
+                template: template.clone(),
+            },
+        );
         Ok(template)
     }
 
@@ -265,12 +323,16 @@ impl BladeCompiler {
 
 fn is_valid_directive_name(name: &str) -> bool {
     let mut parts = name.splitn(2, "::");
-    let valid = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    let valid =
+        |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
     parts.next().is_some_and(valid) && parts.next().is_none_or(valid)
 }
 
 /// Determine if a file is a Blade template (rather than a plain file).
 pub(crate) fn is_blade(path: &Path) -> bool {
-    let name = path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy())
+        .unwrap_or_default();
     name.ends_with(".blade.html") || name.ends_with(".blade.php") || name.ends_with(".php")
 }

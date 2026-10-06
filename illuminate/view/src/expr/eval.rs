@@ -20,7 +20,9 @@ pub(crate) struct Scope {
 
 impl Scope {
     pub(crate) fn with_capacity(capacity: usize) -> Self {
-        Self { vars: HashMap::with_capacity(capacity) }
+        Self {
+            vars: HashMap::with_capacity(capacity),
+        }
     }
 
     pub(crate) fn get(&self, name: &str) -> Option<&ViewValue> {
@@ -115,7 +117,10 @@ impl<'a> Evaluator<'a> {
                 };
                 return Ok(Flow::Return(value));
             }
-            Stmt::If { branches, otherwise } => {
+            Stmt::If {
+                branches,
+                otherwise,
+            } => {
                 for (cond, body) in branches {
                     if self.eval(cond)?.truthy() {
                         return self.exec(body, out);
@@ -125,7 +130,12 @@ impl<'a> Evaluator<'a> {
                     return self.exec(body, out);
                 }
             }
-            Stmt::Foreach { iterable, key, value, body } => {
+            Stmt::Foreach {
+                iterable,
+                key,
+                value,
+                body,
+            } => {
                 let iterable = self.eval(iterable)?;
                 for (k, v) in iterate(&iterable)? {
                     if let Some(key) = key {
@@ -177,7 +187,11 @@ impl<'a> Evaluator<'a> {
                     None => Err(error(format!("Undefined constant {key}"))),
                 }
             }
-            Expr::Prop { target, name, nullsafe } => {
+            Expr::Prop {
+                target,
+                name,
+                nullsafe,
+            } => {
                 let target = self.eval(target)?;
                 if *nullsafe && target.is_null() {
                     return Ok(ViewValue::Null);
@@ -193,7 +207,12 @@ impl<'a> Evaluator<'a> {
                 let index = self.eval(index)?;
                 read_offset(&target, &index)
             }
-            Expr::MethodCall { target, name, args, nullsafe } => {
+            Expr::MethodCall {
+                target,
+                name,
+                args,
+                nullsafe,
+            } => {
                 let target = self.eval(target)?;
                 if *nullsafe && target.is_null() {
                     return Ok(ViewValue::Null);
@@ -203,9 +222,21 @@ impl<'a> Evaluator<'a> {
             }
             Expr::Call { name, args } => {
                 let args = self.eval_args(args)?;
-                call_function(name, &args, self.registry)
+                match &**name {
+                    "compact" => Ok(self.compact(&args)),
+                    "get_defined_vars" => Ok(ViewValue::map(
+                        self.scope
+                            .iter()
+                            .map(|(k, v)| (ArrayKey::new(k), v.clone())),
+                    )),
+                    _ => call_function(name, &args, self.registry),
+                }
             }
-            Expr::StaticCall { class, method, args } => {
+            Expr::StaticCall {
+                class,
+                method,
+                args,
+            } => {
                 let args = self.eval_args(args)?;
                 statics::call_static(class, method, &args, self.registry)
             }
@@ -222,7 +253,11 @@ impl<'a> Evaluator<'a> {
                 unary(*op, value)
             }
             Expr::Binary { op, left, right } => self.eval_binary(*op, left, right),
-            Expr::Ternary { cond, then, otherwise } => {
+            Expr::Ternary {
+                cond,
+                then,
+                otherwise,
+            } => {
                 let cond_value = self.eval(cond)?;
                 if cond_value.truthy() {
                     match then {
@@ -247,7 +282,11 @@ impl<'a> Evaluator<'a> {
                 Ok(ViewValue::Bool(!value.is_some_and(|v| v.truthy())))
             }
             Expr::Assign { target, op, value } => self.eval_assign(target, *op, value),
-            Expr::IncDec { target, increment, prefix } => {
+            Expr::IncDec {
+                target,
+                increment,
+                prefix,
+            } => {
                 let current = self.eval_quiet(target)?.unwrap_or_default();
                 let next = match &current {
                     ViewValue::Null if *increment => ViewValue::Int(1),
@@ -320,6 +359,24 @@ impl<'a> Evaluator<'a> {
         Ok(ViewValue::Array(Arc::new(array)))
     }
 
+    /// PHP's `compact()`: an array of the named variables.
+    fn compact(&self, names: &[ViewValue]) -> ViewValue {
+        let mut array = ViewArray::new();
+        for name in names {
+            let list: Vec<ViewValue> = match name {
+                ViewValue::Array(list) => list.values().cloned().collect(),
+                other => vec![other.clone()],
+            };
+            for name in list {
+                let name = name.to_string_lossy();
+                if let Some(value) = self.scope.get(&name) {
+                    array.set(&name, value.clone());
+                }
+            }
+        }
+        ViewValue::from(array)
+    }
+
     pub(crate) fn eval_args(&mut self, args: &[Arg]) -> Result<Vec<ViewValue>> {
         let mut values = Vec::with_capacity(args.len());
         for arg in args {
@@ -339,7 +396,9 @@ impl<'a> Evaluator<'a> {
         match expr {
             Expr::Var(name) => Ok(self.scope.get(name).cloned()),
             Expr::Prop { target, name, .. } => {
-                let Some(target) = self.eval_quiet(target)? else { return Ok(None) };
+                let Some(target) = self.eval_quiet(target)? else {
+                    return Ok(None);
+                };
                 let name = self.eval(name)?;
                 let name = php::to_str(&name)?;
                 Ok(match &target {
@@ -349,13 +408,20 @@ impl<'a> Evaluator<'a> {
                     other => read_property(other, &name).ok(),
                 })
             }
-            Expr::Index { target, index: Some(index) } => {
-                let Some(target) = self.eval_quiet(target)? else { return Ok(None) };
+            Expr::Index {
+                target,
+                index: Some(index),
+            } => {
+                let Some(target) = self.eval_quiet(target)? else {
+                    return Ok(None);
+                };
                 let index = self.eval(index)?;
                 Ok(match &target {
                     ViewValue::Array(array) => array.get_value(&index).cloned(),
                     ViewValue::Object(object) => object.offset_get(&index),
-                    ViewValue::Str(_) => read_offset(&target, &index).ok().filter(|v| v.truthy() || v.as_str() == Some("0")),
+                    ViewValue::Str(_) => read_offset(&target, &index)
+                        .ok()
+                        .filter(|v| v.truthy() || v.as_str() == Some("0")),
                     _ => None,
                 })
             }
@@ -386,7 +452,12 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn eval_assign(&mut self, target: &Expr, op: Option<BinaryOp>, value: &Expr) -> Result<ViewValue> {
+    fn eval_assign(
+        &mut self,
+        target: &Expr,
+        op: Option<BinaryOp>,
+        value: &Expr,
+    ) -> Result<ViewValue> {
         let new_value = match op {
             None => self.eval(value)?,
             Some(BinaryOp::Coalesce) => match self.eval_quiet(target)? {
@@ -467,7 +538,15 @@ impl<'a> Evaluator<'a> {
                 self.scope.remove(name);
                 Ok(())
             }
-            Expr::Index { target: base, index: Some(index) } | Expr::Prop { target: base, name: index, .. } => {
+            Expr::Index {
+                target: base,
+                index: Some(index),
+            }
+            | Expr::Prop {
+                target: base,
+                name: index,
+                ..
+            } => {
                 let key = self.eval(index)?;
                 let (root, path) = self.resolve_path(base)?;
                 if !self.scope.contains(&root) {
@@ -527,7 +606,11 @@ fn descend<'v>(slot: &'v mut ViewValue, segment: &PathSeg) -> Result<&'v mut Vie
             match segment {
                 PathSeg::Push => {
                     array.push(ViewValue::Null);
-                    let key = array.keys().last().cloned().expect("an item was just pushed");
+                    let key = array
+                        .keys()
+                        .last()
+                        .cloned()
+                        .expect("an item was just pushed");
                     Ok(array.get_mut(&key).expect("the key exists"))
                 }
                 PathSeg::Key(key) => {
@@ -539,8 +622,14 @@ fn descend<'v>(slot: &'v mut ViewValue, segment: &PathSeg) -> Result<&'v mut Vie
                 }
             }
         }
-        ViewValue::Object(object) => Err(error(format!("Cannot modify properties of {}", object.class_name()))),
-        other => Err(error(format!("Cannot use a scalar value ({}) as an array", other.type_name()))),
+        ViewValue::Object(object) => Err(error(format!(
+            "Cannot modify properties of {}",
+            object.class_name()
+        ))),
+        other => Err(error(format!(
+            "Cannot use a scalar value ({}) as an array",
+            other.type_name()
+        ))),
     }
 }
 
@@ -679,14 +768,21 @@ fn string_increment(s: &str) -> String {
 pub(crate) fn read_property(target: &ViewValue, name: &str) -> Result<ViewValue> {
     match target {
         ViewValue::Array(array) => Ok(array.get_str(name).cloned().unwrap_or_default()),
-        ViewValue::Object(object) => object
-            .get(name)
-            .ok_or_else(|| error(format!("Undefined property: {}::${name}", object.class_name()))),
-        ViewValue::Str(s) => methods::date_property(s, name).ok_or_else(|| {
-            error(format!("Attempt to read property \"{name}\" on string"))
+        ViewValue::Object(object) => object.get(name).ok_or_else(|| {
+            error(format!(
+                "Undefined property: {}::${name}",
+                object.class_name()
+            ))
         }),
-        ViewValue::Null => Err(error(format!("Attempt to read property \"{name}\" on null"))),
-        other => Err(error(format!("Attempt to read property \"{name}\" on {}", other.type_name()))),
+        ViewValue::Str(s) => methods::date_property(s, name)
+            .ok_or_else(|| error(format!("Attempt to read property \"{name}\" on string"))),
+        ViewValue::Null => Err(error(format!(
+            "Attempt to read property \"{name}\" on null"
+        ))),
+        other => Err(error(format!(
+            "Attempt to read property \"{name}\" on {}",
+            other.type_name()
+        ))),
     }
 }
 
@@ -697,10 +793,18 @@ pub(crate) fn read_offset(target: &ViewValue, index: &ViewValue) -> Result<ViewV
         ViewValue::Object(object) => Ok(object.offset_get(index).unwrap_or_default()),
         ViewValue::Str(s) => {
             let Some(position) = index.as_i64() else {
-                return Err(TypeError::new(format!("Cannot access offset of type {} on string", index.type_name())).into());
+                return Err(TypeError::new(format!(
+                    "Cannot access offset of type {} on string",
+                    index.type_name()
+                ))
+                .into());
             };
             let chars: Vec<char> = s.chars().collect();
-            let position = if position < 0 { chars.len() as i64 + position } else { position };
+            let position = if position < 0 {
+                chars.len() as i64 + position
+            } else {
+                position
+            };
             Ok(chars
                 .get(position.max(0) as usize)
                 .filter(|_| position >= 0)
@@ -716,9 +820,15 @@ pub(crate) fn iterate(value: &ViewValue) -> Result<Vec<(ViewValue, ViewValue)>> 
     match value {
         ViewValue::Array(array) => {
             if let Some(items) = methods::paginator_items(array) {
-                return Ok(items.iter().map(|(k, v)| (k.to_value(), v.clone())).collect());
+                return Ok(items
+                    .iter()
+                    .map(|(k, v)| (k.to_value(), v.clone()))
+                    .collect());
             }
-            Ok(array.iter().map(|(k, v)| (k.to_value(), v.clone())).collect())
+            Ok(array
+                .iter()
+                .map(|(k, v)| (k.to_value(), v.clone()))
+                .collect())
         }
         ViewValue::Null => Ok(Vec::new()),
         ViewValue::Object(object) => object.iterate().ok_or_else(|| {
@@ -733,19 +843,25 @@ pub(crate) fn iterate(value: &ViewValue) -> Result<Vec<(ViewValue, ViewValue)>> 
 }
 
 /// Call a function by name: registered functions first, then built-ins.
-pub(crate) fn call_function(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<ViewValue> {
+pub(crate) fn call_function(
+    name: &str,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Result<ViewValue> {
     if let Some(function) = registry.functions.get(name) {
         return function(args);
     }
     let lower = name.to_ascii_lowercase();
-    if lower != name {
-        if let Some(function) = registry.functions.get(lower.as_str()) {
-            return function(args);
-        }
+    if lower != name
+        && let Some(function) = registry.functions.get(lower.as_str())
+    {
+        return function(args);
     }
     match functions::call_builtin(&lower, args, registry) {
         Some(result) => result,
-        None => Err(BadMethodCallException::new(format!("Call to undefined function {name}()")).into()),
+        None => {
+            Err(BadMethodCallException::new(format!("Call to undefined function {name}()")).into())
+        }
     }
 }
 
@@ -755,12 +871,19 @@ pub(crate) fn function_exists(name: &str, registry: &Registry) -> bool {
 }
 
 /// Call anything callable: closures, invokable objects, and function names.
-pub(crate) fn call_callable(callee: &ViewValue, args: &[ViewValue], registry: &Arc<Registry>) -> Result<ViewValue> {
+pub(crate) fn call_callable(
+    callee: &ViewValue,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Result<ViewValue> {
     match callee {
         ViewValue::Closure(closure) => closure.call(args),
-        ViewValue::Object(object) => object
-            .invoke(args)
-            .unwrap_or_else(|| Err(error(format!("Object of type {} is not callable", object.class_name())))),
+        ViewValue::Object(object) => object.invoke(args).unwrap_or_else(|| {
+            Err(error(format!(
+                "Object of type {} is not callable",
+                object.class_name()
+            )))
+        }),
         ViewValue::Str(name) => {
             if let Some((class, method)) = name.split_once("::") {
                 statics::call_static(super::parser::class_basename(class), method, args, registry)
@@ -768,7 +891,10 @@ pub(crate) fn call_callable(callee: &ViewValue, args: &[ViewValue], registry: &A
                 call_function(name, args, registry)
             }
         }
-        other => Err(error(format!("Value of type {} is not callable", other.type_name()))),
+        other => Err(error(format!(
+            "Value of type {} is not callable",
+            other.type_name()
+        ))),
     }
 }
 
@@ -844,7 +970,10 @@ mod tests {
 
     fn eval(src: &str) -> ViewValue {
         let mut scope = Scope::default();
-        scope.set("user", ViewValue::from(json!({"name": "Taylor", "roles": ["admin", "dev"], "age": 40})));
+        scope.set(
+            "user",
+            ViewValue::from(json!({"name": "Taylor", "roles": ["admin", "dev"], "age": 40})),
+        );
         scope.set("items", ViewValue::from(json!([1, 2, 3])));
         scope.set("nothing", ViewValue::Null);
         eval_with(src, &mut scope).unwrap()
@@ -858,8 +987,14 @@ mod tests {
         assert_eq!(eval("-2 ** 2"), ViewValue::Int(-4));
         assert_eq!(eval("7 % 3"), ViewValue::Int(1));
         assert_eq!(eval("'a' . 1 + 2"), ViewValue::from("a3"));
-        assert_eq!(eval("\"Hi {$user->name}, you are $user->age\""), ViewValue::from("Hi Taylor, you are 40"));
-        assert_eq!(eval("\"Role: {$user['roles'][0]}\""), ViewValue::from("Role: admin"));
+        assert_eq!(
+            eval("\"Hi {$user->name}, you are $user->age\""),
+            ViewValue::from("Hi Taylor, you are 40")
+        );
+        assert_eq!(
+            eval("\"Role: {$user['roles'][0]}\""),
+            ViewValue::from("Role: admin")
+        );
     }
 
     #[test]
@@ -870,12 +1005,21 @@ mod tests {
         assert_eq!(eval("! $nothing && true"), ViewValue::Bool(true));
         assert_eq!(eval("true xor true"), ViewValue::Bool(false));
         assert_eq!(eval("$nothing ?: 'fallback'"), ViewValue::from("fallback"));
-        assert_eq!(eval("$missing ?? $nothing ?? 'deep'"), ViewValue::from("deep"));
+        assert_eq!(
+            eval("$missing ?? $nothing ?? 'deep'"),
+            ViewValue::from("deep")
+        );
         assert_eq!(eval("$user['missing'] ?? 'none'"), ViewValue::from("none"));
         assert_eq!(eval("isset($user->name, $items)"), ViewValue::Bool(true));
         assert_eq!(eval("isset($user->nope)"), ViewValue::Bool(false));
-        assert_eq!(eval("empty($nothing) && empty($missing) && ! empty($items)"), ViewValue::Bool(true));
-        assert_eq!(eval("match (2) { 1 => 'one', 2, 3 => 'few', default => 'many' }"), ViewValue::from("few"));
+        assert_eq!(
+            eval("empty($nothing) && empty($missing) && ! empty($items)"),
+            ViewValue::Bool(true)
+        );
+        assert_eq!(
+            eval("match (2) { 1 => 'one', 2, 3 => 'few', default => 'many' }"),
+            ViewValue::from("few")
+        );
     }
 
     #[test]
@@ -892,8 +1036,14 @@ mod tests {
         let mut scope = Scope::default();
         scope.set("user", ViewValue::Null);
         let error = eval_with("$user->name", &mut scope).unwrap_err();
-        assert_eq!(error.to_string(), "Attempt to read property \"name\" on null");
-        assert_eq!(eval_with("$user?->name", &mut scope).unwrap(), ViewValue::Null);
+        assert_eq!(
+            error.to_string(),
+            "Attempt to read property \"name\" on null"
+        );
+        assert_eq!(
+            eval_with("$user?->name", &mut scope).unwrap(),
+            ViewValue::Null
+        );
     }
 
     #[test]
@@ -906,9 +1056,14 @@ mod tests {
         )
         .unwrap();
         let mut out = String::new();
-        Evaluator::new(&mut scope, &registry).exec(&stmts, &mut out).unwrap();
+        Evaluator::new(&mut scope, &registry)
+            .exec(&stmts, &mut out)
+            .unwrap();
         assert_eq!(scope.get("a"), Some(&ViewValue::Int(3)));
-        assert_eq!(scope.get("b").unwrap().to_json(), json!({"0": "x", "k": {"j": "y"}}));
+        assert_eq!(
+            scope.get("b").unwrap().to_json(),
+            json!({"0": "x", "k": {"j": "y"}})
+        );
         assert_eq!(scope.get("c"), Some(&ViewValue::from("ab")));
         assert_eq!(scope.get("i"), Some(&ViewValue::Int(2)));
         assert_eq!(scope.get("d"), Some(&ViewValue::Int(5)));
@@ -920,9 +1075,17 @@ mod tests {
         let mut scope = Scope::default();
         scope.set("factor", ViewValue::Int(3));
         let closure = eval_with("fn ($x) => $x * $factor", &mut scope).unwrap();
-        let ViewValue::Closure(closure) = closure else { panic!() };
-        assert_eq!(closure.call(&[ViewValue::Int(2)]).unwrap(), ViewValue::Int(6));
-        assert_eq!(eval_with("(fn () => 'called')()", &mut scope).unwrap(), ViewValue::from("called"));
+        let ViewValue::Closure(closure) = closure else {
+            panic!()
+        };
+        assert_eq!(
+            closure.call(&[ViewValue::Int(2)]).unwrap(),
+            ViewValue::Int(6)
+        );
+        assert_eq!(
+            eval_with("(fn () => 'called')()", &mut scope).unwrap(),
+            ViewValue::from("called")
+        );
     }
 
     #[test]

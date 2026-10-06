@@ -18,7 +18,11 @@ pub type DirectiveHandler = Arc<dyn Fn(&[ViewValue]) -> Result<String> + Send + 
 pub type ConditionHandler = Arc<dyn Fn(&[ViewValue]) -> bool + Send + Sync>;
 
 /// Builds a class-based component from the attributes on its tag.
-pub type ComponentFactory = Arc<dyn Fn(&mut ComponentArgs) -> Result<Arc<dyn Component>> + Send + Sync>;
+pub type ComponentFactory =
+    Arc<dyn Fn(&mut ComponentArgs) -> Result<Arc<dyn Component>> + Send + Sync>;
+
+/// Converts objects of a particular type to strings when echoed (`Blade::stringable`).
+pub(crate) type EchoHandler = Arc<dyn Fn(&ViewValue) -> Option<String> + Send + Sync>;
 
 /// An extra directory holding anonymous components.
 #[derive(Clone, Debug)]
@@ -36,6 +40,7 @@ pub(crate) struct Registry {
     pub components: HashMap<String, ComponentFactory>,
     pub anonymous_paths: Vec<AnonymousComponentPath>,
     pub anonymous_namespaces: HashMap<String, String>,
+    pub echo_handlers: Vec<EchoHandler>,
     pub double_encode: bool,
 }
 
@@ -48,6 +53,7 @@ impl Default for Registry {
             components: HashMap::new(),
             anonymous_paths: Vec::new(),
             anonymous_namespaces: HashMap::new(),
+            echo_handlers: Vec::new(),
             double_encode: true,
         }
     }
@@ -57,6 +63,14 @@ impl Registry {
     /// Call a registered function if it exists.
     pub(crate) fn call(&self, name: &str, args: &[ViewValue]) -> Option<Result<ViewValue>> {
         self.functions.get(name).map(|function| function(args))
+    }
+
+    /// Apply the first matching custom echo handler.
+    pub(crate) fn apply_echo_handlers(&self, value: &ViewValue) -> Option<String> {
+        if self.echo_handlers.is_empty() {
+            return None;
+        }
+        self.echo_handlers.iter().find_map(|handler| handler(value))
     }
 
     /// Escape a string for HTML using the configured double-encoding mode.

@@ -230,7 +230,9 @@ impl Expr {
         match self {
             Expr::Var(name) => push(name),
             Expr::Lit(_) | Expr::Const(_) | Expr::ClassConst { .. } => {}
-            Expr::Interp(parts) | Expr::Isset(parts) => parts.iter().for_each(|p| p.collect_vars(out)),
+            Expr::Interp(parts) | Expr::Isset(parts) => {
+                parts.iter().for_each(|p| p.collect_vars(out))
+            }
             Expr::Array(items) => {
                 for item in items {
                     if let Some(key) = &item.key {
@@ -260,12 +262,18 @@ impl Expr {
                 callee.collect_vars(out);
                 args.iter().for_each(|a| a.value.collect_vars(out));
             }
-            Expr::Unary { expr, .. } | Expr::Empty(expr) | Expr::Cast { expr, .. } => expr.collect_vars(out),
+            Expr::Unary { expr, .. } | Expr::Empty(expr) | Expr::Cast { expr, .. } => {
+                expr.collect_vars(out)
+            }
             Expr::Binary { left, right, .. } => {
                 left.collect_vars(out);
                 right.collect_vars(out);
             }
-            Expr::Ternary { cond, then, otherwise } => {
+            Expr::Ternary {
+                cond,
+                then,
+                otherwise,
+            } => {
                 cond.collect_vars(out);
                 if let Some(then) = then {
                     then.collect_vars(out);
@@ -312,7 +320,10 @@ impl Stmt {
                     e.collect_vars(out);
                 }
             }
-            Stmt::If { branches, otherwise } => {
+            Stmt::If {
+                branches,
+                otherwise,
+            } => {
                 for (cond, body) in branches {
                     cond.collect_vars(out);
                     body.iter().for_each(|s| s.collect_vars(out));
@@ -321,7 +332,12 @@ impl Stmt {
                     body.iter().for_each(|s| s.collect_vars(out));
                 }
             }
-            Stmt::Foreach { iterable, key, value, body } => {
+            Stmt::Foreach {
+                iterable,
+                key,
+                value,
+                body,
+            } => {
                 iterable.collect_vars(out);
                 if let Some(key) = key {
                     key.collect_vars(out);

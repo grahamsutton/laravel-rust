@@ -13,10 +13,12 @@ macro_rules! simple_exception {
         #[derive(Debug, Clone, thiserror::Error)]
         #[error("{message}")]
         pub struct $name {
+            /// The exception message.
             pub message: String,
         }
 
         impl $name {
+            /// Create the exception with a message.
             pub fn new(message: impl Into<String>) -> Self {
                 Self { message: message.into() }
             }
@@ -41,6 +43,11 @@ simple_exception!(
 );
 
 simple_exception!(
+    /// An arithmetic operation overflowed.
+    ArithmeticError
+);
+
+simple_exception!(
     /// A method or function that doesn't exist was called.
     BadMethodCallException
 );
@@ -50,12 +57,14 @@ simple_exception!(
 #[derive(Debug, Clone, thiserror::Error)]
 #[error("{message}")]
 pub struct ViewCompilationException {
+    /// The problem.
     pub message: String,
     /// The line (1-based) the problem was found on.
     pub line: usize,
 }
 
 impl ViewCompilationException {
+    /// Create the exception for a problem on a line.
     pub fn new(message: impl Into<String>, line: usize) -> Self {
         Self {
             message: message.into(),
@@ -84,7 +93,12 @@ pub struct ViewException {
 
 impl ViewException {
     /// Create a new view exception.
-    pub fn new(message: impl Into<String>, view: impl Into<String>, path: Option<PathBuf>, line: usize) -> Self {
+    pub fn new(
+        message: impl Into<String>,
+        view: impl Into<String>,
+        path: Option<PathBuf>,
+        line: usize,
+    ) -> Self {
         Self {
             message: message.into(),
             view: view.into(),
@@ -125,13 +139,21 @@ impl ViewException {
 
 impl fmt::Display for ViewException {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} (View: {}, line {})", self.message, self.location(), self.line)
+        write!(
+            f,
+            "{} (View: {}, line {})",
+            self.message,
+            self.location(),
+            self.line
+        )
     }
 }
 
 impl std::error::Error for ViewException {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.previous.as_ref().map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
+        self.previous
+            .as_ref()
+            .map(|e| e.as_ref() as &(dyn std::error::Error + 'static))
     }
 }
 

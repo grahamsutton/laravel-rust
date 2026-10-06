@@ -19,7 +19,12 @@ use crate::registry::Registry;
 use crate::value::{ArrayKey, ViewArray, ViewValue};
 
 /// Call a static method.
-pub(crate) fn call_static(class: &str, method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<ViewValue> {
+pub(crate) fn call_static(
+    class: &str,
+    method: &str,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Result<ViewValue> {
     let key = format!("{class}::{method}");
     if let Some(function) = registry.functions.get(&key) {
         return function(args);
@@ -30,7 +35,9 @@ pub(crate) fn call_static(class: &str, method: &str, args: &[ViewValue], registr
         "Arr" => arr_static(method, args, registry),
         "Js" => match method {
             "from" => Some(php::js_from(arg(args, 0), int_arg(args, 1, 0)).map(ViewValue::html)),
-            "encode" => Some(php::json_encode(arg(args, 0), int_arg(args, 1, 0)).map(ViewValue::from)),
+            "encode" => {
+                Some(php::json_encode(arg(args, 0), int_arg(args, 1, 0)).map(ViewValue::from))
+            }
             _ => None,
         },
         "Carbon" | "Date" | "CarbonImmutable" => carbon_static(method, args),
@@ -42,7 +49,9 @@ pub(crate) fn call_static(class: &str, method: &str, args: &[ViewValue], registr
                     let mut out = ViewArray::new();
                     for i in 1..=count {
                         out.push(match args.get(1) {
-                            Some(callback) => call_callable(callback, &[ViewValue::Int(i)], registry)?,
+                            Some(callback) => {
+                                call_callable(callback, &[ViewValue::Int(i)], registry)?
+                            }
                             None => ViewValue::Int(i),
                         });
                     }
@@ -56,7 +65,9 @@ pub(crate) fn call_static(class: &str, method: &str, args: &[ViewValue], registr
         },
         "Auth" => match method {
             "check" => Some(call_function("auth_check", args, registry)),
-            "guest" => Some(call_function("auth_check", args, registry).map(|v| ViewValue::Bool(!v.truthy()))),
+            "guest" => Some(
+                call_function("auth_check", args, registry).map(|v| ViewValue::Bool(!v.truthy())),
+            ),
             "user" | "id" => Some(match registry.functions.get("auth") {
                 Some(auth) => auth(&[]).and_then(|guard| {
                     crate::methods::call_method(&guard, method, args.to_vec(), registry)
@@ -67,18 +78,26 @@ pub(crate) fn call_static(class: &str, method: &str, args: &[ViewValue], registr
         },
         "Gate" => match method {
             "allows" | "check" => Some(call_function("gate_check", args, registry)),
-            "denies" => Some(call_function("gate_check", args, registry).map(|v| ViewValue::Bool(!v.truthy()))),
+            "denies" => Some(
+                call_function("gate_check", args, registry).map(|v| ViewValue::Bool(!v.truthy())),
+            ),
             "any" => Some(gate_any(args, registry)),
             _ => None,
         },
         "Config" => match method {
             "get" => Some(call_function("config", args, registry)),
-            "has" => Some(call_function("config", &args[..1.min(args.len())], registry).map(|v| ViewValue::Bool(!v.is_null()))),
+            "has" => Some(
+                call_function("config", &args[..1.min(args.len())], registry)
+                    .map(|v| ViewValue::Bool(!v.is_null())),
+            ),
             _ => None,
         },
         "Session" => match method {
             "get" => Some(call_function("session", args, registry)),
-            "has" => Some(call_function("session", &args[..1.min(args.len())], registry).map(|v| ViewValue::Bool(!v.is_null()))),
+            "has" => Some(
+                call_function("session", &args[..1.min(args.len())], registry)
+                    .map(|v| ViewValue::Bool(!v.is_null())),
+            ),
             _ => None,
         },
         "Lang" => match method {
@@ -96,7 +115,9 @@ pub(crate) fn call_static(class: &str, method: &str, args: &[ViewValue], registr
             "environment" => Some(environment(args, registry)),
             "isProduction" => Some(environment(&["production".into()], registry)),
             "isLocal" => Some(environment(&["local".into()], registry)),
-            "getLocale" | "currentLocale" => Some(call_function("app_locale", args, registry).or_else(|_| Ok(ViewValue::from("en")))),
+            "getLocale" | "currentLocale" => Some(
+                call_function("app_locale", args, registry).or_else(|_| Ok(ViewValue::from("en"))),
+            ),
             _ => None,
         },
         _ => None,
@@ -114,8 +135,23 @@ pub(crate) fn call_static(class: &str, method: &str, args: &[ViewValue], registr
 fn is_known_class(class: &str) -> bool {
     matches!(
         class,
-        "Str" | "Stringable" | "Number" | "Arr" | "Js" | "Carbon" | "Date" | "CarbonImmutable" | "Collection"
-            | "LazyCollection" | "Auth" | "Gate" | "Config" | "Session" | "Lang" | "URL" | "App"
+        "Str"
+            | "Stringable"
+            | "Number"
+            | "Arr"
+            | "Js"
+            | "Carbon"
+            | "Date"
+            | "CarbonImmutable"
+            | "Collection"
+            | "LazyCollection"
+            | "Auth"
+            | "Gate"
+            | "Config"
+            | "Session"
+            | "Lang"
+            | "URL"
+            | "App"
     )
 }
 
@@ -136,7 +172,9 @@ pub(crate) fn environment(patterns: &[ViewValue], registry: &Arc<Registry>) -> R
             other => candidates.push(php::to_str(other)?),
         }
     }
-    Ok(ViewValue::Bool(candidates.iter().any(|p| Str::is(p, &current))))
+    Ok(ViewValue::Bool(
+        candidates.iter().any(|p| Str::is(p, &current)),
+    ))
 }
 
 /// `@canany` / `Gate::any`: check any of the abilities.
@@ -155,7 +193,11 @@ pub(crate) fn gate_any(args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
     Ok(ViewValue::Bool(false))
 }
 
-fn str_static(method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Option<Result<ViewValue>> {
+fn str_static(
+    method: &str,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Option<Result<ViewValue>> {
     let s = |value: String| Some(Ok(ViewValue::from(value)));
     match method {
         "random" => return s(Str::random(int_arg(args, 0, 16).max(0) as usize)),
@@ -175,7 +217,8 @@ fn str_static(method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Opt
             }
             v
         }
-        "replace" | "replaceFirst" | "replaceLast" | "replaceArray" | "replaceStart" | "replaceEnd" => {
+        "replace" | "replaceFirst" | "replaceLast" | "replaceArray" | "replaceStart"
+        | "replaceEnd" => {
             let mut v: Vec<ViewValue> = args.to_vec();
             if v.len() >= 3 {
                 let subject = v.remove(2);
@@ -189,7 +232,11 @@ fn str_static(method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Opt
 }
 
 /// Stringable-style string methods: the subject is the first argument.
-pub(crate) fn str_method(method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Option<Result<ViewValue>> {
+pub(crate) fn str_method(
+    method: &str,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Option<Result<ViewValue>> {
     let result = (|| -> Result<Option<ViewValue>> {
         let subject = str_arg(args, 0)?;
         let a = |i: usize| str_arg(args, i);
@@ -221,7 +268,9 @@ pub(crate) fn str_method(method: &str, args: &[ViewValue], registry: &Arc<Regist
             "ucfirst" => s(Str::ucfirst(&subject)),
             "lcfirst" => s(Str::lcfirst(&subject)),
             "ucwords" => s(Str::ucwords(&subject)),
-            "ucsplit" => Ok(Some(ViewValue::list(Str::ucsplit(&subject).into_iter().map(ViewValue::from)))),
+            "ucsplit" => Ok(Some(ViewValue::list(
+                Str::ucsplit(&subject).into_iter().map(ViewValue::from),
+            ))),
             "lower" => s(Str::lower(&subject)),
             "upper" => s(Str::upper(&subject)),
             "plural" => s(match args.get(1) {
@@ -246,20 +295,38 @@ pub(crate) fn str_method(method: &str, args: &[ViewValue], registry: &Arc<Regist
                 let needles = needles(1)?;
                 b(needles.iter().any(|n| {
                     !n.is_empty()
-                        && if ignore_case { subject.to_lowercase().contains(&n.to_lowercase()) } else { subject.contains(n.as_str()) }
+                        && if ignore_case {
+                            subject.to_lowercase().contains(&n.to_lowercase())
+                        } else {
+                            subject.contains(n.as_str())
+                        }
                 }))
             }
             "containsAll" => {
                 let ignore_case = bool_arg(args, 2, false);
                 b(needles(1)?.iter().all(|n| {
-                    if ignore_case { subject.to_lowercase().contains(&n.to_lowercase()) } else { subject.contains(n.as_str()) }
+                    if ignore_case {
+                        subject.to_lowercase().contains(&n.to_lowercase())
+                    } else {
+                        subject.contains(n.as_str())
+                    }
                 }))
             }
-            "doesntContain" => b(!needles(1)?.iter().any(|n| !n.is_empty() && subject.contains(n.as_str()))),
-            "startsWith" => b(needles(1)?.iter().any(|n| !n.is_empty() && subject.starts_with(n.as_str()))),
-            "doesntStartWith" => b(!needles(1)?.iter().any(|n| !n.is_empty() && subject.starts_with(n.as_str()))),
-            "endsWith" => b(needles(1)?.iter().any(|n| !n.is_empty() && subject.ends_with(n.as_str()))),
-            "doesntEndWith" => b(!needles(1)?.iter().any(|n| !n.is_empty() && subject.ends_with(n.as_str()))),
+            "doesntContain" => b(!needles(1)?
+                .iter()
+                .any(|n| !n.is_empty() && subject.contains(n.as_str()))),
+            "startsWith" => b(needles(1)?
+                .iter()
+                .any(|n| !n.is_empty() && subject.starts_with(n.as_str()))),
+            "doesntStartWith" => b(!needles(1)?
+                .iter()
+                .any(|n| !n.is_empty() && subject.starts_with(n.as_str()))),
+            "endsWith" => b(needles(1)?
+                .iter()
+                .any(|n| !n.is_empty() && subject.ends_with(n.as_str()))),
+            "doesntEndWith" => b(!needles(1)?
+                .iter()
+                .any(|n| !n.is_empty() && subject.ends_with(n.as_str()))),
             "is" | "isMatch" => b(needles(1)?.iter().any(|pattern| Str::is(pattern, &subject))),
             "isJson" => b(Str::is_json(&subject)),
             "isUuid" => b(Str::is_uuid(&subject)),
@@ -269,11 +336,19 @@ pub(crate) fn str_method(method: &str, args: &[ViewValue], registry: &Arc<Regist
             "length" => Ok(Some(ViewValue::from(Str::length(&subject)))),
             "wordCount" => Ok(Some(ViewValue::from(Str::word_count(&subject)))),
             "limit" => s(match args.get(2) {
-                Some(end) => Str::limit_with(&subject, int_arg(args, 1, 100).max(0) as usize, &php::to_str(end)?),
+                Some(end) => Str::limit_with(
+                    &subject,
+                    int_arg(args, 1, 100).max(0) as usize,
+                    &php::to_str(end)?,
+                ),
                 None => Str::limit(&subject, int_arg(args, 1, 100).max(0) as usize),
             }),
             "words" => s(match args.get(2) {
-                Some(end) => Str::words_with(&subject, int_arg(args, 1, 100).max(0) as usize, &php::to_str(end)?),
+                Some(end) => Str::words_with(
+                    &subject,
+                    int_arg(args, 1, 100).max(0) as usize,
+                    &php::to_str(end)?,
+                ),
                 None => Str::words(&subject, int_arg(args, 1, 100).max(0) as usize),
             }),
             "replace" => {
@@ -376,7 +451,12 @@ pub(crate) fn str_method(method: &str, args: &[ViewValue], registry: &Arc<Regist
                     None | Some(ViewValue::Null) => None,
                     Some(v) => v.as_i64().map(|l| l.max(0) as usize),
                 };
-                s(Str::mask(&subject, character, int_arg(args, 2, 0) as isize, length))
+                s(Str::mask(
+                    &subject,
+                    character,
+                    int_arg(args, 2, 0) as isize,
+                    length,
+                ))
             }
             "padBoth" | "padLeft" | "padRight" => {
                 let length = int_arg(args, 1, 0).max(0) as usize;
@@ -399,7 +479,9 @@ pub(crate) fn str_method(method: &str, args: &[ViewValue], registry: &Arc<Regist
                 let phrase = opt_str(args, 1)?.unwrap_or_default();
                 let radius = 100usize;
                 let lower = subject.to_lowercase();
-                let Some(byte) = lower.find(&phrase.to_lowercase()) else { return Ok(Some(ViewValue::Null)) };
+                let Some(byte) = lower.find(&phrase.to_lowercase()) else {
+                    return Ok(Some(ViewValue::Null));
+                };
                 let start_char = subject[..byte].chars().count();
                 let chars: Vec<char> = subject.chars().collect();
                 let from = start_char.saturating_sub(radius);
@@ -415,7 +497,10 @@ pub(crate) fn str_method(method: &str, args: &[ViewValue], registry: &Arc<Regist
             }
             "apa" => s(Str::title(&subject)),
             "toHtmlString" => Ok(Some(ViewValue::html(subject))),
-            "inlineMarkdown" | "markdown" => Ok(Some(ViewValue::html(simple_markdown(&subject, method == "inlineMarkdown")))),
+            "inlineMarkdown" | "markdown" => Ok(Some(ViewValue::html(simple_markdown(
+                &subject,
+                method == "inlineMarkdown",
+            )))),
             "e" | "escape" => s(registry.escape(&subject)),
             _ => Ok(None),
         }
@@ -429,12 +514,12 @@ fn simple_markdown(source: &str, inline: bool) -> String {
     let mut out = String::new();
     let mut rest = escaped.as_str();
     while !rest.is_empty() {
-        if let Some(inner) = rest.strip_prefix("**") {
-            if let Some(end) = inner.find("**") {
-                out.push_str(&format!("<strong>{}</strong>", &inner[..end]));
-                rest = &inner[end + 2..];
-                continue;
-            }
+        if let Some(inner) = rest.strip_prefix("**")
+            && let Some(end) = inner.find("**")
+        {
+            out.push_str(&format!("<strong>{}</strong>", &inner[..end]));
+            rest = &inner[end + 2..];
+            continue;
         }
         if let Some(inner) = rest.strip_prefix('*').or_else(|| rest.strip_prefix('_')) {
             let marker = &rest[..1];
@@ -444,23 +529,22 @@ fn simple_markdown(source: &str, inline: bool) -> String {
                 continue;
             }
         }
-        if let Some(inner) = rest.strip_prefix('`') {
-            if let Some(end) = inner.find('`') {
-                out.push_str(&format!("<code>{}</code>", &inner[..end]));
-                rest = &inner[end + 1..];
-                continue;
-            }
+        if let Some(inner) = rest.strip_prefix('`')
+            && let Some(end) = inner.find('`')
+        {
+            out.push_str(&format!("<code>{}</code>", &inner[..end]));
+            rest = &inner[end + 1..];
+            continue;
         }
-        if let Some(inner) = rest.strip_prefix('[') {
-            if let Some(close) = inner.find("](") {
-                if let Some(end) = inner[close + 2..].find(')') {
-                    let text = &inner[..close];
-                    let href = &inner[close + 2..close + 2 + end];
-                    out.push_str(&format!("<a href=\"{href}\">{text}</a>"));
-                    rest = &inner[close + 3 + end..];
-                    continue;
-                }
-            }
+        if let Some(inner) = rest.strip_prefix('[')
+            && let Some(close) = inner.find("](")
+            && let Some(end) = inner[close + 2..].find(')')
+        {
+            let text = &inner[..close];
+            let href = &inner[close + 2..close + 2 + end];
+            out.push_str(&format!("<a href=\"{href}\">{text}</a>"));
+            rest = &inner[close + 3 + end..];
+            continue;
         }
         let c = rest.chars().next().unwrap_or(' ');
         out.push(c);
@@ -478,7 +562,8 @@ fn simple_markdown(source: &str, inline: bool) -> String {
 
 fn number_static(method: &str, args: &[ViewValue]) -> Option<Result<ViewValue>> {
     let number = functions::float_arg(args, 0);
-    let precision = |index: usize, default: usize| int_arg(args, index, default as i64).max(0) as usize;
+    let precision =
+        |index: usize, default: usize| int_arg(args, index, default as i64).max(0) as usize;
     let s = |value: String| Some(Ok(ViewValue::from(value)));
     match method {
         "format" => s(match args.get(1) {
@@ -487,7 +572,10 @@ fn number_static(method: &str, args: &[ViewValue]) -> Option<Result<ViewValue>> 
                     let max = max.as_i64().unwrap_or(0).max(0) as usize;
                     let formatted = Number::format(number, Some(max));
                     if formatted.contains('.') {
-                        formatted.trim_end_matches('0').trim_end_matches('.').to_string()
+                        formatted
+                            .trim_end_matches('0')
+                            .trim_end_matches('.')
+                            .to_string()
                     } else {
                         formatted
                     }
@@ -497,7 +585,13 @@ fn number_static(method: &str, args: &[ViewValue]) -> Option<Result<ViewValue>> 
             Some(p) => Number::format(number, Some(p.as_i64().unwrap_or(0).max(0) as usize)),
         }),
         "percentage" => s(Number::percentage(number, precision(1, 0))),
-        "currency" => s(Number::currency(number, &opt_str(args, 1).ok().flatten().unwrap_or_else(|| "USD".into()))),
+        "currency" => s(Number::currency(
+            number,
+            &opt_str(args, 1)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "USD".into()),
+        )),
         "fileSize" => s(Number::file_size(number, precision(1, 0))),
         "abbreviate" => s(Number::abbreviate(number, precision(1, 0))),
         "forHumans" => s(Number::for_humans(number, precision(1, 0))),
@@ -511,7 +605,11 @@ fn number_static(method: &str, args: &[ViewValue]) -> Option<Result<ViewValue>> 
     }
 }
 
-fn arr_static(method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Option<Result<ViewValue>> {
+fn arr_static(
+    method: &str,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Option<Result<ViewValue>> {
     let a0 = arg(args, 0);
     let result = (|| -> Result<Option<ViewValue>> {
         Ok(Some(match method {
@@ -531,10 +629,14 @@ fn arr_static(method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Opt
             },
             "has" | "exists" => {
                 let keys = match arg(args, 1) {
-                    ViewValue::Array(list) => list.values().map(php::to_str).collect::<Result<Vec<_>>>()?,
+                    ViewValue::Array(list) => {
+                        list.values().map(php::to_str).collect::<Result<Vec<_>>>()?
+                    }
                     other => vec![php::to_str(other)?],
                 };
-                ViewValue::Bool(!keys.is_empty() && keys.iter().all(|k| functions::data_get(a0, k).is_some()))
+                ViewValue::Bool(
+                    !keys.is_empty() && keys.iter().all(|k| functions::data_get(a0, k).is_some()),
+                )
             }
             "first" | "last" => {
                 let array = to_array(a0).unwrap_or_default();
@@ -547,14 +649,22 @@ fn arr_static(method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Opt
                             array.iter().rev().collect()
                         };
                         for (key, value) in items {
-                            if call_callable(callback, &[value.clone(), key.to_value()], registry)?.truthy() {
+                            if call_callable(callback, &[value.clone(), key.to_value()], registry)?
+                                .truthy()
+                            {
                                 found = Some(value.clone());
                                 break;
                             }
                         }
                         found
                     }
-                    _ => if method == "first" { array.first().cloned() } else { array.last().cloned() },
+                    _ => {
+                        if method == "first" {
+                            array.first().cloned()
+                        } else {
+                            array.last().cloned()
+                        }
+                    }
                 };
                 match found {
                     Some(value) => value,
@@ -564,7 +674,10 @@ fn arr_static(method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Opt
             "only" | "except" => {
                 let array = to_array(a0).unwrap_or_default();
                 let keys: Vec<ArrayKey> = match arg(args, 1) {
-                    ViewValue::Array(list) => list.values().map(ArrayKey::from_value).collect::<Result<_>>()?,
+                    ViewValue::Array(list) => list
+                        .values()
+                        .map(ArrayKey::from_value)
+                        .collect::<Result<_>>()?,
                     other => vec![ArrayKey::from_value(other)?],
                 };
                 ViewValue::from(
@@ -606,16 +719,43 @@ fn arr_static(method: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Opt
                 }
             }
             "query" => call_function("http_build_query", args, registry)?,
-            "flatten" => crate::methods::call_method(a0, "flatten", args[1.min(args.len())..].to_vec(), registry)?,
+            "flatten" => crate::methods::call_method(
+                a0,
+                "flatten",
+                args[1.min(args.len())..].to_vec(),
+                registry,
+            )?,
             "collapse" => crate::methods::call_method(a0, "collapse", Vec::new(), registry)?,
-            "where" => crate::methods::call_method(a0, "filter", args[1.min(args.len())..].to_vec(), registry)?,
-            "whereNotNull" => crate::methods::call_method(a0, "whereNotNull", Vec::new(), registry)?,
-            "map" => crate::methods::call_method(a0, "map", args[1.min(args.len())..].to_vec(), registry)?,
-            "sort" => crate::methods::call_method(a0, "sort", args[1.min(args.len())..].to_vec(), registry)?,
+            "where" => crate::methods::call_method(
+                a0,
+                "filter",
+                args[1.min(args.len())..].to_vec(),
+                registry,
+            )?,
+            "whereNotNull" => {
+                crate::methods::call_method(a0, "whereNotNull", Vec::new(), registry)?
+            }
+            "map" => crate::methods::call_method(
+                a0,
+                "map",
+                args[1.min(args.len())..].to_vec(),
+                registry,
+            )?,
+            "sort" => crate::methods::call_method(
+                a0,
+                "sort",
+                args[1.min(args.len())..].to_vec(),
+                registry,
+            )?,
             "sortDesc" => crate::methods::call_method(a0, "sortDesc", Vec::new(), registry)?,
             "dot" => crate::methods::call_method(a0, "dot", Vec::new(), registry)?,
             "undot" => crate::methods::call_method(a0, "undot", Vec::new(), registry)?,
-            "keyBy" => crate::methods::call_method(a0, "keyBy", args[1.min(args.len())..].to_vec(), registry)?,
+            "keyBy" => crate::methods::call_method(
+                a0,
+                "keyBy",
+                args[1.min(args.len())..].to_vec(),
+                registry,
+            )?,
             _ => return Ok(None),
         }))
     })();
@@ -677,25 +817,72 @@ mod tests {
 
     #[test]
     fn str_helpers_are_available() {
-        assert_eq!(call("Str", "limit", vec!["The quick brown fox".into(), 9.into()]), ViewValue::from("The quick..."));
-        assert_eq!(call("Str", "title", vec!["hello world".into()]), ViewValue::from("Hello World"));
-        assert_eq!(call("Str", "plural", vec!["post".into()]), ViewValue::from("posts"));
-        assert_eq!(call("Str", "plural", vec!["post".into(), 1.into()]), ViewValue::from("post"));
-        assert_eq!(call("Str", "is", vec!["admin/*".into(), "admin/users".into()]), ViewValue::Bool(true));
-        assert_eq!(call("Str", "replace", vec!["a".into(), "o".into(), "banana".into()]), ViewValue::from("bonono"));
-        assert_eq!(call("Str", "slug", vec!["Laravel Rocks".into()]), ViewValue::from("laravel-rocks"));
+        assert_eq!(
+            call("Str", "limit", vec!["The quick brown fox".into(), 9.into()]),
+            ViewValue::from("The quick...")
+        );
+        assert_eq!(
+            call("Str", "title", vec!["hello world".into()]),
+            ViewValue::from("Hello World")
+        );
+        assert_eq!(
+            call("Str", "plural", vec!["post".into()]),
+            ViewValue::from("posts")
+        );
+        assert_eq!(
+            call("Str", "plural", vec!["post".into(), 1.into()]),
+            ViewValue::from("post")
+        );
+        assert_eq!(
+            call("Str", "is", vec!["admin/*".into(), "admin/users".into()]),
+            ViewValue::Bool(true)
+        );
+        assert_eq!(
+            call(
+                "Str",
+                "replace",
+                vec!["a".into(), "o".into(), "banana".into()]
+            ),
+            ViewValue::from("bonono")
+        );
+        assert_eq!(
+            call("Str", "slug", vec!["Laravel Rocks".into()]),
+            ViewValue::from("laravel-rocks")
+        );
     }
 
     #[test]
     fn number_and_arr_helpers_are_available() {
-        assert_eq!(call("Number", "format", vec![1234567.into()]), ViewValue::from("1,234,567"));
-        assert_eq!(call("Number", "currency", vec![12.5.into()]), ViewValue::from("$12.50"));
-        assert_eq!(call("Number", "ordinal", vec![3.into()]), ViewValue::from("3rd"));
         assert_eq!(
-            call("Arr", "toCssClasses", vec![ViewValue::from(json!({"0": "p-4", "active": true, "hidden": false}))]),
+            call("Number", "format", vec![1234567.into()]),
+            ViewValue::from("1,234,567")
+        );
+        assert_eq!(
+            call("Number", "currency", vec![12.5.into()]),
+            ViewValue::from("$12.50")
+        );
+        assert_eq!(
+            call("Number", "ordinal", vec![3.into()]),
+            ViewValue::from("3rd")
+        );
+        assert_eq!(
+            call(
+                "Arr",
+                "toCssClasses",
+                vec![ViewValue::from(
+                    json!({"0": "p-4", "active": true, "hidden": false})
+                )]
+            ),
             ViewValue::from("p-4 active")
         );
-        assert_eq!(call("Arr", "get", vec![ViewValue::from(json!({"a": {"b": 1}})), "a.b".into()]), ViewValue::Int(1));
+        assert_eq!(
+            call(
+                "Arr",
+                "get",
+                vec![ViewValue::from(json!({"a": {"b": 1}})), "a.b".into()]
+            ),
+            ViewValue::Int(1)
+        );
     }
 
     #[test]

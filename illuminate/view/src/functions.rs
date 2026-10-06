@@ -54,7 +54,11 @@ pub(crate) fn bool_arg(args: &[ViewValue], index: usize, default: bool) -> bool 
 }
 
 /// The argument at `index` as an array.
-pub(crate) fn array_arg(args: &[ViewValue], index: usize, function: &str) -> Result<Arc<ViewArray>> {
+pub(crate) fn array_arg(
+    args: &[ViewValue],
+    index: usize,
+    function: &str,
+) -> Result<Arc<ViewArray>> {
     to_array(arg(args, index)).ok_or_else(|| {
         TypeError::new(format!(
             "{function}(): Argument #{} must be of type array, {} given",
@@ -91,28 +95,180 @@ macro_rules! builtins {
 }
 
 builtins!(
-    "count", "sizeof", "strtoupper", "strtolower", "mb_strtoupper", "mb_strtolower", "ucfirst", "lcfirst",
-    "ucwords", "trim", "ltrim", "rtrim", "chop", "strlen", "mb_strlen", "substr", "mb_substr", "str_repeat",
-    "str_replace", "str_ireplace", "str_contains", "str_starts_with", "str_ends_with", "strpos", "stripos",
-    "strrpos", "strrev", "str_pad", "str_split", "mb_str_split", "substr_count", "wordwrap", "nl2br", "e",
-    "htmlspecialchars", "htmlentities", "htmlspecialchars_decode", "html_entity_decode", "strip_tags", "addslashes",
-    "sprintf", "vsprintf", "number_format", "round", "floor", "ceil", "abs", "max", "min", "intval", "floatval",
-    "doubleval", "strval", "boolval", "is_null", "is_array", "is_string", "is_numeric", "is_int", "is_integer",
-    "is_long", "is_float", "is_double", "is_bool", "is_object", "is_callable", "is_iterable", "is_countable",
-    "is_scalar", "gettype", "get_debug_type", "in_array", "array_key_exists", "key_exists", "array_keys",
-    "array_values", "array_merge", "array_slice", "array_filter", "array_map", "array_reverse", "array_unique",
-    "array_sum", "array_product", "array_search", "array_column", "array_combine", "array_flip", "array_chunk",
-    "array_fill", "array_fill_keys", "array_key_first", "array_key_last", "array_is_list", "array_diff",
-    "array_diff_key", "array_intersect", "array_intersect_key", "array_count_values", "array_pad",
-    "iterator_to_array", "implode", "join", "explode", "json_encode", "json_decode", "range", "date", "time",
-    "strtotime", "now", "today", "collect", "data_get", "value", "head", "last", "blank", "filled", "optional",
-    "dump", "dd", "class_basename", "str", "method_field", "csrf_field", "config", "env", "__", "trans",
-    "trans_choice", "old", "session", "auth_check", "gate_check", "app_environment", "vite",
-    "vite_react_refresh", "urlencode", "rawurlencode", "urldecode", "rawurldecode", "http_build_query",
-    "print_r", "var_export", "ctype_digit", "ctype_alpha", "ctype_alnum", "ctype_upper", "ctype_lower",
-    "ctype_space", "lcg_value", "pi", "sqrt", "pow", "intdiv", "fmod", "array_rand", "uniqid", "md5",
-    "spl_object_id", "tap", "with", "throw_if", "throw_unless", "abort", "abort_if", "abort_unless",
-    "to_route", "retry", "now_timestamp", "request",
+    "count",
+    "sizeof",
+    "strtoupper",
+    "strtolower",
+    "mb_strtoupper",
+    "mb_strtolower",
+    "ucfirst",
+    "lcfirst",
+    "ucwords",
+    "trim",
+    "ltrim",
+    "rtrim",
+    "chop",
+    "strlen",
+    "mb_strlen",
+    "substr",
+    "mb_substr",
+    "str_repeat",
+    "str_replace",
+    "str_ireplace",
+    "str_contains",
+    "str_starts_with",
+    "str_ends_with",
+    "strpos",
+    "stripos",
+    "strrpos",
+    "strrev",
+    "str_pad",
+    "str_split",
+    "mb_str_split",
+    "substr_count",
+    "wordwrap",
+    "nl2br",
+    "e",
+    "htmlspecialchars",
+    "htmlentities",
+    "htmlspecialchars_decode",
+    "html_entity_decode",
+    "strip_tags",
+    "addslashes",
+    "sprintf",
+    "vsprintf",
+    "number_format",
+    "round",
+    "floor",
+    "ceil",
+    "abs",
+    "max",
+    "min",
+    "intval",
+    "floatval",
+    "doubleval",
+    "strval",
+    "boolval",
+    "is_null",
+    "is_array",
+    "is_string",
+    "is_numeric",
+    "is_int",
+    "is_integer",
+    "is_long",
+    "is_float",
+    "is_double",
+    "is_bool",
+    "is_object",
+    "is_callable",
+    "is_iterable",
+    "is_countable",
+    "is_scalar",
+    "gettype",
+    "get_debug_type",
+    "in_array",
+    "array_key_exists",
+    "key_exists",
+    "array_keys",
+    "array_values",
+    "array_merge",
+    "array_slice",
+    "array_filter",
+    "array_map",
+    "array_reverse",
+    "array_unique",
+    "array_sum",
+    "array_product",
+    "array_search",
+    "array_column",
+    "array_combine",
+    "array_flip",
+    "array_chunk",
+    "array_fill",
+    "array_fill_keys",
+    "array_key_first",
+    "array_key_last",
+    "array_is_list",
+    "array_diff",
+    "array_diff_key",
+    "array_intersect",
+    "array_intersect_key",
+    "array_count_values",
+    "array_pad",
+    "iterator_to_array",
+    "implode",
+    "join",
+    "explode",
+    "json_encode",
+    "json_decode",
+    "range",
+    "date",
+    "time",
+    "strtotime",
+    "now",
+    "today",
+    "collect",
+    "data_get",
+    "value",
+    "head",
+    "last",
+    "blank",
+    "filled",
+    "optional",
+    "dump",
+    "dd",
+    "class_basename",
+    "str",
+    "method_field",
+    "csrf_field",
+    "config",
+    "env",
+    "__",
+    "trans",
+    "trans_choice",
+    "old",
+    "session",
+    "auth_check",
+    "gate_check",
+    "app_environment",
+    "vite",
+    "vite_react_refresh",
+    "urlencode",
+    "rawurlencode",
+    "urldecode",
+    "rawurldecode",
+    "http_build_query",
+    "print_r",
+    "var_export",
+    "ctype_digit",
+    "ctype_alpha",
+    "ctype_alnum",
+    "ctype_upper",
+    "ctype_lower",
+    "ctype_space",
+    "lcg_value",
+    "pi",
+    "sqrt",
+    "pow",
+    "intdiv",
+    "fmod",
+    "array_rand",
+    "uniqid",
+    "md5",
+    "spl_object_id",
+    "tap",
+    "with",
+    "throw_if",
+    "throw_unless",
+    "abort",
+    "abort_if",
+    "abort_unless",
+    "to_route",
+    "retry",
+    "now_timestamp",
+    "request",
+    "app",
+    "app_locale",
 );
 
 /// Determine if a built-in function exists.
@@ -121,7 +277,11 @@ pub(crate) fn is_builtin(name: &str) -> bool {
 }
 
 /// Call a built-in function. Returns `None` when there is no such function.
-pub(crate) fn call_builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Option<Result<ViewValue>> {
+pub(crate) fn call_builtin(
+    name: &str,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Option<Result<ViewValue>> {
     if !is_builtin(name) {
         return None;
     }
@@ -146,7 +306,10 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
         "is_int" | "is_integer" | "is_long" => ViewValue::Bool(matches!(a0, ViewValue::Int(_))),
         "is_float" | "is_double" => ViewValue::Bool(matches!(a0, ViewValue::Float(_))),
         "is_bool" => ViewValue::Bool(matches!(a0, ViewValue::Bool(_))),
-        "is_object" => ViewValue::Bool(matches!(a0, ViewValue::Object(_) | ViewValue::Closure(_) | ViewValue::Html(_))),
+        "is_object" => ViewValue::Bool(matches!(
+            a0,
+            ViewValue::Object(_) | ViewValue::Closure(_) | ViewValue::Html(_)
+        )),
         "is_callable" => ViewValue::Bool(match a0 {
             ViewValue::Closure(_) => true,
             ViewValue::Str(name) => crate::expr::eval::function_exists(name, registry),
@@ -231,7 +394,10 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             let found = if name == "strrpos" {
                 haystack.rfind(&needle)
             } else {
-                haystack.get(offset..).and_then(|h| h.find(&needle)).map(|i| i + offset)
+                haystack
+                    .get(offset..)
+                    .and_then(|h| h.find(&needle))
+                    .map(|i| i + offset)
             };
             found.map(ViewValue::from).unwrap_or(ViewValue::Bool(false))
         }
@@ -281,9 +447,14 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
         "e" => match a0 {
             ViewValue::Html(html) => s(html.to_string()),
             ViewValue::Object(o) if o.to_html().is_some() => s(o.to_html().unwrap_or_default()),
-            other => s(php::escape(&php::to_str(other)?, bool_arg(args, 1, registry.double_encode))),
+            other => s(php::escape(
+                &php::to_str(other)?,
+                bool_arg(args, 1, registry.double_encode),
+            )),
         },
-        "htmlspecialchars" | "htmlentities" => s(php::escape(&str_arg(args, 0)?, bool_arg(args, 3, true))),
+        "htmlspecialchars" | "htmlentities" => {
+            s(php::escape(&str_arg(args, 0)?, bool_arg(args, 3, true)))
+        }
         "htmlspecialchars_decode" | "html_entity_decode" => s(decode_entities(&str_arg(args, 0)?)),
         "strip_tags" => s(strip_tags(&str_arg(args, 0)?)),
         "addslashes" => {
@@ -303,7 +474,11 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             s(sprintf(&str_arg(args, 0)?, &values)?)
         }
         "implode" | "join" => implode(args)?,
-        "explode" => explode(&str_arg(args, 0)?, &str_arg(args, 1)?, args.get(2).and_then(|v| v.as_i64()))?,
+        "explode" => explode(
+            &str_arg(args, 0)?,
+            &str_arg(args, 1)?,
+            args.get(2).and_then(|v| v.as_i64()),
+        )?,
         "class_basename" => s(Str::class_basename(&str_arg(args, 0)?)),
         "str" => s(match args.first() {
             Some(value) => php::to_str(value)?,
@@ -313,8 +488,11 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
         "rawurlencode" => s(url_encode(&str_arg(args, 0)?, false)),
         "urldecode" | "rawurldecode" => s(url_decode(&str_arg(args, 0)?, name == "urldecode")),
         "http_build_query" => s(http_build_query(&*array_arg(args, 0, name)?, None)),
-        "ctype_digit" | "ctype_alpha" | "ctype_alnum" | "ctype_upper" | "ctype_lower" | "ctype_space" => {
-            let ViewValue::Str(value) = a0 else { return Ok(ViewValue::Bool(false)) };
+        "ctype_digit" | "ctype_alpha" | "ctype_alnum" | "ctype_upper" | "ctype_lower"
+        | "ctype_space" => {
+            let ViewValue::Str(value) = a0 else {
+                return Ok(ViewValue::Bool(false));
+            };
             let check: fn(&char) -> bool = match name {
                 "ctype_digit" => |c| c.is_ascii_digit(),
                 "ctype_alpha" => |c| c.is_ascii_alphabetic(),
@@ -342,7 +520,12 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             let decimals = int_arg(args, 1, 0).max(0) as usize;
             let decimal_point = opt_str(args, 2)?.unwrap_or_else(|| ".".into());
             let separator = opt_str(args, 3)?.unwrap_or_else(|| ",".into());
-            s(number_format(float_arg(args, 0), decimals, &decimal_point, &separator))
+            s(number_format(
+                float_arg(args, 0),
+                decimals,
+                &decimal_point,
+                &separator,
+            ))
         }
         "round" => ViewValue::Float(php_round(float_arg(args, 0), int_arg(args, 1, 0) as i32)),
         "floor" => ViewValue::Float(float_arg(args, 0).floor()),
@@ -358,7 +541,16 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             if divisor == 0 {
                 return Err(crate::exception::DivisionByZeroError::new("Division by zero").into());
             }
-            ViewValue::Int(int_arg(args, 0, 0) / divisor)
+            let dividend = int_arg(args, 0, 0);
+            match dividend.checked_div(divisor) {
+                Some(quotient) => ViewValue::Int(quotient),
+                None => {
+                    return Err(crate::exception::ArithmeticError::new(
+                        "Division of PHP_INT_MIN by -1 is not an integer",
+                    )
+                    .into());
+                }
+            }
         }
         "fmod" => ViewValue::Float(float_arg(args, 0) % float_arg(args, 1)),
         "pi" => ViewValue::Float(std::f64::consts::PI),
@@ -381,7 +573,9 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
                     None => value,
                     Some(current) => {
                         let ordering = php::compare(&value, &current);
-                        if (name == "max" && ordering.is_gt()) || (name == "min" && ordering.is_lt()) {
+                        if (name == "max" && ordering.is_gt())
+                            || (name == "min" && ordering.is_lt())
+                        {
                             value
                         } else {
                             current
@@ -389,7 +583,11 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
                     }
                 });
             }
-            best.ok_or_else(|| error(format!("{name}(): Argument #1 ($value) must contain at least one element")))?
+            best.ok_or_else(|| {
+                error(format!(
+                    "{name}(): Argument #1 ($value) must contain at least one element"
+                ))
+            })?
         }
         "intval" => match a0 {
             ViewValue::Str(value) if args.len() > 1 => {
@@ -422,7 +620,11 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             let haystack = array_arg(args, 1, name)?;
             let strict = bool_arg(args, 2, false);
             ViewValue::Bool(haystack.values().any(|v| {
-                if strict { php::strict_eq(v, a0) } else { php::loose_eq(v, a0) }
+                if strict {
+                    php::strict_eq(v, a0)
+                } else {
+                    php::loose_eq(v, a0)
+                }
             }))
         }
         "array_key_exists" | "key_exists" => {
@@ -458,7 +660,12 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
                 None | Some(ViewValue::Null) => None,
                 Some(v) => v.as_i64(),
             };
-            ViewValue::from(slice(&array, int_arg(args, 1, 0), length, bool_arg(args, 3, false)))
+            ViewValue::from(slice(
+                &array,
+                int_arg(args, 1, 0),
+                length,
+                bool_arg(args, 3, false),
+            ))
         }
         "array_filter" => {
             let array = array_arg(args, 0, name)?;
@@ -501,7 +708,10 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
                 let longest = arrays.iter().map(Vec::len).max().unwrap_or(0);
                 let mut mapped = ViewArray::new();
                 for index in 0..longest {
-                    let row: Vec<ViewValue> = arrays.iter().map(|a| a.get(index).cloned().unwrap_or_default()).collect();
+                    let row: Vec<ViewValue> = arrays
+                        .iter()
+                        .map(|a| a.get(index).cloned().unwrap_or_default())
+                        .collect();
                     mapped.push(match a0 {
                         ViewValue::Null => ViewValue::list(row),
                         callback => call_callable(callback, &row, registry)?,
@@ -537,8 +747,16 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
         }
         "array_sum" | "array_product" => {
             let array = array_arg(args, 0, name)?;
-            let mut total = if name == "array_sum" { ViewValue::Int(0) } else { ViewValue::Int(1) };
-            let op = if name == "array_sum" { php::Arith::Add } else { php::Arith::Mul };
+            let mut total = if name == "array_sum" {
+                ViewValue::Int(0)
+            } else {
+                ViewValue::Int(1)
+            };
+            let op = if name == "array_sum" {
+                php::Arith::Add
+            } else {
+                php::Arith::Mul
+            };
             for value in array.values() {
                 total = php::arithmetic(op, &total, value)?;
             }
@@ -549,7 +767,13 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             let strict = bool_arg(args, 2, false);
             haystack
                 .iter()
-                .find(|(_, v)| if strict { php::strict_eq(v, a0) } else { php::loose_eq(v, a0) })
+                .find(|(_, v)| {
+                    if strict {
+                        php::strict_eq(v, a0)
+                    } else {
+                        php::loose_eq(v, a0)
+                    }
+                })
                 .map(|(k, _)| k.to_value())
                 .unwrap_or(ViewValue::Bool(false))
         }
@@ -648,17 +872,31 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             }
             ViewValue::list(values)
         }
-        "array_key_first" => array_arg(args, 0, name)?.keys().next().map(ArrayKey::to_value).unwrap_or_default(),
-        "array_key_last" => array_arg(args, 0, name)?.keys().last().map(ArrayKey::to_value).unwrap_or_default(),
+        "array_key_first" => array_arg(args, 0, name)?
+            .keys()
+            .next()
+            .map(ArrayKey::to_value)
+            .unwrap_or_default(),
+        "array_key_last" => array_arg(args, 0, name)?
+            .keys()
+            .last()
+            .map(ArrayKey::to_value)
+            .unwrap_or_default(),
         "array_is_list" => ViewValue::Bool(array_arg(args, 0, name)?.is_list()),
         "array_diff" | "array_intersect" => {
             let first = array_arg(args, 0, name)?;
-            let others: Vec<Arc<ViewArray>> = (1..args.len()).map(|i| array_arg(args, i, name)).collect::<Result<_>>()?;
+            let others: Vec<Arc<ViewArray>> = (1..args.len())
+                .map(|i| array_arg(args, i, name))
+                .collect::<Result<_>>()?;
             let mut out = ViewArray::new();
             for (key, value) in first.iter() {
                 let repr = value.to_string_lossy();
                 let present = |a: &Arc<ViewArray>| a.values().any(|v| v.to_string_lossy() == repr);
-                let keep = if name == "array_diff" { !others.iter().any(present) } else { others.iter().all(present) };
+                let keep = if name == "array_diff" {
+                    !others.iter().any(present)
+                } else {
+                    others.iter().all(present)
+                };
                 if keep {
                     out.insert(key.clone(), value.clone());
                 }
@@ -667,11 +905,17 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
         }
         "array_diff_key" | "array_intersect_key" => {
             let first = array_arg(args, 0, name)?;
-            let others: Vec<Arc<ViewArray>> = (1..args.len()).map(|i| array_arg(args, i, name)).collect::<Result<_>>()?;
+            let others: Vec<Arc<ViewArray>> = (1..args.len())
+                .map(|i| array_arg(args, i, name))
+                .collect::<Result<_>>()?;
             let mut out = ViewArray::new();
             for (key, value) in first.iter() {
                 let present = |a: &Arc<ViewArray>| a.get(key).is_some();
-                let keep = if name == "array_diff_key" { !others.iter().any(present) } else { others.iter().all(present) };
+                let keep = if name == "array_diff_key" {
+                    !others.iter().any(present)
+                } else {
+                    others.iter().all(present)
+                };
                 if keep {
                     out.insert(key.clone(), value.clone());
                 }
@@ -693,8 +937,13 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             if array.is_empty() {
                 return Err(error("array_rand(): Argument #1 ($array) cannot be empty"));
             }
-            let index = (fnv_hash(&format!("{:?}", std::time::SystemTime::now())) as usize) % array.len();
-            array.keys().nth(index).map(ArrayKey::to_value).unwrap_or_default()
+            let index =
+                (fnv_hash(&format!("{:?}", std::time::SystemTime::now())) as usize) % array.len();
+            array
+                .keys()
+                .nth(index)
+                .map(ArrayKey::to_value)
+                .unwrap_or_default()
         }
         "iterator_to_array" => ViewValue::Array(array_arg(args, 0, name)?),
         "range" => range(a0, arg(args, 1), args.get(2))?,
@@ -702,7 +951,11 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
         "json_decode" => php::json_decode(&str_arg(args, 0)?),
         "print_r" | "var_export" => {
             let dumped = dump_text(a0);
-            if bool_arg(args, 1, false) { s(dumped) } else { ViewValue::html(dumped) }
+            if bool_arg(args, 1, false) {
+                s(dumped)
+            } else {
+                ViewValue::html(dumped)
+            }
         }
 
         // ----------------------------------------------------------------
@@ -733,7 +986,9 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
         "collect" => match a0 {
             ViewValue::Null => ViewValue::empty_array(),
             ViewValue::Array(_) => a0.clone(),
-            other => to_array(other).map(ViewValue::Array).unwrap_or_else(|| ViewValue::list([other.clone()])),
+            other => to_array(other)
+                .map(ViewValue::Array)
+                .unwrap_or_else(|| ViewValue::list([other.clone()])),
         },
         "data_get" => {
             let found = data_get(a0, &str_arg(args, 1)?);
@@ -743,8 +998,12 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             }
         }
         "value" => value_of(a0, &args[1.min(args.len())..], registry)?,
-        "head" => to_array(a0).and_then(|a| a.first().cloned()).unwrap_or(ViewValue::Bool(false)),
-        "last" => to_array(a0).and_then(|a| a.last().cloned()).unwrap_or(ViewValue::Bool(false)),
+        "head" => to_array(a0)
+            .and_then(|a| a.first().cloned())
+            .unwrap_or(ViewValue::Bool(false)),
+        "last" => to_array(a0)
+            .and_then(|a| a.last().cloned())
+            .unwrap_or(ViewValue::Bool(false)),
         "blank" => ViewValue::Bool(is_blank(a0)),
         "filled" => ViewValue::Bool(!is_blank(a0)),
         "optional" => match a0 {
@@ -792,7 +1051,9 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             if should_abort {
                 let status = int_arg(args, offset, 500) as u16;
                 return Err(match opt_str(args, offset + 1)? {
-                    Some(message) => illuminate_http::HttpException::with_message(status, message).into(),
+                    Some(message) => {
+                        illuminate_http::HttpException::with_message(status, message).into()
+                    }
                     None => illuminate_http::HttpException::new(status).into(),
                 });
             }
@@ -825,7 +1086,11 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             let value = illuminate_container::try_app::<illuminate_config::Repository>()
                 .map(|config| ViewValue::from(config.get(&key)))
                 .unwrap_or_default();
-            if value.is_null() { arg(args, 1).clone() } else { value }
+            if value.is_null() {
+                arg(args, 1).clone()
+            } else {
+                value
+            }
         }
         "env" => {
             let value = illuminate_support::env(&str_arg(args, 0)?, arg(args, 1).to_json());
@@ -841,7 +1106,9 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
                 ViewValue::Array(a) => a.len() as f64,
                 other => other.as_f64().unwrap_or(0.0),
             };
-            let mut replace = to_array(arg(args, 2)).map(|a| (*a).clone()).unwrap_or_default();
+            let mut replace = to_array(arg(args, 2))
+                .map(|a| (*a).clone())
+                .unwrap_or_default();
             if replace.get_str("count").is_none() {
                 replace.set("count", php::Num::Float(count).into_value_clean());
             }
@@ -866,6 +1133,32 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
                 None => s("production"),
             }
         }
+        "app_locale" => {
+            let configured = illuminate_container::try_app::<illuminate_config::Repository>()
+                .map(|config| config.get("app.locale"))
+                .filter(|value| !value.is_null());
+            match configured {
+                Some(value) => s(value.to_string_lossy()),
+                None => s("en"),
+            }
+        }
+        "app" => {
+            if !args.is_empty() {
+                return Err(crate::exception::BadMethodCallException::new(format!(
+                    "No service [{}] is available to views. Register Blade::function(\"app\", ...) to use app() and @inject.",
+                    a0.to_string_lossy()
+                ))
+                .into());
+            }
+            let locale =
+                crate::expr::eval::call_function("app_locale", &[], registry)?.to_string_lossy();
+            let environment = crate::expr::eval::call_function("app_environment", &[], registry)?
+                .to_string_lossy();
+            ViewValue::object(crate::objects::AppObject {
+                locale,
+                environment,
+            })
+        }
         "vite" | "vite_react_refresh" => ViewValue::html(""),
         "spl_object_id" => ViewValue::Int(match a0 {
             ViewValue::Object(o) => Arc::as_ptr(o) as *const () as usize as i64,
@@ -876,7 +1169,11 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             match opt_str(args, 0)? {
                 Some(key) => {
                     let value = ViewValue::from(request.input(&key));
-                    if value.is_null() { arg(args, 1).clone() } else { value }
+                    if value.is_null() {
+                        arg(args, 1).clone()
+                    } else {
+                        value
+                    }
                 }
                 None => ViewValue::object(crate::objects::RequestObject(request)),
             }
@@ -930,7 +1227,13 @@ fn count(value: &ViewValue, recursive: bool) -> Result<usize> {
                 items.len()
                     + items
                         .values()
-                        .map(|v| if matches!(v, ViewValue::Array(_)) { count(v, true).unwrap_or(0) } else { 0 })
+                        .map(|v| {
+                            if matches!(v, ViewValue::Array(_)) {
+                                count(v, true).unwrap_or(0)
+                            } else {
+                                0
+                            }
+                        })
                         .sum::<usize>()
             } else {
                 items.len()
@@ -982,7 +1285,11 @@ fn str_replace(args: &[ViewValue], insensitive: bool) -> Result<ViewValue> {
             if from.is_empty() {
                 continue;
             }
-            result = if insensitive { replace_insensitive(&result, from, to) } else { result.replace(from, to) };
+            result = if insensitive {
+                replace_insensitive(&result, from, to)
+            } else {
+                result.replace(from, to)
+            };
         }
         result
     };
@@ -1087,16 +1394,29 @@ pub(crate) fn merge_into(target: &mut ViewArray, source: &ViewArray) {
 }
 
 /// `array_slice` semantics.
-pub(crate) fn slice(array: &ViewArray, offset: i64, length: Option<i64>, preserve_keys: bool) -> ViewArray {
+pub(crate) fn slice(
+    array: &ViewArray,
+    offset: i64,
+    length: Option<i64>,
+    preserve_keys: bool,
+) -> ViewArray {
     let len = array.len() as i64;
-    let start = if offset < 0 { (len + offset).max(0) } else { offset.min(len) };
+    let start = if offset < 0 {
+        (len + offset).max(0)
+    } else {
+        offset.min(len)
+    };
     let end = match length {
         None => len,
         Some(l) if l < 0 => (len + l).max(start),
-        Some(l) => (start + l).min(len),
+        Some(l) => start.saturating_add(l).min(len),
     };
     let mut out = ViewArray::new();
-    for (key, value) in array.iter().skip(start as usize).take((end - start).max(0) as usize) {
+    for (key, value) in array
+        .iter()
+        .skip(start as usize)
+        .take((end - start).max(0) as usize)
+    {
         match key {
             ArrayKey::Int(_) if !preserve_keys => out.push(value.clone()),
             key => out.insert(key.clone(), value.clone()),
@@ -1106,19 +1426,31 @@ pub(crate) fn slice(array: &ViewArray, offset: i64, length: Option<i64>, preserv
 }
 
 fn range(start: &ViewValue, end: &ViewValue, step: Option<&ViewValue>) -> Result<ViewValue> {
-    if let (ViewValue::Str(a), ViewValue::Str(b)) = (start, end) {
-        if a.chars().count() == 1 && b.chars().count() == 1 && php::parse_numeric(a).is_none() {
-            let (from, to) = (a.chars().next().unwrap_or('a') as u32, b.chars().next().unwrap_or('a') as u32);
-            let step = step.and_then(ViewValue::as_i64).unwrap_or(1).unsigned_abs().max(1) as usize;
-            let codes: Vec<u32> = if from <= to {
-                (from..=to).step_by(step).collect()
-            } else {
-                (to..=from).rev().step_by(step).collect()
-            };
-            return Ok(ViewValue::list(
-                codes.into_iter().filter_map(char::from_u32).map(|c| ViewValue::from(c.to_string())),
-            ));
-        }
+    if let (ViewValue::Str(a), ViewValue::Str(b)) = (start, end)
+        && a.chars().count() == 1
+        && b.chars().count() == 1
+        && php::parse_numeric(a).is_none()
+    {
+        let (from, to) = (
+            a.chars().next().unwrap_or('a') as u32,
+            b.chars().next().unwrap_or('a') as u32,
+        );
+        let step = step
+            .and_then(ViewValue::as_i64)
+            .unwrap_or(1)
+            .unsigned_abs()
+            .max(1) as usize;
+        let codes: Vec<u32> = if from <= to {
+            (from..=to).step_by(step).collect()
+        } else {
+            (to..=from).rev().step_by(step).collect()
+        };
+        return Ok(ViewValue::list(
+            codes
+                .into_iter()
+                .filter_map(char::from_u32)
+                .map(|c| ViewValue::from(c.to_string())),
+        ));
     }
     let is_float = matches!(start, ViewValue::Float(_))
         || matches!(end, ViewValue::Float(_))
@@ -1135,8 +1467,16 @@ fn range(start: &ViewValue, end: &ViewValue, step: Option<&ViewValue>) -> Result
         return Err(error("range(): The range is too large"));
     }
     for i in 0..=count {
-        let value = if from <= to { from + step * i as f64 } else { from - step * i as f64 };
-        values.push(if is_float { ViewValue::Float(value) } else { ViewValue::Int(value as i64) });
+        let value = if from <= to {
+            from + step * i as f64
+        } else {
+            from - step * i as f64
+        };
+        values.push(if is_float {
+            ViewValue::Float(value)
+        } else {
+            ViewValue::Int(value as i64)
+        });
     }
     Ok(ViewValue::list(values))
 }
@@ -1162,15 +1502,28 @@ pub(crate) fn php_round(value: f64, precision: i32) -> f64 {
         return value;
     }
     let factor = 10f64.powi(precision.abs());
-    let scaled = if precision >= 0 { value * factor } else { value / factor };
+    let scaled = if precision >= 0 {
+        value * factor
+    } else {
+        value / factor
+    };
     let pre_rounded: f64 = format!("{:.14e}", scaled).parse().unwrap_or(scaled);
     let rounded = pre_rounded.round();
-    let result = if precision >= 0 { rounded / factor } else { rounded * factor };
+    let result = if precision >= 0 {
+        rounded / factor
+    } else {
+        rounded * factor
+    };
     if result.is_finite() { result } else { value }
 }
 
 /// PHP's `number_format()`.
-pub(crate) fn number_format(value: f64, decimals: usize, decimal_point: &str, separator: &str) -> String {
+pub(crate) fn number_format(
+    value: f64,
+    decimals: usize,
+    decimal_point: &str,
+    separator: &str,
+) -> String {
     let rounded = php_round(value, decimals as i32);
     let formatted = format!("{:.*}", decimals, rounded.abs());
     let (int_part, frac_part) = match formatted.split_once('.') {
@@ -1261,7 +1614,10 @@ pub(crate) fn sprintf(format: &str, args: &[ViewValue]) -> Result<String> {
             precision = Some(p);
         }
         let Some(&conversion) = chars.get(i) else {
-            return Err(crate::exception::InvalidArgumentException::new("Missing format specifier at end of string").into());
+            return Err(crate::exception::InvalidArgumentException::new(
+                "Missing format specifier at end of string",
+            )
+            .into());
         };
         i += 1;
         let index = arg_index.unwrap_or_else(|| {
@@ -1289,27 +1645,47 @@ pub(crate) fn sprintf(format: &str, args: &[ViewValue]) -> Result<String> {
             }
             'd' | 'i' => {
                 let n = integer(value);
-                if plus && n >= 0 { format!("+{n}") } else { n.to_string() }
+                if plus && n >= 0 {
+                    format!("+{n}")
+                } else {
+                    n.to_string()
+                }
             }
             'u' => (integer(value) as u64).to_string(),
             'f' | 'F' => {
                 let n = number(value);
-                let s = format!("{:.*}", precision.unwrap_or(6), php_round(n, precision.unwrap_or(6) as i32));
+                let s = format!(
+                    "{:.*}",
+                    precision.unwrap_or(6),
+                    php_round(n, precision.unwrap_or(6) as i32)
+                );
                 if plus && n >= 0.0 { format!("+{s}") } else { s }
             }
             'e' | 'E' => {
                 let s = format!("{:.*e}", precision.unwrap_or(6), number(value));
                 let (mantissa, exponent) = s.split_once('e').unwrap_or((&s, "0"));
                 let exponent: i32 = exponent.parse().unwrap_or(0);
-                let s = format!("{mantissa}e{}{}", if exponent < 0 { '-' } else { '+' }, exponent.abs());
-                if conversion == 'E' { s.to_uppercase() } else { s }
+                let s = format!(
+                    "{mantissa}e{}{}",
+                    if exponent < 0 { '-' } else { '+' },
+                    exponent.abs()
+                );
+                if conversion == 'E' {
+                    s.to_uppercase()
+                } else {
+                    s
+                }
             }
-            'g' | 'G' => php::format_float_precision(number(value), precision.unwrap_or(6).max(1) as i32),
+            'g' | 'G' => {
+                php::format_float_precision(number(value), precision.unwrap_or(6).max(1) as i32)
+            }
             'x' => format!("{:x}", integer(value)),
             'X' => format!("{:X}", integer(value)),
             'o' => format!("{:o}", integer(value)),
             'b' => format!("{:b}", integer(value)),
-            'c' => char::from_u32(integer(value) as u32).map(String::from).unwrap_or_default(),
+            'c' => char::from_u32(integer(value) as u32)
+                .map(String::from)
+                .unwrap_or_default(),
             other => {
                 return Err(crate::exception::InvalidArgumentException::new(format!(
                     "Unknown format specifier \"{other}\""
@@ -1324,7 +1700,7 @@ pub(crate) fn sprintf(format: &str, args: &[ViewValue]) -> Result<String> {
                 text.push_str(&padding.replace('0', " "));
             } else if pad == '0' && (text.starts_with('-') || text.starts_with('+')) {
                 let sign = text.remove(0);
-                text = format!("{sign}{}{text}", &padding);
+                text = format!("{sign}{}{text}", padding);
             } else {
                 text = format!("{padding}{text}");
             }
@@ -1339,10 +1715,10 @@ pub(crate) fn data_get(target: &ViewValue, key: &str) -> Option<ViewValue> {
     if key.is_empty() {
         return Some(target.clone());
     }
-    if let ViewValue::Array(array) = target {
-        if let Some(value) = array.get_str(key) {
-            return Some(value.clone());
-        }
+    if let ViewValue::Array(array) = target
+        && let Some(value) = array.get_str(key)
+    {
+        return Some(value.clone());
     }
     let (segment, rest) = match key.split_once('.') {
         Some((segment, rest)) => (segment, Some(rest)),
@@ -1355,11 +1731,11 @@ pub(crate) fn data_get(target: &ViewValue, key: &str) -> Option<ViewValue> {
             match rest {
                 Some(rest) => {
                     if let Some(found) = data_get(item, rest) {
-                        if rest.contains('*') {
-                            if let ViewValue::Array(nested) = &found {
-                                out.extend(nested.values().cloned());
-                                continue;
-                            }
+                        if rest.contains('*')
+                            && let ViewValue::Array(nested) = &found
+                        {
+                            out.extend(nested.values().cloned());
+                            continue;
                         }
                         out.push(found);
                     } else {
@@ -1373,7 +1749,9 @@ pub(crate) fn data_get(target: &ViewValue, key: &str) -> Option<ViewValue> {
     }
     let next = match target {
         ViewValue::Array(array) => array.get_str(segment).cloned(),
-        ViewValue::Object(object) => object.get(segment).or_else(|| object.offset_get(&ViewValue::from(segment))),
+        ViewValue::Object(object) => object
+            .get(segment)
+            .or_else(|| object.offset_get(&ViewValue::from(segment))),
         _ => None,
     }?;
     match rest {
@@ -1383,7 +1761,11 @@ pub(crate) fn data_get(target: &ViewValue, key: &str) -> Option<ViewValue> {
 }
 
 /// Laravel's `value()`: call closures, return anything else.
-pub(crate) fn value_of(value: &ViewValue, args: &[ViewValue], registry: &Arc<Registry>) -> Result<ViewValue> {
+pub(crate) fn value_of(
+    value: &ViewValue,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Result<ViewValue> {
     match value {
         ViewValue::Closure(closure) => closure.call(args),
         _ => {
@@ -1400,18 +1782,22 @@ pub(crate) fn is_blank(value: &ViewValue) -> bool {
         ViewValue::Str(s) | ViewValue::Html(s) => s.trim().is_empty(),
         ViewValue::Array(a) => a.is_empty(),
         ViewValue::Object(o) => o.count() == Some(0),
-        ViewValue::Bool(_) | ViewValue::Int(_) | ViewValue::Float(_) | ViewValue::Closure(_) => false,
+        ViewValue::Bool(_) | ViewValue::Int(_) | ViewValue::Float(_) | ViewValue::Closure(_) => {
+            false
+        }
     }
 }
 
 /// Apply Laravel's `:placeholder` replacements to a translation line.
 pub(crate) fn make_replacements(line: &str, replace: &ViewValue) -> Result<String> {
-    let Some(replacements) = to_array(replace) else { return Ok(line.to_string()) };
+    let Some(replacements) = to_array(replace) else {
+        return Ok(line.to_string());
+    };
     let mut pairs: Vec<(String, String)> = Vec::new();
     for (key, value) in replacements.iter() {
         pairs.push((key.to_string(), php::to_str(value)?));
     }
-    pairs.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    pairs.sort_by_key(|pair| std::cmp::Reverse(pair.0.len()));
     let mut out = line.to_string();
     for (key, value) in pairs {
         out = out
@@ -1435,14 +1821,19 @@ pub(crate) fn choose_plural(line: &str, count: f64) -> String {
         return stripped[0].clone();
     }
     let index = if count == 1.0 { 0 } else { 1 };
-    stripped.get(index).cloned().unwrap_or_else(|| stripped[0].clone())
+    stripped
+        .get(index)
+        .cloned()
+        .unwrap_or_else(|| stripped[0].clone())
 }
 
 fn match_interval(segment: &str, count: f64) -> Option<String> {
     let segment = segment.trim_start();
     if let Some(rest) = segment.strip_prefix('{') {
         let close = rest.find('}')?;
-        let matches = rest[..close].split(',').any(|v| v.trim().parse::<f64>().ok() == Some(count));
+        let matches = rest[..close]
+            .split(',')
+            .any(|v| v.trim().parse::<f64>().ok() == Some(count));
         return matches.then(|| rest[close + 1..].trim_start().to_string());
     }
     let first = segment.chars().next()?;
@@ -1455,26 +1846,38 @@ fn match_interval(segment: &str, count: f64) -> Option<String> {
     let right_inclusive = segment.as_bytes()[close] == b']';
     let lower_ok = match from.trim() {
         "*" => true,
-        f => f.parse::<f64>().is_ok_and(|f| if left_inclusive { count >= f } else { count > f }),
+        f => f.parse::<f64>().is_ok_and(|f| {
+            if left_inclusive {
+                count >= f
+            } else {
+                count > f
+            }
+        }),
     };
     let upper_ok = match to.trim() {
         "*" => true,
-        t => t.parse::<f64>().is_ok_and(|t| if right_inclusive { count <= t } else { count < t }),
+        t => t.parse::<f64>().is_ok_and(|t| {
+            if right_inclusive {
+                count <= t
+            } else {
+                count < t
+            }
+        }),
     };
     (lower_ok && upper_ok).then(|| segment[close + 1..].trim_start().to_string())
 }
 
 fn strip_interval(segment: &str) -> String {
     let trimmed = segment.trim_start();
-    if trimmed.starts_with('{') {
-        if let Some(close) = trimmed.find('}') {
-            return trimmed[close + 1..].trim_start().to_string();
-        }
+    if trimmed.starts_with('{')
+        && let Some(close) = trimmed.find('}')
+    {
+        return trimmed[close + 1..].trim_start().to_string();
     }
-    if trimmed.starts_with('[') || trimmed.starts_with(']') {
-        if let Some(close) = trimmed[1..].find([']', '[']) {
-            return trimmed[close + 2..].trim_start().to_string();
-        }
+    if (trimmed.starts_with('[') || trimmed.starts_with(']'))
+        && let Some(close) = trimmed[1..].find([']', '['])
+    {
+        return trimmed[close + 2..].trim_start().to_string();
     }
     segment.to_string()
 }
@@ -1520,9 +1923,9 @@ fn decode_entities(value: &str) -> String {
             "quot" => Some('"'),
             "apos" => Some('\''),
             "nbsp" => Some('\u{a0}'),
-            e if e.starts_with("#x") || e.starts_with("#X") => {
-                u32::from_str_radix(&e[2..], 16).ok().and_then(char::from_u32)
-            }
+            e if e.starts_with("#x") || e.starts_with("#X") => u32::from_str_radix(&e[2..], 16)
+                .ok()
+                .and_then(char::from_u32),
             e if e.starts_with('#') => e[1..].parse::<u32>().ok().and_then(char::from_u32),
             _ => None,
         };
@@ -1619,10 +2022,11 @@ pub(crate) fn dump_text(value: &ViewValue) -> String {
         ViewValue::Null => "null".into(),
         ViewValue::Bool(b) => b.to_string(),
         ViewValue::Int(_) | ViewValue::Float(_) => value.to_string_lossy(),
-        ViewValue::Array(_) => {
-            php::json_encode(value, php::JSON_PRETTY_PRINT | php::JSON_UNESCAPED_SLASHES | php::JSON_UNESCAPED_UNICODE)
-                .unwrap_or_default()
-        }
+        ViewValue::Array(_) => php::json_encode(
+            value,
+            php::JSON_PRETTY_PRINT | php::JSON_UNESCAPED_SLASHES | php::JSON_UNESCAPED_UNICODE,
+        )
+        .unwrap_or_default(),
         ViewValue::Object(object) => format!(
             "{} {}",
             object.class_name(),
@@ -1634,7 +2038,10 @@ pub(crate) fn dump_text(value: &ViewValue) -> String {
 
 /// The HTML `dump()` produces.
 pub(crate) fn dump_html(value: &ViewValue) -> String {
-    format!("<pre class=\"sf-dump\">{}</pre>\n", illuminate_support::e(dump_text(value)))
+    format!(
+        "<pre class=\"sf-dump\">{}</pre>\n",
+        illuminate_support::e(dump_text(value))
+    )
 }
 
 #[cfg(test)]
@@ -1649,31 +2056,64 @@ mod tests {
 
     #[test]
     fn string_functions_behave_like_php() {
-        assert_eq!(call("ucwords", vec!["hello world".into()]), ViewValue::from("Hello World"));
+        assert_eq!(
+            call("ucwords", vec!["hello world".into()]),
+            ViewValue::from("Hello World")
+        );
         assert_eq!(call("trim", vec!["  x  ".into()]), ViewValue::from("x"));
-        assert_eq!(call("trim", vec!["--x--".into(), "-".into()]), ViewValue::from("x"));
-        assert_eq!(call("substr", vec!["Laravel".into(), (-3).into()]), ViewValue::from("vel"));
-        assert_eq!(call("str_replace", vec!["a".into(), "o".into(), "banana".into()]), ViewValue::from("bonono"));
-        assert_eq!(call("nl2br", vec!["a\nb".into()]), ViewValue::from("a<br />\nb"));
-        assert_eq!(call("strip_tags", vec!["<b>bold</b> text".into()]), ViewValue::from("bold text"));
-        assert_eq!(call("strpos", vec!["abc".into(), "z".into()]), ViewValue::Bool(false));
-        assert_eq!(call("str_pad", vec!["5".into(), 3.into(), "0".into(), 0.into()]), ViewValue::from("005"));
+        assert_eq!(
+            call("trim", vec!["--x--".into(), "-".into()]),
+            ViewValue::from("x")
+        );
+        assert_eq!(
+            call("substr", vec!["Laravel".into(), (-3).into()]),
+            ViewValue::from("vel")
+        );
+        assert_eq!(
+            call("str_replace", vec!["a".into(), "o".into(), "banana".into()]),
+            ViewValue::from("bonono")
+        );
+        assert_eq!(
+            call("nl2br", vec!["a\nb".into()]),
+            ViewValue::from("a<br />\nb")
+        );
+        assert_eq!(
+            call("strip_tags", vec!["<b>bold</b> text".into()]),
+            ViewValue::from("bold text")
+        );
+        assert_eq!(
+            call("strpos", vec!["abc".into(), "z".into()]),
+            ViewValue::Bool(false)
+        );
+        assert_eq!(
+            call("str_pad", vec!["5".into(), 3.into(), "0".into(), 0.into()]),
+            ViewValue::from("005")
+        );
     }
 
     #[test]
     fn sprintf_supports_common_formats() {
-        let out = sprintf("%s has %d items costing %.2f (%05.1f) %'*6s %-4s| %x %%", &[
-            "Cart".into(),
-            3.into(),
-            9.5.into(),
-            2.25.into(),
-            "ab".into(),
-            "l".into(),
-            255.into(),
-        ])
+        let out = sprintf(
+            "%s has %d items costing %.2f (%05.1f) %'*6s %-4s| %x %%",
+            &[
+                "Cart".into(),
+                3.into(),
+                9.5.into(),
+                2.25.into(),
+                "ab".into(),
+                "l".into(),
+                255.into(),
+            ],
+        )
         .unwrap();
-        assert_eq!(out, "Cart has 3 items costing 9.50 (002.3) ****ab l   | ff %");
-        assert_eq!(sprintf("%2$s %1$s", &["a".into(), "b".into()]).unwrap(), "b a");
+        assert_eq!(
+            out,
+            "Cart has 3 items costing 9.50 (002.3) ****ab l   | ff %"
+        );
+        assert_eq!(
+            sprintf("%2$s %1$s", &["a".into(), "b".into()]).unwrap(),
+            "b a"
+        );
     }
 
     #[test]
@@ -1690,45 +2130,112 @@ mod tests {
     #[test]
     fn array_functions_preserve_php_semantics() {
         let arr = ViewValue::from(json!({"a": 1, "b": 0, "c": 3}));
-        assert_eq!(call("array_filter", vec![arr.clone()]).to_json(), json!({"a": 1, "c": 3}));
-        assert_eq!(call("array_keys", vec![arr.clone()]).to_json(), json!(["a", "b", "c"]));
+        assert_eq!(
+            call("array_filter", vec![arr.clone()]).to_json(),
+            json!({"a": 1, "c": 3})
+        );
+        assert_eq!(
+            call("array_keys", vec![arr.clone()]).to_json(),
+            json!(["a", "b", "c"])
+        );
         assert_eq!(call("array_sum", vec![arr.clone()]), ViewValue::Int(4));
         assert_eq!(
-            call("array_merge", vec![ViewValue::from(json!([1, 2])), ViewValue::from(json!({"x": 1, "0": 9}))]).to_json(),
+            call(
+                "array_merge",
+                vec![
+                    ViewValue::from(json!([1, 2])),
+                    ViewValue::from(json!({"x": 1, "0": 9}))
+                ]
+            )
+            .to_json(),
             json!({"0": 1, "1": 2, "x": 1, "2": 9})
         );
-        assert_eq!(call("implode", vec![", ".into(), ViewValue::from(json!(["a", "b"]))]), ViewValue::from("a, b"));
-        assert_eq!(call("explode", vec![",".into(), "a,b,c".into(), 2.into()]).to_json(), json!(["a", "b,c"]));
-        assert_eq!(call("range", vec![1.into(), 3.into()]).to_json(), json!([1, 2, 3]));
-        assert_eq!(call("range", vec!["a".into(), "c".into()]).to_json(), json!(["a", "b", "c"]));
-        assert_eq!(call("max", vec![1.into(), 5.into(), 3.into()]), ViewValue::Int(5));
-        assert_eq!(call("in_array", vec!["2".into(), ViewValue::from(json!([1, 2]))]), ViewValue::Bool(true));
+        assert_eq!(
+            call(
+                "implode",
+                vec![", ".into(), ViewValue::from(json!(["a", "b"]))]
+            ),
+            ViewValue::from("a, b")
+        );
+        assert_eq!(
+            call("explode", vec![",".into(), "a,b,c".into(), 2.into()]).to_json(),
+            json!(["a", "b,c"])
+        );
+        assert_eq!(
+            call("range", vec![1.into(), 3.into()]).to_json(),
+            json!([1, 2, 3])
+        );
+        assert_eq!(
+            call("range", vec!["a".into(), "c".into()]).to_json(),
+            json!(["a", "b", "c"])
+        );
+        assert_eq!(
+            call("max", vec![1.into(), 5.into(), 3.into()]),
+            ViewValue::Int(5)
+        );
+        assert_eq!(
+            call("in_array", vec!["2".into(), ViewValue::from(json!([1, 2]))]),
+            ViewValue::Bool(true)
+        );
     }
 
     #[test]
     fn translation_helpers_have_sensible_defaults() {
         assert_eq!(
-            call("__", vec!["Welcome, :name!".into(), ViewValue::from(json!({"name": "taylor"}))]),
+            call(
+                "__",
+                vec![
+                    "Welcome, :name!".into(),
+                    ViewValue::from(json!({"name": "taylor"}))
+                ]
+            ),
             ViewValue::from("Welcome, taylor!")
         );
         assert_eq!(
-            call("__", vec!["Welcome, :Name!".into(), ViewValue::from(json!({"name": "taylor"}))]),
+            call(
+                "__",
+                vec![
+                    "Welcome, :Name!".into(),
+                    ViewValue::from(json!({"name": "taylor"}))
+                ]
+            ),
             ViewValue::from("Welcome, Taylor!")
         );
-        assert_eq!(call("trans_choice", vec!["apple|apples".into(), 1.into()]), ViewValue::from("apple"));
-        assert_eq!(call("trans_choice", vec!["apple|apples".into(), 5.into()]), ViewValue::from("apples"));
         assert_eq!(
-            call("trans_choice", vec!["{0} none|[1,19] some|[20,*] many :count".into(), 25.into()]),
+            call("trans_choice", vec!["apple|apples".into(), 1.into()]),
+            ViewValue::from("apple")
+        );
+        assert_eq!(
+            call("trans_choice", vec!["apple|apples".into(), 5.into()]),
+            ViewValue::from("apples")
+        );
+        assert_eq!(
+            call(
+                "trans_choice",
+                vec!["{0} none|[1,19] some|[20,*] many :count".into(), 25.into()]
+            ),
             ViewValue::from("many 25")
         );
-        assert_eq!(call("trans_choice", vec!["{0} none|[1,19] some|[20,*] many".into(), 0.into()]), ViewValue::from("none"));
+        assert_eq!(
+            call(
+                "trans_choice",
+                vec!["{0} none|[1,19] some|[20,*] many".into(), 0.into()]
+            ),
+            ViewValue::from("none")
+        );
     }
 
     #[test]
     fn data_get_supports_wildcards() {
         let data = ViewValue::from(json!({"users": [{"name": "a"}, {"name": "b"}]}));
-        assert_eq!(data_get(&data, "users.*.name").unwrap().to_json(), json!(["a", "b"]));
-        assert_eq!(data_get(&data, "users.1.name").unwrap(), ViewValue::from("b"));
+        assert_eq!(
+            data_get(&data, "users.*.name").unwrap().to_json(),
+            json!(["a", "b"])
+        );
+        assert_eq!(
+            data_get(&data, "users.1.name").unwrap(),
+            ViewValue::from("b")
+        );
         assert!(data_get(&data, "users.5.name").is_none());
     }
 }

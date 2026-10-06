@@ -7,8 +7,9 @@ use illuminate_support::Str;
 
 use super::lexer::{Directives, RawAttr, Token, tokenize};
 use super::{
-    Attr, AttrPart, AttrValue, Branch, Case, ComponentName, ComponentNode, Cond, Extends, IncludeKind, JumpKind, Node,
-    OnceKey, OutputDirective, SectionEnd, SlotBody, SlotNode, Template,
+    Attr, AttrPart, AttrValue, Branch, Case, ComponentName, ComponentNode, Cond, Extends,
+    IncludeKind, JumpKind, Node, OnceKey, OutputDirective, SectionEnd, SlotBody, SlotNode,
+    Template,
 };
 use crate::exception::ViewCompilationException;
 use crate::expr::parser::{parse_for, parse_foreach};
@@ -20,25 +21,137 @@ type PResult<T> = Result<T, ViewCompilationException>;
 
 /// The built-in directives (lowercase; Blade matches them case-insensitively).
 const BUILTIN: &[&str] = &[
-    "if", "elseif", "else", "endif", "unless", "endunless", "isset", "endisset", "empty", "endempty", "auth",
-    "elseauth", "endauth", "guest", "elseguest", "endguest", "env", "endenv", "production", "endproduction",
-    "hassection", "sectionmissing", "hasstack", "switch", "case", "default", "endswitch", "once", "endonce", "error",
-    "enderror", "session", "endsession", "can", "cannot", "canany", "elsecan", "elsecannot", "elsecanany", "endcan",
-    "endcannot", "endcanany", "checked", "selected", "disabled", "readonly", "required", "bool", "class", "style",
-    "for", "endfor", "foreach", "endforeach", "forelse", "endforelse", "while", "endwhile", "break", "continue",
-    "extends", "extendsfirst", "section", "endsection", "show", "stop", "append", "overwrite", "yield", "parent",
-    "push", "endpush", "pushonce", "endpushonce", "prepend", "endprepend", "prependonce", "endprependonce", "pushif",
-    "elsepushif", "elsepush", "endpushif", "stack", "include", "includeif", "includewhen", "includeunless",
-    "includefirst", "includeisolated", "each", "csrf", "method", "dd", "dump", "vite", "vitereactrefresh", "json",
-    "js", "lang", "endlang", "choice", "inject", "php", "unset", "component", "endcomponent", "slot", "endslot",
-    "props", "aware", "fragment", "endfragment", "use",
+    "if",
+    "elseif",
+    "else",
+    "endif",
+    "unless",
+    "endunless",
+    "isset",
+    "endisset",
+    "empty",
+    "endempty",
+    "auth",
+    "elseauth",
+    "endauth",
+    "guest",
+    "elseguest",
+    "endguest",
+    "env",
+    "endenv",
+    "production",
+    "endproduction",
+    "hassection",
+    "sectionmissing",
+    "hasstack",
+    "switch",
+    "case",
+    "default",
+    "endswitch",
+    "once",
+    "endonce",
+    "error",
+    "enderror",
+    "session",
+    "endsession",
+    "can",
+    "cannot",
+    "canany",
+    "elsecan",
+    "elsecannot",
+    "elsecanany",
+    "endcan",
+    "endcannot",
+    "endcanany",
+    "checked",
+    "selected",
+    "disabled",
+    "readonly",
+    "required",
+    "bool",
+    "class",
+    "style",
+    "for",
+    "endfor",
+    "foreach",
+    "endforeach",
+    "forelse",
+    "endforelse",
+    "while",
+    "endwhile",
+    "break",
+    "continue",
+    "extends",
+    "extendsfirst",
+    "section",
+    "endsection",
+    "show",
+    "stop",
+    "append",
+    "overwrite",
+    "yield",
+    "parent",
+    "push",
+    "endpush",
+    "pushonce",
+    "endpushonce",
+    "prepend",
+    "endprepend",
+    "prependonce",
+    "endprependonce",
+    "pushif",
+    "elsepushif",
+    "elsepush",
+    "endpushif",
+    "stack",
+    "include",
+    "includeif",
+    "includewhen",
+    "includeunless",
+    "includefirst",
+    "includeisolated",
+    "each",
+    "csrf",
+    "method",
+    "dd",
+    "dump",
+    "vite",
+    "vitereactrefresh",
+    "json",
+    "js",
+    "lang",
+    "endlang",
+    "choice",
+    "inject",
+    "php",
+    "unset",
+    "component",
+    "endcomponent",
+    "slot",
+    "endslot",
+    "props",
+    "aware",
+    "fragment",
+    "endfragment",
+    "use",
 ];
 
 /// The `@end...` directives that close any conditional (they all compile to
 /// `endif` in Laravel).
 const IF_ENDS: &[&str] = &[
-    "endif", "endunless", "endisset", "endempty", "endauth", "endguest", "endenv", "endproduction", "enderror",
-    "endsession", "endcan", "endcannot", "endcanany",
+    "endif",
+    "endunless",
+    "endisset",
+    "endempty",
+    "endauth",
+    "endguest",
+    "endenv",
+    "endproduction",
+    "enderror",
+    "endsession",
+    "endcan",
+    "endcannot",
+    "endcanany",
 ];
 
 static ONCE_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -52,10 +165,10 @@ impl Directives for DirectiveSet<'_> {
             return true;
         }
         for prefix in ["unless", "else", "end"] {
-            if let Some(rest) = name.strip_prefix(prefix) {
-                if registry.conditions.contains_key(rest) {
-                    return true;
-                }
+            if let Some(rest) = name.strip_prefix(prefix)
+                && registry.conditions.contains_key(rest)
+            {
+                return true;
             }
         }
         BUILTIN.contains(&name.to_ascii_lowercase().as_str())
@@ -74,16 +187,19 @@ pub(crate) fn parse(src: &str, registry: &Registry) -> PResult<Template> {
     };
     let (mut nodes, stop) = parser.parse_nodes(&|_| false)?;
     debug_assert!(stop.is_none());
-    if !parser.extends.is_empty() {
-        if let Some(Node::Text(text)) = nodes.first_mut() {
-            let trimmed = text.trim_start_matches('\n').to_string();
-            *text = trimmed;
-            if text.is_empty() {
-                nodes.remove(0);
-            }
+    if !parser.extends.is_empty()
+        && let Some(Node::Text(text)) = nodes.first_mut()
+    {
+        let trimmed = text.trim_start_matches('\n').to_string();
+        *text = trimmed;
+        if text.is_empty() {
+            nodes.remove(0);
         }
     }
-    Ok(Template { nodes, extends: parser.extends })
+    Ok(Template {
+        nodes,
+        extends: parser.extends,
+    })
 }
 
 /// A token that ended a block.
@@ -129,25 +245,37 @@ fn args_list(args: &Option<String>, line: usize) -> PResult<Vec<Expr>> {
 fn required_expr(args: &Option<String>, line: usize, directive: &str) -> PResult<Expr> {
     match args {
         Some(src) if !src.trim().is_empty() => ExprParser::expression(src, line),
-        _ => Err(ViewCompilationException::new(format!("The @{directive} directive requires an argument."), line)),
+        _ => Err(ViewCompilationException::new(
+            format!("The @{directive} directive requires an argument."),
+            line,
+        )),
     }
 }
 
 fn first_arg(args: &Option<String>, line: usize, directive: &str) -> PResult<Expr> {
     let mut list = args_list(args, line)?;
     if list.is_empty() {
-        return Err(ViewCompilationException::new(format!("The @{directive} directive requires an argument."), line));
+        return Err(ViewCompilationException::new(
+            format!("The @{directive} directive requires an argument."),
+            line,
+        ));
     }
     Ok(list.remove(0))
 }
 
 fn unclosed(directive: &str, end: &str, line: usize) -> ViewCompilationException {
-    ViewCompilationException::new(format!("Unclosed @{directive} directive. Did you forget an @{end}?"), line)
+    ViewCompilationException::new(
+        format!("Unclosed @{directive} directive. Did you forget an @{end}?"),
+        line,
+    )
 }
 
 impl TemplateParser<'_> {
     fn next(&mut self) -> Option<Token> {
-        let token = self.tokens.get_mut(self.pos).map(|t| std::mem::replace(t, Token::Text(String::new())));
+        let token = self
+            .tokens
+            .get_mut(self.pos)
+            .map(|t| std::mem::replace(t, Token::Text(String::new())));
         if token.is_some() {
             self.pos += 1;
         }
@@ -170,12 +298,21 @@ impl TemplateParser<'_> {
                     let stmts = ExprParser::statements(&src, line)?;
                     nodes.push(Node::Php { stmts, line });
                 }
-                Token::ComponentOpen { name, attrs, self_closing, line } => {
+                Token::ComponentOpen {
+                    name,
+                    attrs,
+                    self_closing,
+                    line,
+                } => {
                     let node = self.component(name, attrs, self_closing, line)?;
                     nodes.push(node);
                 }
                 Token::ComponentClose { name, line } => {
-                    let candidate = Stop { name: format!("</x-{name}>"), args: None, line };
+                    let candidate = Stop {
+                        name: format!("</x-{name}>"),
+                        args: None,
+                        line,
+                    };
                     if stop(&candidate) {
                         return Ok((nodes, Some(candidate)));
                     }
@@ -184,16 +321,27 @@ impl TemplateParser<'_> {
                         line,
                     ));
                 }
-                Token::SlotOpen { inline_name, attrs, line } => {
+                Token::SlotOpen {
+                    inline_name,
+                    attrs,
+                    line,
+                } => {
                     let node = self.slot_tag(inline_name, attrs, line)?;
                     nodes.push(node);
                 }
                 Token::SlotClose { line } => {
-                    let candidate = Stop { name: "</x-slot>".into(), args: None, line };
+                    let candidate = Stop {
+                        name: "</x-slot>".into(),
+                        args: None,
+                        line,
+                    };
                     if stop(&candidate) {
                         return Ok((nodes, Some(candidate)));
                     }
-                    return Err(ViewCompilationException::new("Unexpected closing tag </x-slot>.", line));
+                    return Err(ViewCompilationException::new(
+                        "Unexpected closing tag </x-slot>.",
+                        line,
+                    ));
                 }
                 Token::Directive { name, args, line } => {
                     let candidate = Stop { name, args, line };
@@ -228,20 +376,38 @@ impl TemplateParser<'_> {
         // Custom directives and conditionals come first, case-sensitively.
         if self.registry.directives.contains_key(&name) {
             let args = args_list(&args, line)?;
-            return Ok(Some(Node::Output { directive: OutputDirective::Custom(name), args, line }));
+            return Ok(Some(Node::Output {
+                directive: OutputDirective::Custom(name),
+                args,
+                line,
+            }));
         }
         if self.is_condition_name(&name) {
-            let cond = Cond::Custom { name: name.clone(), args: args_list(&args, line)?, negate: false };
+            let cond = Cond::Custom {
+                name: name.clone(),
+                args: args_list(&args, line)?,
+                negate: false,
+            };
             return self.if_chain(cond, &name, line).map(Some);
         }
-        if let Some(rest) = name.strip_prefix("unless") {
-            if self.is_condition_name(rest) {
-                let cond = Cond::Custom { name: rest.to_string(), args: args_list(&args, line)?, negate: true };
-                return self.if_chain(cond, &name, line).map(Some);
-            }
+        if let Some(rest) = name.strip_prefix("unless")
+            && self.is_condition_name(rest)
+        {
+            let cond = Cond::Custom {
+                name: rest.to_string(),
+                args: args_list(&args, line)?,
+                negate: true,
+            };
+            return self.if_chain(cond, &name, line).map(Some);
         }
 
-        let output = |directive: OutputDirective, args: Vec<Expr>| Ok(Some(Node::Output { directive, args, line }));
+        let output = |directive: OutputDirective, args: Vec<Expr>| {
+            Ok(Some(Node::Output {
+                directive,
+                args,
+                line,
+            }))
+        };
         let lowered = lower(&name);
         match lowered.as_str() {
             // Conditionals
@@ -273,7 +439,9 @@ impl TemplateParser<'_> {
                 let cond = Cond::Env(args_list(&args, line)?);
                 self.if_chain(cond, "env", line).map(Some)
             }
-            "production" => self.if_chain(Cond::Production, "production", line).map(Some),
+            "production" => self
+                .if_chain(Cond::Production, "production", line)
+                .map(Some),
             "hassection" => {
                 let cond = Cond::HasSection(first_arg(&args, line, "hasSection")?);
                 self.if_chain(cond, "hasSection", line).map(Some)
@@ -322,7 +490,14 @@ impl TemplateParser<'_> {
                 })?;
                 if lowered == "foreach" {
                     let (body, _) = self.block("foreach", &["endforeach"], line)?;
-                    Ok(Some(Node::Foreach { iterable, key, value, body, empty: None, line }))
+                    Ok(Some(Node::Foreach {
+                        iterable,
+                        key,
+                        value,
+                        body,
+                        empty: None,
+                        line,
+                    }))
                 } else {
                     let (body, stop) = self.parse_nodes(&|s| {
                         let n = lower(&s.name);
@@ -335,14 +510,29 @@ impl TemplateParser<'_> {
                     } else {
                         None
                     };
-                    Ok(Some(Node::Foreach { iterable, key, value, body, empty, line }))
+                    Ok(Some(Node::Foreach {
+                        iterable,
+                        key,
+                        value,
+                        body,
+                        empty,
+                        line,
+                    }))
                 }
             }
             "for" => {
-                let src = args.as_deref().ok_or_else(|| ViewCompilationException::new("Malformed @for statement.", line))?;
+                let src = args.as_deref().ok_or_else(|| {
+                    ViewCompilationException::new("Malformed @for statement.", line)
+                })?;
                 let (init, cond, step) = parse_for(src, line)?;
                 let (body, _) = self.block("for", &["endfor"], line)?;
-                Ok(Some(Node::For { init, cond, step, body, line }))
+                Ok(Some(Node::For {
+                    init,
+                    cond,
+                    step,
+                    body,
+                    line,
+                }))
             }
             "while" => {
                 let cond = required_expr(&args, line, "while")?;
@@ -350,7 +540,11 @@ impl TemplateParser<'_> {
                 Ok(Some(Node::While { cond, body, line }))
             }
             "break" | "continue" => {
-                let kind = if lowered == "break" { JumpKind::Break } else { JumpKind::Continue };
+                let kind = if lowered == "break" {
+                    JumpKind::Break
+                } else {
+                    JumpKind::Continue
+                };
                 let (cond, levels) = match &args {
                     None => (None, 1),
                     Some(src) => match src.trim().parse::<i64>() {
@@ -358,11 +552,17 @@ impl TemplateParser<'_> {
                         Err(_) => (Some(ExprParser::expression(src, line)?), 1),
                     },
                 };
-                Ok(Some(Node::Jump { kind, cond, levels, line }))
+                Ok(Some(Node::Jump {
+                    kind,
+                    cond,
+                    levels,
+                    line,
+                }))
             }
 
             // Includes
-            "include" | "includeif" | "includewhen" | "includeunless" | "includefirst" | "includeisolated" => {
+            "include" | "includeif" | "includewhen" | "includeunless" | "includefirst"
+            | "includeisolated" => {
                 let kind = match lowered.as_str() {
                     "include" => IncludeKind::Include,
                     "includeif" => IncludeKind::If,
@@ -372,9 +572,16 @@ impl TemplateParser<'_> {
                     _ => IncludeKind::Isolated,
                 };
                 let args = args_list(&args, line)?;
-                let required = if matches!(kind, IncludeKind::When | IncludeKind::Unless) { 2 } else { 1 };
+                let required = if matches!(kind, IncludeKind::When | IncludeKind::Unless) {
+                    2
+                } else {
+                    1
+                };
                 if args.len() < required {
-                    return Err(ViewCompilationException::new(format!("The @{name} directive requires a view name."), line));
+                    return Err(ViewCompilationException::new(
+                        format!("The @{name} directive requires a view name."),
+                        line,
+                    ));
                 }
                 Ok(Some(Node::Include { kind, args, line }))
             }
@@ -393,28 +600,51 @@ impl TemplateParser<'_> {
             "extends" | "extendsfirst" => {
                 let args = args_list(&args, line)?;
                 if args.is_empty() {
-                    return Err(ViewCompilationException::new(format!("The @{name} directive requires a view name."), line));
+                    return Err(ViewCompilationException::new(
+                        format!("The @{name} directive requires a view name."),
+                        line,
+                    ));
                 }
-                self.extends.push(Extends { args, first: lowered == "extendsfirst", line });
+                self.extends.push(Extends {
+                    args,
+                    first: lowered == "extendsfirst",
+                    line,
+                });
                 Ok(None)
             }
             "section" => {
                 let mut list = args_list(&args, line)?;
                 if list.is_empty() {
-                    return Err(ViewCompilationException::new("The @section directive requires a name.", line));
+                    return Err(ViewCompilationException::new(
+                        "The @section directive requires a name.",
+                        line,
+                    ));
                 }
                 if list.len() >= 2 {
                     let content = list.remove(1);
                     let name = list.remove(0);
-                    return Ok(Some(Node::SectionInline { name, content, line }));
+                    return Ok(Some(Node::SectionInline {
+                        name,
+                        content,
+                        line,
+                    }));
                 }
                 let name = list.remove(0);
                 let section_name: Arc<str> = match &name {
                     Expr::Lit(ViewValue::Str(s)) => s.clone(),
-                    _ => args.as_deref().unwrap_or("").trim().trim_matches(['\'', '"']).into(),
+                    _ => args
+                        .as_deref()
+                        .unwrap_or("")
+                        .trim()
+                        .trim_matches(['\'', '"'])
+                        .into(),
                 };
                 self.sections.push(section_name);
-                let result = self.block("section", &["endsection", "stop", "show", "append", "overwrite"], line);
+                let result = self.block(
+                    "section",
+                    &["endsection", "stop", "show", "append", "overwrite"],
+                    line,
+                );
                 self.sections.pop();
                 let (body, stop) = result?;
                 let end = match lower(&stop.name).as_str() {
@@ -423,12 +653,20 @@ impl TemplateParser<'_> {
                     "overwrite" => SectionEnd::Overwrite,
                     _ => SectionEnd::Stop,
                 };
-                Ok(Some(Node::Section { name, body, end, line }))
+                Ok(Some(Node::Section {
+                    name,
+                    body,
+                    end,
+                    line,
+                }))
             }
             "yield" => {
                 let args = args_list(&args, line)?;
                 if args.is_empty() {
-                    return Err(ViewCompilationException::new("The @yield directive requires a section name.", line));
+                    return Err(ViewCompilationException::new(
+                        "The @yield directive requires a section name.",
+                        line,
+                    ));
                 }
                 Ok(Some(Node::Yield { args, line }))
             }
@@ -436,16 +674,21 @@ impl TemplateParser<'_> {
                 let section = self.sections.last().cloned().unwrap_or_else(|| "".into());
                 Ok(Some(Node::Parent { section }))
             }
-            "endsection" | "stop" | "show" | "append" | "overwrite" => Err(ViewCompilationException::new(
-                "Cannot end a section without first starting one.",
-                line,
-            )),
+            "endsection" | "stop" | "show" | "append" | "overwrite" => {
+                Err(ViewCompilationException::new(
+                    "Cannot end a section without first starting one.",
+                    line,
+                ))
+            }
 
             // Stacks
             "push" | "prepend" | "pushonce" | "prependonce" => {
                 let mut list = args_list(&args, line)?;
                 if list.is_empty() {
-                    return Err(ViewCompilationException::new(format!("The @{name} directive requires a stack name."), line));
+                    return Err(ViewCompilationException::new(
+                        format!("The @{name} directive requires a stack name."),
+                        line,
+                    ));
                 }
                 let stack = list.remove(0);
                 let once = if lowered.ends_with("once") {
@@ -458,13 +701,22 @@ impl TemplateParser<'_> {
                 };
                 let end = format!("end{lowered}");
                 let (body, _) = self.block(&name, &[end.as_str()], line)?;
-                Ok(Some(Node::Push { prepend: lowered.starts_with("prepend"), stack, once, body, line }))
+                Ok(Some(Node::Push {
+                    prepend: lowered.starts_with("prepend"),
+                    stack,
+                    once,
+                    body,
+                    line,
+                }))
             }
             "pushif" => self.push_if(&args, line).map(Some),
             "stack" => {
                 let args = args_list(&args, line)?;
                 if args.is_empty() {
-                    return Err(ViewCompilationException::new("The @stack directive requires a stack name.", line));
+                    return Err(ViewCompilationException::new(
+                        "The @stack directive requires a stack name.",
+                        line,
+                    ));
                 }
                 Ok(Some(Node::Stack { args, line }))
             }
@@ -478,12 +730,21 @@ impl TemplateParser<'_> {
             }
 
             // Components
-            "props" => Ok(Some(Node::Props { expr: required_expr(&args, line, "props")?, line })),
-            "aware" => Ok(Some(Node::Aware { expr: required_expr(&args, line, "aware")?, line })),
+            "props" => Ok(Some(Node::Props {
+                expr: required_expr(&args, line, "props")?,
+                line,
+            })),
+            "aware" => Ok(Some(Node::Aware {
+                expr: required_expr(&args, line, "aware")?,
+                line,
+            })),
             "component" => {
                 let mut list = args_list(&args, line)?;
                 if list.is_empty() {
-                    return Err(ViewCompilationException::new("The @component directive requires a view name.", line));
+                    return Err(ViewCompilationException::new(
+                        "The @component directive requires a view name.",
+                        line,
+                    ));
                 }
                 let view = list.remove(0);
                 let data = list.into_iter().next();
@@ -498,17 +759,34 @@ impl TemplateParser<'_> {
             "slot" => {
                 let mut list = args_list(&args, line)?;
                 if list.is_empty() {
-                    return Err(ViewCompilationException::new("The @slot directive requires a name.", line));
+                    return Err(ViewCompilationException::new(
+                        "The @slot directive requires a name.",
+                        line,
+                    ));
                 }
                 let name = list.remove(0);
-                let content = if list.is_empty() { None } else { Some(list.remove(0)) };
+                let content = if list.is_empty() {
+                    None
+                } else {
+                    Some(list.remove(0))
+                };
                 match content {
                     Some(content) if !matches!(content, Expr::Lit(ViewValue::Null)) => {
-                        Ok(Some(Node::Slot(Box::new(SlotNode { name, attrs: Vec::new(), body: SlotBody::Inline(content), line }))))
+                        Ok(Some(Node::Slot(Box::new(SlotNode {
+                            name,
+                            attrs: Vec::new(),
+                            body: SlotBody::Inline(content),
+                            line,
+                        }))))
                     }
                     _ => {
                         let (body, _) = self.block("slot", &["endslot"], line)?;
-                        Ok(Some(Node::Slot(Box::new(SlotNode { name, attrs: Vec::new(), body: SlotBody::Nodes(body), line }))))
+                        Ok(Some(Node::Slot(Box::new(SlotNode {
+                            name,
+                            attrs: Vec::new(),
+                            body: SlotBody::Nodes(body),
+                            line,
+                        }))))
                     }
                 }
             }
@@ -526,7 +804,10 @@ impl TemplateParser<'_> {
             }
             "unset" => {
                 let targets = args_list(&args, line)?;
-                Ok(Some(Node::Php { stmts: vec![Stmt::Unset(targets)], line }))
+                Ok(Some(Node::Php {
+                    stmts: vec![Stmt::Unset(targets)],
+                    line,
+                }))
             }
             "use" => Ok(None),
 
@@ -545,7 +826,11 @@ impl TemplateParser<'_> {
             "bool" => output(OutputDirective::Bool, args_list(&args, line)?),
             "lang" if args.is_none() => {
                 let (body, _) = self.block("lang", &["endlang"], line)?;
-                Ok(Some(Node::LangBlock { args: Vec::new(), body, line }))
+                Ok(Some(Node::LangBlock {
+                    args: Vec::new(),
+                    body,
+                    line,
+                }))
             }
             "lang" => output(OutputDirective::Lang, args_list(&args, line)?),
             "choice" => output(OutputDirective::Choice, args_list(&args, line)?),
@@ -565,7 +850,10 @@ impl TemplateParser<'_> {
             }
 
             // Anything else here is out of place.
-            _ => Err(ViewCompilationException::new(format!("Unexpected @{name} directive."), line)),
+            _ => Err(ViewCompilationException::new(
+                format!("Unexpected @{name} directive."),
+                line,
+            )),
         }
     }
 
@@ -575,28 +863,42 @@ impl TemplateParser<'_> {
         let mut cond_line = line;
         loop {
             let registry = self.registry;
-            let (body, stop) =
-                self.parse_nodes(&|s| is_if_end(registry, &s.name) || is_else_branch(registry, &s.name))?;
-            branches.push(Branch { cond, body, line: cond_line });
+            let (body, stop) = self.parse_nodes(&|s| {
+                is_if_end(registry, &s.name) || is_else_branch(registry, &s.name)
+            })?;
+            branches.push(Branch {
+                cond,
+                body,
+                line: cond_line,
+            });
             let Some(stop) = stop else {
                 let end = match directive {
-                    "if" | "unless" | "isset" | "empty" | "auth" | "guest" | "env" | "production" | "error"
-                    | "session" | "can" | "cannot" | "canany" => format!("end{directive}"),
+                    "if" | "unless" | "isset" | "empty" | "auth" | "guest" | "env"
+                    | "production" | "error" | "session" | "can" | "cannot" | "canany" => {
+                        format!("end{directive}")
+                    }
                     "hasSection" | "sectionMissing" | "hasstack" => "endif".to_string(),
                     custom => format!("end{}", custom.strip_prefix("unless").unwrap_or(custom)),
                 };
                 return Err(unclosed(directive, &end, line));
             };
             if is_if_end(registry, &stop.name) {
-                return Ok(Node::If { branches, otherwise: None });
+                return Ok(Node::If {
+                    branches,
+                    otherwise: None,
+                });
             }
             let lowered = lower(&stop.name);
             if lowered == "else" {
-                let (body, end) =
-                    self.parse_nodes(&|s| is_if_end(registry, &s.name) || is_else_branch(registry, &s.name))?;
+                let (body, end) = self.parse_nodes(&|s| {
+                    is_if_end(registry, &s.name) || is_else_branch(registry, &s.name)
+                })?;
                 match end {
                     Some(end) if is_if_end(registry, &end.name) => {
-                        return Ok(Node::If { branches, otherwise: Some(body) });
+                        return Ok(Node::If {
+                            branches,
+                            otherwise: Some(body),
+                        });
                     }
                     Some(end) => {
                         return Err(ViewCompilationException::new(
@@ -616,8 +918,16 @@ impl TemplateParser<'_> {
                 "elsecannot" => Cond::Cannot(args_list(&stop.args, stop.line)?),
                 "elsecanany" => Cond::CanAny(args_list(&stop.args, stop.line)?),
                 _ => {
-                    let name = stop.name.strip_prefix("else").unwrap_or(&stop.name).to_string();
-                    Cond::Custom { name, args: args_list(&stop.args, stop.line)?, negate: false }
+                    let name = stop
+                        .name
+                        .strip_prefix("else")
+                        .unwrap_or(&stop.name)
+                        .to_string();
+                    Cond::Custom {
+                        name,
+                        args: args_list(&stop.args, stop.line)?,
+                        negate: false,
+                    }
                 }
             };
         }
@@ -625,9 +935,13 @@ impl TemplateParser<'_> {
 
     fn switch(&mut self, args: &Option<String>, line: usize) -> PResult<Node> {
         let subject = required_expr(args, line, "switch")?;
-        let is_case = |s: &Stop| matches!(lower(&s.name).as_str(), "case" | "default" | "endswitch");
+        let is_case =
+            |s: &Stop| matches!(lower(&s.name).as_str(), "case" | "default" | "endswitch");
         let (preamble, mut stop) = self.parse_nodes(&is_case)?;
-        if preamble.iter().any(|n| !matches!(n, Node::Text(t) if t.trim().is_empty())) {
+        if preamble
+            .iter()
+            .any(|n| !matches!(n, Node::Text(t) if t.trim().is_empty()))
+        {
             return Err(ViewCompilationException::new(
                 "Unexpected content between @switch and the first @case.",
                 line,
@@ -647,7 +961,11 @@ impl TemplateParser<'_> {
             cases.push(Case { test, body });
             stop = next;
         }
-        Ok(Node::Switch { subject, cases, line })
+        Ok(Node::Switch {
+            subject,
+            cases,
+            line,
+        })
     }
 
     fn push_if(&mut self, args: &Option<String>, line: usize) -> PResult<Node> {
@@ -664,8 +982,12 @@ impl TemplateParser<'_> {
             }
             let stack = current_args.pop().expect("two arguments");
             let cond = current_args.remove(0);
-            let (body, stop) =
-                self.parse_nodes(&|s| matches!(lower(&s.name).as_str(), "elsepushif" | "elsepush" | "endpushif"))?;
+            let (body, stop) = self.parse_nodes(&|s| {
+                matches!(
+                    lower(&s.name).as_str(),
+                    "elsepushif" | "elsepush" | "endpushif"
+                )
+            })?;
             branches.push((cond, stack, body));
             let stop = stop.ok_or_else(|| unclosed("pushIf", "endPushIf", line))?;
             match lower(&stop.name).as_str() {
@@ -682,20 +1004,31 @@ impl TemplateParser<'_> {
                 }
             }
         }
-        Ok(Node::PushIf { branches, otherwise, line })
+        Ok(Node::PushIf {
+            branches,
+            otherwise,
+            line,
+        })
     }
 
     // ------------------------------------------------------------------
     // Components
     // ------------------------------------------------------------------
 
-    fn component(&mut self, name: String, attrs: Vec<RawAttr>, self_closing: bool, line: usize) -> PResult<Node> {
+    fn component(
+        &mut self,
+        name: String,
+        attrs: Vec<RawAttr>,
+        self_closing: bool,
+        line: usize,
+    ) -> PResult<Node> {
         let attrs = convert_attrs(attrs)?;
         let children = if self_closing {
             Vec::new()
         } else {
             let close = format!("</x-{name}>");
-            let (children, stop) = self.parse_nodes(&|s| s.name.starts_with("</x-") && s.name != "</x-slot>")?;
+            let (children, stop) =
+                self.parse_nodes(&|s| s.name.starts_with("</x-") && s.name != "</x-slot>")?;
             match stop {
                 Some(stop) if stop.name == close => children,
                 Some(stop) => {
@@ -712,15 +1045,33 @@ impl TemplateParser<'_> {
                 }
             }
         };
-        let name = if name == "dynamic-component" { ComponentName::Dynamic } else { ComponentName::Static(name) };
-        Ok(Node::Component(Box::new(ComponentNode { name, attrs, children, line })))
+        let name = if name == "dynamic-component" {
+            ComponentName::Dynamic
+        } else {
+            ComponentName::Static(name)
+        };
+        Ok(Node::Component(Box::new(ComponentNode {
+            name,
+            attrs,
+            children,
+            line,
+        })))
     }
 
-    fn slot_tag(&mut self, inline_name: Option<String>, attrs: Vec<RawAttr>, line: usize) -> PResult<Node> {
+    fn slot_tag(
+        &mut self,
+        inline_name: Option<String>,
+        attrs: Vec<RawAttr>,
+        line: usize,
+    ) -> PResult<Node> {
         let mut attrs = attrs;
         let name = match inline_name {
             Some(inline) => {
-                let name = if inline.contains('-') { Str::camel(&inline) } else { inline };
+                let name = if inline.contains('-') {
+                    Str::camel(&inline)
+                } else {
+                    inline
+                };
                 Expr::Lit(ViewValue::from(name))
             }
             None => {
@@ -738,26 +1089,41 @@ impl TemplateParser<'_> {
         let attrs = convert_attrs(attrs)?;
         let (body, stop) = self.parse_nodes(&|s| s.name == "</x-slot>")?;
         if stop.is_none() {
-            return Err(ViewCompilationException::new("Unclosed <x-slot>. Did you forget </x-slot>?", line));
+            return Err(ViewCompilationException::new(
+                "Unclosed <x-slot>. Did you forget </x-slot>?",
+                line,
+            ));
         }
-        Ok(Node::Slot(Box::new(SlotNode { name, attrs, body: SlotBody::Nodes(body), line })))
+        Ok(Node::Slot(Box::new(SlotNode {
+            name,
+            attrs,
+            body: SlotBody::Nodes(body),
+            line,
+        })))
     }
 }
 
 fn is_if_end(registry: &Registry, name: &str) -> bool {
     IF_ENDS.contains(&lower(name).as_str())
-        || name.strip_prefix("end").is_some_and(|rest| registry.conditions.contains_key(rest))
+        || name
+            .strip_prefix("end")
+            .is_some_and(|rest| registry.conditions.contains_key(rest))
 }
 
 fn is_else_branch(registry: &Registry, name: &str) -> bool {
     matches!(
         lower(name).as_str(),
         "else" | "elseif" | "elseauth" | "elseguest" | "elsecan" | "elsecannot" | "elsecanany"
-    ) || name.strip_prefix("else").is_some_and(|rest| registry.conditions.contains_key(rest))
+    ) || name
+        .strip_prefix("else")
+        .is_some_and(|rest| registry.conditions.contains_key(rest))
 }
 
 fn generated_once_key() -> OnceKey {
-    OnceKey::Generated(format!("__once_{}", ONCE_COUNTER.fetch_add(1, Ordering::Relaxed)))
+    OnceKey::Generated(format!(
+        "__once_{}",
+        ONCE_COUNTER.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 /// Convert raw tag attributes into component attributes.
@@ -770,16 +1136,25 @@ fn convert_attrs(raw: Vec<RawAttr>) -> PResult<Vec<Attr>> {
                 Some(v) => AttrValue::Static(vec![AttrPart::Text(v)]),
                 None => AttrValue::True,
             };
-            attrs.push(Attr { name: format!(":{escaped}"), value });
+            attrs.push(Attr {
+                name: format!(":{escaped}"),
+                value,
+            });
             continue;
         }
         if let Some(bound) = name.strip_prefix(':') {
             match value {
                 Some(src) => {
                     let expr = ExprParser::expression(&src, line)?;
-                    attrs.push(Attr { name: bound.to_string(), value: AttrValue::Bound(expr) });
+                    attrs.push(Attr {
+                        name: bound.to_string(),
+                        value: AttrValue::Bound(expr),
+                    });
                 }
-                None => attrs.push(Attr { name, value: AttrValue::True }),
+                None => attrs.push(Attr {
+                    name,
+                    value: AttrValue::True,
+                }),
             }
             continue;
         }
@@ -805,7 +1180,11 @@ fn attribute_parts(src: &str, line: usize) -> PResult<Vec<AttrPart>> {
             break;
         };
         let escaped_echo = start > 0 && rest.as_bytes()[start - 1] == b'@';
-        let (open, close, escape) = if rest[start..].starts_with("{!!") { ("{!!", "!!}", false) } else { ("{{", "}}", true) };
+        let (open, close, escape) = if rest[start..].starts_with("{!!") {
+            ("{!!", "!!}", false)
+        } else {
+            ("{{", "}}", true)
+        };
         let Some(end) = super::lexer::find_close(&rest[start + open.len()..], close) else {
             parts.push(AttrPart::Text(rest.to_string()));
             break;
@@ -813,7 +1192,11 @@ fn attribute_parts(src: &str, line: usize) -> PResult<Vec<AttrPart>> {
         let body_start = start + open.len();
         let body = &rest[body_start..body_start + end];
         if escaped_echo {
-            parts.push(AttrPart::Text(format!("{}{}", &rest[..start - 1], &rest[start..body_start + end + close.len()])));
+            parts.push(AttrPart::Text(format!(
+                "{}{}",
+                &rest[..start - 1],
+                &rest[start..body_start + end + close.len()]
+            )));
         } else {
             if start > 0 {
                 parts.push(AttrPart::Text(rest[..start].to_string()));
@@ -821,9 +1204,15 @@ fn attribute_parts(src: &str, line: usize) -> PResult<Vec<AttrPart>> {
             line += rest[..start].bytes().filter(|b| *b == b'\n').count();
             let trimmed = body.trim_end();
             let trimmed = trimmed.strip_suffix(';').unwrap_or(trimmed);
-            parts.push(AttrPart::Echo { expr: ExprParser::expression(trimmed, line)?, escape });
+            parts.push(AttrPart::Echo {
+                expr: ExprParser::expression(trimmed, line)?,
+                escape,
+            });
         }
-        line += rest[start..body_start + end].bytes().filter(|b| *b == b'\n').count();
+        line += rest[start..body_start + end]
+            .bytes()
+            .filter(|b| *b == b'\n')
+            .count();
         rest = &rest[body_start + end + close.len()..];
     }
     Ok(parts)
@@ -844,28 +1233,51 @@ mod tests {
     #[test]
     fn it_parses_conditionals() {
         let template = parse_ok("@if($a) A @elseif($b) B @else C @endif");
-        let Node::If { branches, otherwise, .. } = &template.nodes[0] else { panic!() };
+        let Node::If {
+            branches,
+            otherwise,
+            ..
+        } = &template.nodes[0]
+        else {
+            panic!()
+        };
         assert_eq!(branches.len(), 2);
         assert!(otherwise.is_some());
 
-        let template = parse_ok("@isset($a) A @endisset @auth B @else C @endauth @hasSection('x') D @endif");
-        assert_eq!(template.nodes.iter().filter(|n| matches!(n, Node::If { .. })).count(), 3);
+        let template =
+            parse_ok("@isset($a) A @endisset @auth B @else C @endauth @hasSection('x') D @endif");
+        assert_eq!(
+            template
+                .nodes
+                .iter()
+                .filter(|n| matches!(n, Node::If { .. }))
+                .count(),
+            3
+        );
     }
 
     #[test]
     fn it_parses_loops() {
         let template = parse_ok("@forelse($users as $user) {{ $user }} @empty none @endforelse");
-        let Node::Foreach { empty, .. } = &template.nodes[0] else { panic!() };
+        let Node::Foreach { empty, .. } = &template.nodes[0] else {
+            panic!()
+        };
         assert!(empty.is_some());
         let template = parse_ok("@foreach($a as $k => $v) @continue($k == 1) @break @endforeach");
-        assert!(matches!(&template.nodes[0], Node::Foreach { key: Some(_), .. }));
+        assert!(matches!(
+            &template.nodes[0],
+            Node::Foreach { key: Some(_), .. }
+        ));
     }
 
     #[test]
     fn it_reports_unclosed_blocks_with_line_numbers() {
         let error = parse_err("<div>\n@if($a)\nA\n");
         assert_eq!(error.line, 2);
-        assert_eq!(error.message, "Unclosed @if directive. Did you forget an @endif?");
+        assert_eq!(
+            error.message,
+            "Unclosed @if directive. Did you forget an @endif?"
+        );
 
         let error = parse_err("@foreach($a as $b)\n@endif");
         assert_eq!(error.line, 2);
@@ -873,7 +1285,10 @@ mod tests {
 
         let error = parse_err("@foreach($a as $b)\nx");
         assert_eq!(error.line, 1);
-        assert_eq!(error.message, "Unclosed @foreach directive. Did you forget an @endforeach?");
+        assert_eq!(
+            error.message,
+            "Unclosed @foreach directive. Did you forget an @endforeach?"
+        );
 
         let error = parse_err("one\ntwo\n@endforeach");
         assert_eq!(error.line, 3);
@@ -888,12 +1303,21 @@ mod tests {
 
     #[test]
     fn it_parses_components_and_slots() {
-        let template = parse_ok("<x-card class=\"p-{{ $size }}\" :title=\"$t\" ::class=\"{ a: b }\" disabled>\n<x-slot:footer>F</x-slot>\nBody\n</x-card>");
-        let Node::Component(component) = &template.nodes[0] else { panic!("{:?}", template.nodes) };
+        let template = parse_ok(
+            "<x-card class=\"p-{{ $size }}\" :title=\"$t\" ::class=\"{ a: b }\" disabled>\n<x-slot:footer>F</x-slot>\nBody\n</x-card>",
+        );
+        let Node::Component(component) = &template.nodes[0] else {
+            panic!("{:?}", template.nodes)
+        };
         assert_eq!(component.attrs.len(), 4);
         assert!(matches!(component.attrs[1].value, AttrValue::Bound(_)));
         assert_eq!(component.attrs[2].name, ":class");
-        assert!(component.children.iter().any(|n| matches!(n, Node::Slot(_))));
+        assert!(
+            component
+                .children
+                .iter()
+                .any(|n| matches!(n, Node::Slot(_)))
+        );
 
         let error = parse_err("<x-card>\n<x-alert>\n</x-card>");
         assert_eq!(error.line, 3);

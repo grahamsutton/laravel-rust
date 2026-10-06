@@ -13,7 +13,9 @@ use indexmap::IndexMap;
 
 use crate::attributes::{ComponentAttributeBag, prop_names};
 use crate::component::{ComponentArgs, ComponentObject, ComponentSlot, ComponentView, sanitize};
-use crate::exception::{InvalidArgumentException, RuntimeException, ViewException, error, passes_through};
+use crate::exception::{
+    InvalidArgumentException, RuntimeException, ViewException, error, passes_through,
+};
 use crate::expr::eval::{Flow as StmtFlow, call_function, iterate};
 use crate::expr::{Evaluator, Expr, Scope};
 use crate::factory::Factory;
@@ -23,8 +25,8 @@ use crate::php;
 use crate::registry::Registry;
 use crate::statics;
 use crate::template::{
-    Attr, AttrPart, AttrValue, Branch, ComponentName, ComponentNode, Cond, IncludeKind, JumpKind, Node, OnceKey,
-    OutputDirective, SectionEnd, SlotBody, SlotNode, Template,
+    Attr, AttrPart, AttrValue, Branch, ComponentName, ComponentNode, Cond, IncludeKind, JumpKind,
+    Node, OnceKey, OutputDirective, SectionEnd, SlotBody, SlotNode, Template,
 };
 use crate::value::{ArrayKey, ViewData, ViewValue};
 use crate::view::View;
@@ -100,6 +102,9 @@ pub(crate) struct Renderer {
     component_data: Vec<Arc<ViewData>>,
     fragments: IndexMap<String, String>,
     request_shared: ViewData,
+    templates: HashMap<String, (Arc<Template>, ViewContext)>,
+    anonymous_components: HashMap<String, Option<String>>,
+    shared: ViewData,
 }
 
 static PARENT_SALT: LazyLock<String> = LazyLock::new(|| Str::random(16));
@@ -129,6 +134,9 @@ impl Renderer {
             component_data: Vec::new(),
             fragments: IndexMap::new(),
             request_shared: factory.request_shared_data(),
+            templates: HashMap::new(),
+            anonymous_components: HashMap::new(),
+            shared: factory.shared_data(),
         }
     }
 
@@ -154,16 +162,25 @@ impl Renderer {
     }
 
     fn load(&self, view: &View) -> Result<Arc<Template>> {
-        let ctx = view.context();
         view.template().map_err(|e| {
             if passes_through(&e) {
                 e
             } else {
-                let line = e.downcast_ref::<crate::exception::ViewCompilationException>().map(|c| c.line).unwrap_or(0);
+                let line = e
+                    .downcast_ref::<crate::exception::ViewCompilationException>()
+                    .map(|c| c.line)
+                    .unwrap_or(0);
                 if line == 0 {
                     e
                 } else {
-                    ViewException::wrap(e, &*ctx.name, ctx.path.as_ref().map(|p| p.to_path_buf()), line).into()
+                    let ctx = view.context();
+                    ViewException::wrap(
+                        e,
+                        &*ctx.name,
+                        ctx.path.as_ref().map(|p| p.to_path_buf()),
+                        line,
+                    )
+                    .into()
                 }
             }
         })
@@ -172,13 +189,20 @@ impl Renderer {
     /// Build the variables for a view: shared data, request data, then the
     /// view's own data.
     fn scope_for(&self, data: &ViewData) -> Scope {
-        let shared = self.factory.shared_data();
-        let mut scope = Scope::with_capacity(shared.len() + self.request_shared.len() + data.len() + 1);
-        for (key, value) in shared.iter().chain(self.request_shared.iter()).chain(data.iter()) {
+        let shared = &self.shared;
+        let mut scope =
+            Scope::with_capacity(shared.len() + self.request_shared.len() + data.len() + 1);
+        for (key, value) in shared
+            .iter()
+            .chain(self.request_shared.iter())
+            .chain(data.iter())
+        {
             scope.set(key.as_str(), value.clone());
         }
         match scope.get("errors") {
-            None | Some(ViewValue::Null) => scope.set("errors", ViewValue::object(ViewErrorBag::new())),
+            None | Some(ViewValue::Null) => {
+                scope.set("errors", ViewValue::object(ViewErrorBag::new()))
+            }
             Some(value @ ViewValue::Array(_)) => {
                 let bag = ViewErrorBag::from_value(value);
                 scope.set("errors", ViewValue::object(bag));
@@ -188,7 +212,12 @@ impl Renderer {
         scope
     }
 
-    fn render_template(&mut self, template: &Template, ctx: &ViewContext, data: &ViewData) -> Result<String> {
+    fn render_template(
+        &mut self,
+        template: &Template,
+        ctx: &ViewContext,
+        data: &ViewData,
+    ) -> Result<String> {
         if self.render_count >= MAX_DEPTH {
             return Err(RuntimeException::new(format!(
                 "Maximum view nesting level of {MAX_DEPTH} reached while rendering [{}]. Is a view including itself?",
@@ -202,7 +231,12 @@ impl Renderer {
         result
     }
 
-    fn render_template_inner(&mut self, template: &Template, ctx: &ViewContext, data: &ViewData) -> Result<String> {
+    fn render_template_inner(
+        &mut self,
+        template: &Template,
+        ctx: &ViewContext,
+        data: &ViewData,
+    ) -> Result<String> {
         let mut scope = self.scope_for(data);
         let mut out = String::new();
         self.render_nodes(&template.nodes, &mut scope, &mut out, ctx)?;
@@ -212,13 +246,17 @@ impl Renderer {
                 args.push(self.eval(arg, &mut scope, ctx, extends.line)?);
             }
             let name = if extends.first {
-                self.first_existing(functions::arg(&args, 0)).map_err(|e| self.wrap(e, ctx, extends.line))?
+                self.first_existing(functions::arg(&args, 0))
+                    .map_err(|e| self.wrap(e, ctx, extends.line))?
             } else {
-                php::to_str(functions::arg(&args, 0)).map_err(|e| self.wrap(e, ctx, extends.line))?
+                php::to_str(functions::arg(&args, 0))
+                    .map_err(|e| self.wrap(e, ctx, extends.line))?
             };
             let mut data = scope_to_data(&scope);
             merge_data(&mut data, functions::arg(&args, 1));
-            let html = self.render_named(&name, data).map_err(|e| self.wrap(e, ctx, extends.line))?;
+            let html = self
+                .render_named(&name, data)
+                .map_err(|e| self.wrap(e, ctx, extends.line))?;
             out.push_str(&html);
         }
         Ok(out)
@@ -229,8 +267,15 @@ impl Renderer {
         let mut view = View::named(&self.factory, name, data);
         self.factory.call_creators(&mut view);
         self.factory.call_composers(&mut view);
-        let template = self.load(&view)?;
-        let ctx = view.context();
+        // Views included many times (in a loop, say) are loaded once per render.
+        let (template, ctx) = match self.templates.get(name) {
+            Some(cached) => cached.clone(),
+            None => {
+                let loaded = (self.load(&view)?, view.context());
+                self.templates.insert(name.to_string(), loaded.clone());
+                loaded
+            }
+        };
         self.render_template(&template, &ctx, view.data())
     }
 
@@ -242,7 +287,9 @@ impl Renderer {
         candidates
             .into_iter()
             .find(|name| self.factory.exists(name))
-            .ok_or_else(|| InvalidArgumentException::new("None of the views in the given array exist.").into())
+            .ok_or_else(|| {
+                InvalidArgumentException::new("None of the views in the given array exist.").into()
+            })
     }
 
     // ------------------------------------------------------------------
@@ -253,15 +300,35 @@ impl Renderer {
         if passes_through(&error) {
             error
         } else {
-            ViewException::wrap(error, &*ctx.name, ctx.path.as_ref().map(|p| p.to_path_buf()), line).into()
+            ViewException::wrap(
+                error,
+                &*ctx.name,
+                ctx.path.as_ref().map(|p| p.to_path_buf()),
+                line,
+            )
+            .into()
         }
     }
 
-    fn eval(&self, expr: &Expr, scope: &mut Scope, ctx: &ViewContext, line: usize) -> Result<ViewValue> {
-        Evaluator::new(scope, &self.registry).eval(expr).map_err(|e| self.wrap(e, ctx, line))
+    fn eval(
+        &self,
+        expr: &Expr,
+        scope: &mut Scope,
+        ctx: &ViewContext,
+        line: usize,
+    ) -> Result<ViewValue> {
+        Evaluator::new(scope, &self.registry)
+            .eval(expr)
+            .map_err(|e| self.wrap(e, ctx, line))
     }
 
-    fn eval_all(&self, exprs: &[Expr], scope: &mut Scope, ctx: &ViewContext, line: usize) -> Result<Vec<ViewValue>> {
+    fn eval_all(
+        &self,
+        exprs: &[Expr],
+        scope: &mut Scope,
+        ctx: &ViewContext,
+        line: usize,
+    ) -> Result<Vec<ViewValue>> {
         let mut values = Vec::with_capacity(exprs.len());
         for expr in exprs {
             values.push(self.eval(expr, scope, ctx, line)?);
@@ -269,7 +336,13 @@ impl Renderer {
         Ok(values)
     }
 
-    fn render_nodes(&mut self, nodes: &[Node], scope: &mut Scope, out: &mut String, ctx: &ViewContext) -> Result<Flow> {
+    fn render_nodes(
+        &mut self,
+        nodes: &[Node],
+        scope: &mut Scope,
+        out: &mut String,
+        ctx: &ViewContext,
+    ) -> Result<Flow> {
         for node in nodes {
             match self.render_node(node, scope, out, ctx)? {
                 Flow::Normal => {}
@@ -279,16 +352,24 @@ impl Renderer {
         Ok(Flow::Normal)
     }
 
-    fn render_node(&mut self, node: &Node, scope: &mut Scope, out: &mut String, ctx: &ViewContext) -> Result<Flow> {
+    fn render_node(
+        &mut self,
+        node: &Node,
+        scope: &mut Scope,
+        out: &mut String,
+        ctx: &ViewContext,
+    ) -> Result<Flow> {
         match node {
             Node::Text(text) => out.push_str(text),
             Node::Echo { expr, escape, line } => {
                 let value = self.eval(expr, scope, ctx, *line)?;
                 let line = *line;
                 if *escape {
-                    self.echo_escaped(&value, out).map_err(|e| self.wrap(e, ctx, line))?;
+                    self.echo_escaped(&value, out)
+                        .map_err(|e| self.wrap(e, ctx, line))?;
                 } else {
-                    echo_raw(&value, out).map_err(|e| self.wrap(e, ctx, line))?;
+                    self.echo_unescaped(&value, out)
+                        .map_err(|e| self.wrap(e, ctx, line))?;
                 }
             }
             Node::Php { stmts, line } => {
@@ -299,8 +380,15 @@ impl Renderer {
                     StmtFlow::Normal | StmtFlow::Return(_) => {}
                 }
             }
-            Node::If { branches, otherwise } => return self.render_if(branches, otherwise.as_deref(), scope, out, ctx),
-            Node::Switch { subject, cases, line } => {
+            Node::If {
+                branches,
+                otherwise,
+            } => return self.render_if(branches, otherwise.as_deref(), scope, out, ctx),
+            Node::Switch {
+                subject,
+                cases,
+                line,
+            } => {
                 let subject = self.eval(subject, scope, ctx, *line)?;
                 let mut start = None;
                 for (index, case) in cases.iter().enumerate() {
@@ -324,10 +412,33 @@ impl Renderer {
                     }
                 }
             }
-            Node::Foreach { iterable, key, value, body, empty, line } => {
-                return self.render_foreach(iterable, key.as_ref(), value, body, empty.as_deref(), *line, scope, out, ctx);
+            Node::Foreach {
+                iterable,
+                key,
+                value,
+                body,
+                empty,
+                line,
+            } => {
+                return self.render_foreach(
+                    iterable,
+                    key.as_ref(),
+                    value,
+                    body,
+                    empty.as_deref(),
+                    *line,
+                    scope,
+                    out,
+                    ctx,
+                );
             }
-            Node::For { init, cond, step, body, line } => {
+            Node::For {
+                init,
+                cond,
+                step,
+                body,
+                line,
+            } => {
                 for expr in init {
                     self.eval(expr, scope, ctx, *line)?;
                 }
@@ -342,7 +453,11 @@ impl Renderer {
                     }
                     iterations += 1;
                     if iterations > MAX_ITERATIONS {
-                        return Err(self.wrap(error("Maximum @for iterations exceeded"), ctx, *line));
+                        return Err(self.wrap(
+                            error("Maximum @for iterations exceeded"),
+                            ctx,
+                            *line,
+                        ));
                     }
                     match self.render_nodes(body, scope, out, ctx)? {
                         Flow::Normal | Flow::Continue(1) => {}
@@ -360,7 +475,11 @@ impl Renderer {
                 while self.eval(cond, scope, ctx, *line)?.truthy() {
                     iterations += 1;
                     if iterations > MAX_ITERATIONS {
-                        return Err(self.wrap(error("Maximum @while iterations exceeded"), ctx, *line));
+                        return Err(self.wrap(
+                            error("Maximum @while iterations exceeded"),
+                            ctx,
+                            *line,
+                        ));
                     }
                     match self.render_nodes(body, scope, out, ctx)? {
                         Flow::Normal | Flow::Continue(1) => {}
@@ -370,11 +489,16 @@ impl Renderer {
                     }
                 }
             }
-            Node::Jump { kind, cond, levels, line } => {
-                if let Some(cond) = cond {
-                    if !self.eval(cond, scope, ctx, *line)?.truthy() {
-                        return Ok(Flow::Normal);
-                    }
+            Node::Jump {
+                kind,
+                cond,
+                levels,
+                line,
+            } => {
+                if let Some(cond) = cond
+                    && !self.eval(cond, scope, ctx, *line)?.truthy()
+                {
+                    return Ok(Flow::Normal);
                 }
                 return Ok(match kind {
                     JumpKind::Break => Flow::Break(*levels),
@@ -383,7 +507,9 @@ impl Renderer {
             }
             Node::Include { kind, args, line } => {
                 let values = self.eval_all(args, scope, ctx, *line)?;
-                let html = self.include(*kind, &values, scope).map_err(|e| self.wrap(e, ctx, *line))?;
+                let html = self
+                    .include(*kind, &values, scope)
+                    .map_err(|e| self.wrap(e, ctx, *line))?;
                 out.push_str(&html);
             }
             Node::Each { args, line } => {
@@ -391,7 +517,12 @@ impl Renderer {
                 let html = self.each(&values).map_err(|e| self.wrap(e, ctx, *line))?;
                 out.push_str(&html);
             }
-            Node::Section { name, body, end, line } => {
+            Node::Section {
+                name,
+                body,
+                end,
+                line,
+            } => {
                 let name = self.eval(name, scope, ctx, *line)?.to_string_lossy();
                 let mut content = String::new();
                 let flow = self.render_nodes(body, scope, &mut content, ctx)?;
@@ -410,23 +541,37 @@ impl Renderer {
                     return Ok(flow);
                 }
             }
-            Node::SectionInline { name, content, line } => {
+            Node::SectionInline {
+                name,
+                content,
+                line,
+            } => {
                 let name = self.eval(name, scope, ctx, *line)?.to_string_lossy();
                 let content = self.eval(content, scope, ctx, *line)?;
-                let content = self.escape_value(&content).map_err(|e| self.wrap(e, ctx, *line))?;
+                let content = self
+                    .escape_value(&content)
+                    .map_err(|e| self.wrap(e, ctx, *line))?;
                 self.extend_section(&name, content);
             }
             Node::Yield { args, line } => {
                 let values = self.eval_all(args, scope, ctx, *line)?;
                 let name = functions::arg(&values, 0).to_string_lossy();
                 let default = match values.get(1) {
-                    Some(default) => self.escape_value(default).map_err(|e| self.wrap(e, ctx, *line))?,
+                    Some(default) => self
+                        .escape_value(default)
+                        .map_err(|e| self.wrap(e, ctx, *line))?,
                     None => String::new(),
                 };
                 out.push_str(&self.yield_content(&name, &default));
             }
             Node::Parent { section } => out.push_str(&parent_placeholder(section)),
-            Node::Push { prepend, stack, once, body, line } => {
+            Node::Push {
+                prepend,
+                stack,
+                once,
+                body,
+                line,
+            } => {
                 let stack = self.eval(stack, scope, ctx, *line)?.to_string_lossy();
                 if let Some(once) = once {
                     let key = self.once_key(once, scope, ctx, *line)?;
@@ -445,7 +590,11 @@ impl Renderer {
                     return Ok(flow);
                 }
             }
-            Node::PushIf { branches, otherwise, line } => {
+            Node::PushIf {
+                branches,
+                otherwise,
+                line,
+            } => {
                 for (cond, stack, body) in branches {
                     if self.eval(cond, scope, ctx, *line)?.truthy() {
                         let stack = self.eval(stack, scope, ctx, *line)?.to_string_lossy();
@@ -466,7 +615,10 @@ impl Renderer {
             Node::Stack { args, line } => {
                 let values = self.eval_all(args, scope, ctx, *line)?;
                 let name = functions::arg(&values, 0).to_string_lossy();
-                let default = values.get(1).map(ViewValue::to_string_lossy).unwrap_or_default();
+                let default = values
+                    .get(1)
+                    .map(ViewValue::to_string_lossy)
+                    .unwrap_or_default();
                 out.push_str(&self.yield_push_content(&name, &default));
             }
             Node::Once { key, body, line } => {
@@ -509,27 +661,53 @@ impl Renderer {
                 self.render_nodes(body, scope, &mut key, ctx)?;
                 let mut values = vec![ViewValue::from(key.trim())];
                 values.extend(self.eval_all(args, scope, ctx, *line)?);
-                let translated = call_function("__", &values, &self.registry).map_err(|e| self.wrap(e, ctx, *line))?;
+                let translated = call_function("__", &values, &self.registry)
+                    .map_err(|e| self.wrap(e, ctx, *line))?;
                 echo_raw(&translated, out).map_err(|e| self.wrap(e, ctx, *line))?;
             }
-            Node::Output { directive, args, line } => {
+            Node::Output {
+                directive,
+                args,
+                line,
+            } => {
                 let values = self.eval_all(args, scope, ctx, *line)?;
-                self.output(directive, values, scope, out).map_err(|e| self.wrap(e, ctx, *line))?;
+                self.output(directive, values, scope, out)
+                    .map_err(|e| self.wrap(e, ctx, *line))?;
             }
         }
         Ok(Flow::Normal)
     }
 
-    fn once_key(&self, key: &OnceKey, scope: &mut Scope, ctx: &ViewContext, line: usize) -> Result<String> {
+    fn once_key(
+        &self,
+        key: &OnceKey,
+        scope: &mut Scope,
+        ctx: &ViewContext,
+        line: usize,
+    ) -> Result<String> {
         Ok(match key {
             OnceKey::Generated(id) => id.clone(),
-            OnceKey::Explicit(expr) => format!("__explicit:{}", self.eval(expr, scope, ctx, line)?.to_string_lossy()),
+            OnceKey::Explicit(expr) => format!(
+                "__explicit:{}",
+                self.eval(expr, scope, ctx, line)?.to_string_lossy()
+            ),
         })
     }
 
     // ------------------------------------------------------------------
     // Echoing
     // ------------------------------------------------------------------
+
+    /// Echo without escaping (`{!! !!}`), honoring custom echo handlers.
+    fn echo_unescaped(&self, value: &ViewValue, out: &mut String) -> Result<()> {
+        match self.registry.apply_echo_handlers(value) {
+            Some(handled) => {
+                out.push_str(&handled);
+                Ok(())
+            }
+            None => echo_raw(value, out),
+        }
+    }
 
     fn escape_value(&self, value: &ViewValue) -> Result<String> {
         let mut out = String::new();
@@ -538,6 +716,10 @@ impl Renderer {
     }
 
     fn echo_escaped(&self, value: &ViewValue, out: &mut String) -> Result<()> {
+        if let Some(handled) = self.registry.apply_echo_handlers(value) {
+            out.push_str(&self.registry.escape(&handled));
+            return Ok(());
+        }
         match value {
             ViewValue::Html(html) => out.push_str(html),
             ViewValue::Null => {}
@@ -546,7 +728,11 @@ impl Renderer {
                 Some(html) => out.push_str(&html),
                 None => out.push_str(&self.registry.escape(&php::to_str(value)?)),
             },
-            ViewValue::Closure(_) => return Err(error("Object of class Closure could not be converted to string")),
+            ViewValue::Closure(_) => {
+                return Err(error(
+                    "Object of class Closure could not be converted to string",
+                ));
+            }
             other => out.push_str(&self.registry.escape(&other.to_string_lossy())),
         }
         Ok(())
@@ -608,7 +794,9 @@ impl Renderer {
             Cond::Isset(exprs) => {
                 let mut all = !exprs.is_empty();
                 for expr in exprs {
-                    let value = Evaluator::new(scope, &self.registry).eval_quiet(expr).map_err(|e| wrap(self, e))?;
+                    let value = Evaluator::new(scope, &self.registry)
+                        .eval_quiet(expr)
+                        .map_err(|e| wrap(self, e))?;
                     if value.is_none_or(|v| v.is_null()) {
                         all = false;
                         break;
@@ -617,7 +805,9 @@ impl Renderer {
                 (all, None)
             }
             Cond::Empty(expr) => {
-                let value = Evaluator::new(scope, &self.registry).eval_quiet(expr).map_err(|e| wrap(self, e))?;
+                let value = Evaluator::new(scope, &self.registry)
+                    .eval_quiet(expr)
+                    .map_err(|e| wrap(self, e))?;
                 (!value.is_some_and(|v| v.truthy()), None)
             }
             Cond::Auth(args) => {
@@ -630,7 +820,12 @@ impl Renderer {
             }
             Cond::Env(args) => {
                 let args = self.eval_all(args, scope, ctx, line)?;
-                (statics::environment(&args, &self.registry).map_err(|e| wrap(self, e))?.truthy(), None)
+                (
+                    statics::environment(&args, &self.registry)
+                        .map_err(|e| wrap(self, e))?
+                        .truthy(),
+                    None,
+                )
             }
             Cond::Production => (
                 statics::environment(&[ViewValue::from("production")], &self.registry)
@@ -640,11 +835,17 @@ impl Renderer {
             ),
             Cond::HasSection(name) => {
                 let name = self.eval(name, scope, ctx, line)?.to_string_lossy();
-                (!php::php_trim(&self.yield_content(&name, "")).is_empty(), None)
+                (
+                    !php::php_trim(&self.yield_content(&name, "")).is_empty(),
+                    None,
+                )
             }
             Cond::SectionMissing(name) => {
                 let name = self.eval(name, scope, ctx, line)?.to_string_lossy();
-                (php::php_trim(&self.yield_content(&name, "")).is_empty(), None)
+                (
+                    php::php_trim(&self.yield_content(&name, "")).is_empty(),
+                    None,
+                )
             }
             Cond::HasStack(name) => {
                 let name = self.eval(name, scope, ctx, line)?.to_string_lossy();
@@ -660,7 +861,12 @@ impl Renderer {
             }
             Cond::CanAny(args) => {
                 let args = self.eval_all(args, scope, ctx, line)?;
-                (statics::gate_any(&args, &self.registry).map_err(|e| wrap(self, e))?.truthy(), None)
+                (
+                    statics::gate_any(&args, &self.registry)
+                        .map_err(|e| wrap(self, e))?
+                        .truthy(),
+                    None,
+                )
             }
             Cond::Error(args) => {
                 let args = self.eval_all(args, scope, ctx, line)?;
@@ -674,10 +880,14 @@ impl Renderer {
                         if let Some(errors) = errors.downcast_ref::<ViewErrorBag>() {
                             Some(errors.get_bag(&bag_name))
                         } else {
-                            errors.downcast_ref::<MessageBagObject>().map(|bag| bag.0.clone())
+                            errors
+                                .downcast_ref::<MessageBagObject>()
+                                .map(|bag| bag.0.clone())
                         }
                     }
-                    Some(value @ ViewValue::Array(_)) => Some(ViewErrorBag::from_value(value).get_bag(&bag_name)),
+                    Some(value @ ViewValue::Array(_)) => {
+                        Some(ViewErrorBag::from_value(value).get_bag(&bag_name))
+                    }
                     _ => None,
                 };
                 match bag {
@@ -692,7 +902,11 @@ impl Renderer {
                 let args = self.eval_all(args, scope, ctx, line)?;
                 let key = functions::arg(&args, 0).clone();
                 let value = call(self, "session", &[key])?;
-                if value.is_null() { (false, None) } else { (true, Some(("value", value))) }
+                if value.is_null() {
+                    (false, None)
+                } else {
+                    (true, Some(("value", value)))
+                }
             }
             Cond::Custom { name, args, negate } => {
                 let args = self.eval_all(args, scope, ctx, line)?;
@@ -723,7 +937,11 @@ impl Renderer {
         let data = self.eval(iterable, scope, ctx, line)?;
         let items = iterate(&data).map_err(|e| self.wrap(e, ctx, line))?;
         let count = items.len() as i64;
-        let parent = self.loops.last().map(LoopState::to_value).unwrap_or_default();
+        let parent = self
+            .loops
+            .last()
+            .map(LoopState::to_value)
+            .unwrap_or_default();
         self.loops.push(LoopState {
             iteration: 0,
             index: 0,
@@ -752,7 +970,9 @@ impl Renderer {
             }
             let assigned = {
                 let mut evaluator = Evaluator::new(scope, &self.registry);
-                key.map(|key| evaluator.assign(key, k)).transpose().and_then(|_| evaluator.assign(value, v))
+                key.map(|key| evaluator.assign(key, k))
+                    .transpose()
+                    .and_then(|_| evaluator.assign(value, v))
             };
             if let Err(e) = assigned {
                 result = Err(self.wrap(e, ctx, line));
@@ -780,10 +1000,10 @@ impl Renderer {
             Some(parent) => scope.set("loop", parent.to_value()),
             None => scope.set("loop", ViewValue::Null),
         }
-        if count == 0 {
-            if let Some(empty) = empty {
-                return self.render_nodes(empty, scope, out, ctx);
-            }
+        if count == 0
+            && let Some(empty) = empty
+        {
+            return self.render_nodes(empty, scope, out, ctx);
         }
         result
     }
@@ -799,18 +1019,34 @@ impl Renderer {
                 if kind == IncludeKind::If && !self.factory.exists(&name) {
                     return Ok(String::new());
                 }
-                (name, functions::arg(args, 1).clone(), kind == IncludeKind::Isolated)
+                (
+                    name,
+                    functions::arg(args, 1).clone(),
+                    kind == IncludeKind::Isolated,
+                )
             }
             IncludeKind::When | IncludeKind::Unless => {
                 let condition = functions::arg(args, 0).truthy();
                 if condition != (kind == IncludeKind::When) {
                     return Ok(String::new());
                 }
-                (php::to_str(functions::arg(args, 1))?, functions::arg(args, 2).clone(), false)
+                (
+                    php::to_str(functions::arg(args, 1))?,
+                    functions::arg(args, 2).clone(),
+                    false,
+                )
             }
-            IncludeKind::First => (self.first_existing(functions::arg(args, 0))?, functions::arg(args, 1).clone(), false),
+            IncludeKind::First => (
+                self.first_existing(functions::arg(args, 0))?,
+                functions::arg(args, 1).clone(),
+                false,
+            ),
         };
-        let mut view_data = if isolated { ViewData::new() } else { scope_to_data(scope) };
+        let mut view_data = if isolated {
+            ViewData::new()
+        } else {
+            scope_to_data(scope)
+        };
         merge_data(&mut view_data, &data);
         self.render_named(&name, view_data)
     }
@@ -852,7 +1088,11 @@ impl Renderer {
     }
 
     fn yield_content(&self, name: &str, default: &str) -> String {
-        let content = self.sections.get(name).map(String::as_str).unwrap_or(default);
+        let content = self
+            .sections
+            .get(name)
+            .map(String::as_str)
+            .unwrap_or(default);
         content
             .replace("@@parent", "--parent--holder--")
             .replace(&parent_placeholder(name), "")
@@ -869,7 +1109,12 @@ impl Renderer {
     }
 
     fn extend_prepend(&mut self, stack: &str, content: String) {
-        let entry = self.prepends.entry(stack.to_string()).or_default().entry(self.render_count).or_default();
+        let entry = self
+            .prepends
+            .entry(stack.to_string())
+            .or_default()
+            .entry(self.render_count)
+            .or_default();
         entry.insert_str(0, &content);
     }
 
@@ -919,9 +1164,11 @@ impl Renderer {
                             AttrPart::Echo { expr, escape } => {
                                 let value = self.eval(expr, scope, ctx, line)?;
                                 if *escape {
-                                    self.echo_escaped(&value, &mut text).map_err(|e| self.wrap(e, ctx, line))?;
+                                    self.echo_escaped(&value, &mut text)
+                                        .map_err(|e| self.wrap(e, ctx, line))?;
                                 } else {
-                                    echo_raw(&value, &mut text).map_err(|e| self.wrap(e, ctx, line))?;
+                                    self.echo_unescaped(&value, &mut text)
+                                        .map_err(|e| self.wrap(e, ctx, line))?;
                                 }
                             }
                         }
@@ -952,12 +1199,21 @@ impl Renderer {
                 let data = self.eval(data, scope, ctx, line)?;
                 merge_data(&mut component_data, &data);
             }
-            let (slot, slots, flow) = self.render_children(node, Arc::new(component_data.clone()), None, scope, ctx)?;
+            let frame = Arc::new(component_data);
+            let (slot, slots, flow) =
+                self.render_children(node, frame.clone(), None, scope, ctx)?;
+            let mut component_data = (*frame).clone();
             component_data.insert("slot".into(), slot);
             for (name, value) in slots {
                 component_data.insert(name, value);
             }
-            let html = self.render_component_view(&ComponentView::View(view), component_data, ctx, line)?;
+            let html = self.render_component_view(
+                &ComponentView::View(view),
+                component_data,
+                frame,
+                ctx,
+                line,
+            )?;
             out.push_str(&html);
             return Ok(flow);
         }
@@ -978,7 +1234,10 @@ impl Renderer {
 
         if let Some(factory) = self.registry.components.get(&name).cloned() {
             // A class-based component.
-            let mut args = ComponentArgs { values, name: name.clone() };
+            let mut args = ComponentArgs {
+                values,
+                name: name.clone(),
+            };
             let component = factory(&mut args).map_err(|e| self.wrap(e, ctx, line))?;
             if !component.should_render() {
                 return Ok(Flow::Normal);
@@ -989,40 +1248,54 @@ impl Renderer {
             data.insert("componentName".into(), ViewValue::from(name.as_str()));
             let mut frame_data = data.clone();
             for (key, value) in attributes.all() {
-                frame_data.entry(key.clone()).or_insert_with(|| value.clone());
+                frame_data
+                    .entry(key.clone())
+                    .or_insert_with(|| value.clone());
             }
-            let object = ViewValue::object(ComponentObject { data: data.clone() });
-            let (slot, slots, flow) = self.render_children(node, Arc::new(frame_data), Some(object), scope, ctx)?;
+            let frame = Arc::new(frame_data);
+            let object = ViewValue::object(ComponentObject {
+                data: frame.clone(),
+            });
+            let (slot, slots, flow) =
+                self.render_children(node, frame.clone(), Some(object), scope, ctx)?;
             data.insert("slot".into(), slot);
             for (slot_name, value) in slots {
                 data.insert(slot_name, value);
             }
             let view = component.render();
-            let html = self.render_component_view(&view, data, ctx, line)?;
+            let html = self.render_component_view(&view, data, frame, ctx, line)?;
             out.push_str(&html);
             return Ok(flow);
         }
 
         // An anonymous component.
-        let view_name = self
-            .find_anonymous_component(&name)
-            .ok_or_else(|| {
-                self.wrap(
-                    InvalidArgumentException::new(format!("Unable to locate a class or view for component [{name}].")).into(),
-                    ctx,
-                    line,
-                )
-            })?;
+        let view_name = self.resolve_anonymous_component(&name).ok_or_else(|| {
+            self.wrap(
+                InvalidArgumentException::new(format!(
+                    "Unable to locate a class or view for component [{name}]."
+                ))
+                .into(),
+                ctx,
+                line,
+            )
+        })?;
         let mut bag_values = IndexMap::with_capacity(values.len());
         let mut data = ViewData::new();
         let mut passed_bag: Option<ComponentAttributeBag> = None;
         for (key, (value, bound)) in &values {
-            if key == "attributes" {
-                if let Some(bag) = value.downcast_ref::<ComponentAttributeBag>() {
-                    passed_bag = Some(bag.clone());
-                }
+            if key == "attributes"
+                && let Some(bag) = value.downcast_ref::<ComponentAttributeBag>()
+            {
+                passed_bag = Some(bag.clone());
             }
-            bag_values.insert(key.clone(), if *bound && key != "attributes" { sanitize(value.clone()) } else { value.clone() });
+            bag_values.insert(
+                key.clone(),
+                if *bound && key != "attributes" {
+                    sanitize(value.clone())
+                } else {
+                    value.clone()
+                },
+            );
             data.insert(Str::camel(key), value.clone());
         }
         let mut attributes = ComponentAttributeBag::new();
@@ -1042,13 +1315,24 @@ impl Renderer {
         }
         component_data.insert("attributes".into(), ViewValue::object(attributes));
 
-        let object = ViewValue::object(ComponentObject { data: component_data.clone() });
-        let (slot, slots, flow) = self.render_children(node, Arc::new(component_data.clone()), Some(object), scope, ctx)?;
+        let frame = Arc::new(component_data);
+        let object = ViewValue::object(ComponentObject {
+            data: frame.clone(),
+        });
+        let (slot, slots, flow) =
+            self.render_children(node, frame.clone(), Some(object), scope, ctx)?;
+        let mut component_data = (*frame).clone();
         component_data.insert("slot".into(), slot);
         for (slot_name, value) in slots {
             component_data.insert(slot_name, value);
         }
-        let html = self.render_component_view(&ComponentView::View(view_name), component_data, ctx, line)?;
+        let html = self.render_component_view(
+            &ComponentView::View(view_name),
+            component_data,
+            frame,
+            ctx,
+            line,
+        )?;
         out.push_str(&html);
         Ok(flow)
     }
@@ -1066,7 +1350,10 @@ impl Renderer {
         if let Some(component) = component.clone() {
             scope.set("component", component);
         }
-        self.components.push(ComponentFrame { data: frame_data, slots: IndexMap::new() });
+        self.components.push(ComponentFrame {
+            data: frame_data,
+            slots: IndexMap::new(),
+        });
         let mut default = String::new();
         let result = self.render_nodes(&node.children, scope, &mut default, ctx);
         let frame = self.components.pop().expect("the frame was just pushed");
@@ -1077,14 +1364,21 @@ impl Renderer {
             }
         }
         let flow = result?;
-        let slot = ViewValue::object(ComponentSlot::new(php::php_trim(&default), ComponentAttributeBag::new()));
+        let slot = ViewValue::object(ComponentSlot::new(
+            php::php_trim(&default),
+            ComponentAttributeBag::new(),
+        ));
         Ok((slot, frame.slots, flow))
     }
 
     fn render_slot(&mut self, slot: &SlotNode, scope: &mut Scope, ctx: &ViewContext) -> Result<()> {
         let line = slot.line;
         if self.components.is_empty() {
-            return Err(self.wrap(error("Slots may only be used inside a component."), ctx, line));
+            return Err(self.wrap(
+                error("Slots may only be used inside a component."),
+                ctx,
+                line,
+            ));
         }
         let name = self.eval(&slot.name, scope, ctx, line)?.to_string_lossy();
         let value = match &slot.body {
@@ -1095,7 +1389,16 @@ impl Renderer {
                 attributes.set_attributes(
                     values
                         .into_iter()
-                        .map(|(k, (v, bound))| (k.clone(), if bound && k != "attributes" { sanitize(v) } else { v }))
+                        .map(|(k, (v, bound))| {
+                            (
+                                k.clone(),
+                                if bound && k != "attributes" {
+                                    sanitize(v)
+                                } else {
+                                    v
+                                },
+                            )
+                        })
                         .collect(),
                 );
                 let mut content = String::new();
@@ -1113,35 +1416,28 @@ impl Renderer {
         &mut self,
         view: &ComponentView,
         data: ViewData,
+        frame: Arc<ViewData>,
         ctx: &ViewContext,
         line: usize,
     ) -> Result<String> {
-        let merged = match self.component_data.last() {
-            Some(current) => {
-                let mut merged = (**current).clone();
-                for (key, value) in &data {
-                    merged.insert(key.clone(), value.clone());
-                }
-                Arc::new(merged)
-            }
-            None => Arc::new(data.clone()),
-        };
-        self.component_data.push(merged);
+        self.component_data.push(frame);
         let result = match view {
             ComponentView::View(name) => self.render_named(name, data),
             ComponentView::Inline(template) => {
                 if self.factory.exists(template) {
                     self.render_named(template, data)
                 } else {
-                    let compiled = self
-                        .factory
-                        .blade()
-                        .compile_string(template)
-                        .map_err(|e| ViewException::wrap(e, "__components::inline", None, 0).into());
+                    let compiled = self.factory.blade().compile_string(template).map_err(|e| {
+                        ViewException::wrap(e, "__components::inline", None, 0).into()
+                    });
                     match compiled {
                         Ok(compiled) => {
-                            let inline_ctx = ViewContext { name: "__components::inline".into(), path: None };
-                            let mut view = View::inline_template(&self.factory, compiled.clone(), data);
+                            let inline_ctx = ViewContext {
+                                name: "__components::inline".into(),
+                                path: None,
+                            };
+                            let mut view =
+                                View::inline_template(&self.factory, compiled.clone(), data);
                             self.factory.call_composers(&mut view);
                             self.render_template(&compiled, &inline_ctx, view.data())
                         }
@@ -1154,18 +1450,44 @@ impl Renderer {
         result.map_err(|e| self.wrap(e, ctx, line))
     }
 
+    /// Laravel's `getConsumableComponentData`: the data of the components
+    /// being rendered (innermost first), then of the components whose slots
+    /// are being rendered.
     fn consumable_component_data(&self, key: &str) -> Option<ViewValue> {
-        if let Some(current) = self.component_data.last() {
-            if let Some(value) = current.get(key) {
-                return Some(value.clone());
-            }
+        self.component_data
+            .iter()
+            .rev()
+            .find_map(|data| data.get(key).cloned())
+            .or_else(|| {
+                self.components
+                    .iter()
+                    .rev()
+                    .find_map(|frame| frame.data.get(key).cloned())
+            })
+    }
+
+    /// Resolve an anonymous component's view, once per render.
+    fn resolve_anonymous_component(&mut self, name: &str) -> Option<String> {
+        if let Some(found) = self.anonymous_components.get(name) {
+            return found.clone();
         }
-        self.components.iter().rev().find_map(|frame| frame.data.get(key).cloned())
+        let found = self.find_anonymous_component(name);
+        self.anonymous_components
+            .insert(name.to_string(), found.clone());
+        found
     }
 
     fn find_anonymous_component(&self, name: &str) -> Option<String> {
         let registry = &self.registry;
-        let last_segment = |n: &str| n.rsplit('.').next().unwrap_or(n).rsplit(':').next().unwrap_or(n).to_string();
+        let last_segment = |n: &str| {
+            n.rsplit('.')
+                .next()
+                .unwrap_or(n)
+                .rsplit(':')
+                .next()
+                .unwrap_or(n)
+                .to_string()
+        };
 
         // Registered anonymous component namespaces, then the default `components` directory.
         let mut candidates: Vec<(String, String)> = Vec::new();
@@ -1180,7 +1502,11 @@ impl Renderer {
                 Some((namespace, rest)) => format!("{namespace}::{prefix}{rest}"),
                 None => format!("{prefix}{component}"),
             };
-            for guess in [base.clone(), format!("{base}.index"), format!("{base}.{}", last_segment(&component))] {
+            for guess in [
+                base.clone(),
+                format!("{base}.index"),
+                format!("{base}.{}", last_segment(&component)),
+            ] {
                 if self.factory.exists(&guess) {
                     return Some(guess);
                 }
@@ -1196,7 +1522,11 @@ impl Renderer {
                 (None, None) => name.to_string(),
             };
             let last = last_segment(&component);
-            for guess in [component.clone(), format!("{component}.index"), format!("{component}.{last}")] {
+            for guess in [
+                component.clone(),
+                format!("{component}.index"),
+                format!("{component}.{last}"),
+            ] {
                 if let Some(found) = self.factory.find_in_directory(&path.path, &guess) {
                     return Some(format!("__path::{}", found.display()));
                 }
@@ -1209,7 +1539,13 @@ impl Renderer {
     // Output directives
     // ------------------------------------------------------------------
 
-    fn output(&mut self, directive: &OutputDirective, args: Vec<ViewValue>, scope: &mut Scope, out: &mut String) -> Result<()> {
+    fn output(
+        &mut self,
+        directive: &OutputDirective,
+        args: Vec<ViewValue>,
+        scope: &mut Scope,
+        out: &mut String,
+    ) -> Result<()> {
         let a0 = functions::arg(&args, 0);
         let call = |name: &str, args: &[ViewValue]| call_function(name, args, &self.registry);
         match directive {
@@ -1222,7 +1558,9 @@ impl Renderer {
                 };
                 out.push_str(&php::json_encode(a0, flags)?);
             }
-            OutputDirective::Js => out.push_str(&php::js_from(a0, functions::int_arg(&args, 1, 0))?),
+            OutputDirective::Js => {
+                out.push_str(&php::js_from(a0, functions::int_arg(&args, 1, 0))?)
+            }
             OutputDirective::Class => {
                 out.push_str("class=\"");
                 out.push_str(&php::css_classes(&wrap_list(a0)));
@@ -1291,9 +1629,16 @@ fn wrap_list(value: &ViewValue) -> ViewValue {
 /// Echo a value without escaping (`{!! !!}`).
 fn echo_raw(value: &ViewValue, out: &mut String) -> Result<()> {
     match value {
-        ViewValue::Closure(_) => Err(error("Object of class Closure could not be converted to string")),
+        ViewValue::Closure(_) => Err(error(
+            "Object of class Closure could not be converted to string",
+        )),
         ViewValue::Object(object) => {
-            out.push_str(&object.to_html().or_else(|| object.to_string_value()).unwrap_or_else(|| value.to_string_lossy()));
+            out.push_str(
+                &object
+                    .to_html()
+                    .or_else(|| object.to_string_value())
+                    .unwrap_or_else(|| value.to_string_lossy()),
+            );
             Ok(())
         }
         other => {
@@ -1344,10 +1689,10 @@ fn apply_props(props: &ViewValue, scope: &mut Scope) {
     scope.set("attributes", ViewValue::object(bag));
     if let ViewValue::Array(list) = props {
         for (key, default) in list.iter() {
-            if let ArrayKey::Str(name) = key {
-                if scope.get(name).is_none_or(ViewValue::is_null) {
-                    scope.set(name.clone(), default.clone());
-                }
+            if let ArrayKey::Str(name) = key
+                && scope.get(name).is_none_or(ViewValue::is_null)
+            {
+                scope.set(name.clone(), default.clone());
             }
         }
     }
@@ -1355,4 +1700,3 @@ fn apply_props(props: &ViewValue, scope: &mut Scope) {
         scope.remove(key);
     }
 }
-

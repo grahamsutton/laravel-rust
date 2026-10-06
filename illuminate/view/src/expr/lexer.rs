@@ -29,10 +29,10 @@ pub(crate) enum Tok {
 }
 
 const OPERATORS: &[&str] = &[
-    "...", "===", "!==", "<=>", "**=", "??=", "?->", "<<=", ">>=", "**", "==", "!=", "<>", "<=", ">=", "&&", "||",
-    "??", "->", "=>", "::", "++", "--", "+=", "-=", "*=", "/=", ".=", "%=", "|=", "&=", "^=", "<<", ">>", "+",
-    "-", "*", "/", "%", ".", "<", ">", "!", "?", ":", "=", "(", ")", "[", "]", "{", "}", ",", ";", "&", "|",
-    "^", "~", "@", "\\",
+    "...", "===", "!==", "<=>", "**=", "??=", "?->", "<<=", ">>=", "**", "==", "!=", "<>", "<=",
+    ">=", "&&", "||", "??", "->", "=>", "::", "++", "--", "+=", "-=", "*=", "/=", ".=", "%=", "|=",
+    "&=", "^=", "<<", ">>", "+", "-", "*", "/", "%", ".", "<", ">", "!", "?", ":", "=", "(", ")",
+    "[", "]", "{", "}", ",", ";", "&", "|", "^", "~", "@", "\\",
 ];
 
 /// A tokenizing error: the message and the byte offset.
@@ -40,7 +40,11 @@ pub(crate) type LexError = (String, usize);
 
 /// Tokenize an expression source.
 pub(crate) fn tokenize(src: &str) -> Result<Vec<(Tok, usize)>, LexError> {
-    let mut lexer = Lexer { src, pos: 0, tokens: Vec::new() };
+    let mut lexer = Lexer {
+        src,
+        pos: 0,
+        tokens: Vec::new(),
+    };
     lexer.run()?;
     Ok(lexer.tokens)
 }
@@ -83,9 +87,13 @@ impl<'a> Lexer<'a> {
             let token = if c == '$' && self.peek_at(1).is_some_and(is_ident_start) {
                 self.pos += 1;
                 Tok::Var(self.ident().into())
-            } else if is_ident_start(c) || (c == '\\' && self.peek_at(1).is_some_and(is_ident_start)) {
+            } else if is_ident_start(c)
+                || (c == '\\' && self.peek_at(1).is_some_and(is_ident_start))
+            {
                 self.qualified_ident()
-            } else if c.is_ascii_digit() || (c == '.' && self.peek_at(1).is_some_and(|d| d.is_ascii_digit())) {
+            } else if c.is_ascii_digit()
+                || (c == '.' && self.peek_at(1).is_some_and(|d| d.is_ascii_digit()))
+            {
                 self.number()?
             } else if c == '\'' {
                 Tok::Str(self.single_quoted()?)
@@ -103,7 +111,12 @@ impl<'a> Lexer<'a> {
                 let op = OPERATORS
                     .iter()
                     .find(|op| self.rest().starts_with(**op))
-                    .ok_or_else(|| (format!("syntax error, unexpected character \"{c}\""), self.pos))?;
+                    .ok_or_else(|| {
+                        (
+                            format!("syntax error, unexpected character \"{c}\""),
+                            self.pos,
+                        )
+                    })?;
                 self.pos += op.len();
                 Tok::Op(op)
             };
@@ -116,7 +129,8 @@ impl<'a> Lexer<'a> {
             let rest = self.rest();
             let trimmed = rest.trim_start();
             self.pos += rest.len() - trimmed.len();
-            if trimmed.starts_with("//") || (trimmed.starts_with('#') && !trimmed.starts_with("#[")) {
+            if trimmed.starts_with("//") || (trimmed.starts_with('#') && !trimmed.starts_with("#["))
+            {
                 let end = trimmed.find('\n').unwrap_or(trimmed.len());
                 self.pos += end;
             } else if trimmed.starts_with("/*") {
@@ -175,15 +189,24 @@ impl<'a> Lexer<'a> {
         while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'_') {
             i += 1;
         }
-        if i < bytes.len() && bytes[i] == b'.' && bytes.get(i + 1).is_some_and(|b| b.is_ascii_digit()) {
+        if i < bytes.len()
+            && bytes[i] == b'.'
+            && bytes.get(i + 1).is_some_and(|b| b.is_ascii_digit())
+        {
             is_float = true;
             i += 1;
             while i < bytes.len() && (bytes[i].is_ascii_digit() || bytes[i] == b'_') {
                 i += 1;
             }
-        } else if i < bytes.len() && bytes[i] == b'.' && !bytes.get(i + 1).is_some_and(|b| *b == b'.' || *b == b'=') {
+        } else if i < bytes.len()
+            && bytes[i] == b'.'
+            && !bytes.get(i + 1).is_some_and(|b| *b == b'.' || *b == b'=')
+        {
             // "1." is a float in PHP, unless it is followed by concatenation.
-            if !bytes.get(i + 1).is_some_and(|b| b.is_ascii_whitespace() || *b == b'$' || *b == b'\'' || *b == b'"') {
+            if !bytes
+                .get(i + 1)
+                .is_some_and(|b| b.is_ascii_whitespace() || *b == b'$' || *b == b'\'' || *b == b'"')
+            {
                 is_float = true;
                 i += 1;
             }
@@ -270,15 +293,22 @@ impl<'a> Lexer<'a> {
                         Some('e') => literal.push('\x1B'),
                         Some('f') => literal.push('\x0C'),
                         Some('0'..='7') => {
-                            let digits: String = src[i + 1..].chars().take(3).take_while(|c| c.is_digit(8)).collect();
+                            let digits: String = src[i + 1..]
+                                .chars()
+                                .take(3)
+                                .take_while(|c| c.is_digit(8))
+                                .collect();
                             let code = u32::from_str_radix(&digits, 8).unwrap_or(0) & 0xFF;
                             literal.push(char::from_u32(code).unwrap_or('\0'));
                             i += 1 + digits.len();
                             continue;
                         }
                         Some('x') => {
-                            let digits: String =
-                                src[i + 2..].chars().take(2).take_while(|c| c.is_ascii_hexdigit()).collect();
+                            let digits: String = src[i + 2..]
+                                .chars()
+                                .take(2)
+                                .take_while(|c| c.is_ascii_hexdigit())
+                                .collect();
                             if digits.is_empty() {
                                 literal.push_str("\\x");
                             } else {
@@ -291,7 +321,8 @@ impl<'a> Lexer<'a> {
                         Some('u') if src[i + 2..].starts_with('{') => {
                             let end = src[i + 3..].find('}').map(|e| i + 3 + e);
                             if let Some(end) = end {
-                                let code = u32::from_str_radix(&src[i + 3..end], 16).unwrap_or(0xFFFD);
+                                let code =
+                                    u32::from_str_radix(&src[i + 3..end], 16).unwrap_or(0xFFFD);
                                 literal.push(char::from_u32(code).unwrap_or('\u{FFFD}'));
                                 i = end + 1;
                                 continue;
@@ -310,30 +341,36 @@ impl<'a> Lexer<'a> {
                 '$' if src[i + 1..].chars().next().is_some_and(is_ident_start) => {
                     let code_start = i;
                     let mut j = i + 1;
-                    j += src[j..].find(|c: char| !is_ident_char(c)).unwrap_or(src.len() - j);
+                    j += src[j..]
+                        .find(|c: char| !is_ident_char(c))
+                        .unwrap_or(src.len() - j);
                     let mut code = src[code_start..j].to_string();
-                    if src[j..].starts_with("->") && src[j + 2..].chars().next().is_some_and(is_ident_start) {
+                    if src[j..].starts_with("->")
+                        && src[j + 2..].chars().next().is_some_and(is_ident_start)
+                    {
                         let prop_start = j + 2;
                         let prop_end = prop_start
-                            + src[prop_start..].find(|c: char| !is_ident_char(c)).unwrap_or(src.len() - prop_start);
+                            + src[prop_start..]
+                                .find(|c: char| !is_ident_char(c))
+                                .unwrap_or(src.len() - prop_start);
                         code.push_str(&src[j..prop_end]);
                         j = prop_end;
-                    } else if src[j..].starts_with('[') {
-                        if let Some(close) = src[j..].find(']') {
-                            let key = &src[j + 1..j + close];
-                            let key_code = if key.starts_with('$')
-                                || key.parse::<i64>().is_ok()
-                                || key.starts_with('\'')
-                            {
-                                key.to_string()
-                            } else {
-                                format!("'{}'", key.replace('\'', "\\'"))
-                            };
-                            code.push('[');
-                            code.push_str(&key_code);
-                            code.push(']');
-                            j += close + 1;
-                        }
+                    } else if src[j..].starts_with('[')
+                        && let Some(close) = src[j..].find(']')
+                    {
+                        let key = &src[j + 1..j + close];
+                        let key_code = if key.starts_with('$')
+                            || key.parse::<i64>().is_ok()
+                            || key.starts_with('\'')
+                        {
+                            key.to_string()
+                        } else {
+                            format!("'{}'", key.replace('\'', "\\'"))
+                        };
+                        code.push('[');
+                        code.push_str(&key_code);
+                        code.push(']');
+                        j += close + 1;
                     }
                     if !literal.is_empty() {
                         parts.push(InterpPart::Lit(std::mem::take(&mut literal)));
@@ -343,20 +380,29 @@ impl<'a> Lexer<'a> {
                 }
                 '{' if src[i + 1..].starts_with('$') => {
                     let code_start = i + 1;
-                    let end = matching_brace(src, i).ok_or(("syntax error, unterminated string".to_string(), i))?;
+                    let end = matching_brace(src, i)
+                        .ok_or(("syntax error, unterminated string".to_string(), i))?;
                     if !literal.is_empty() {
                         parts.push(InterpPart::Lit(std::mem::take(&mut literal)));
                     }
-                    parts.push(InterpPart::Code(src[code_start..end].to_string(), code_start));
+                    parts.push(InterpPart::Code(
+                        src[code_start..end].to_string(),
+                        code_start,
+                    ));
                     i = end + 1;
                 }
                 '$' if src[i + 1..].starts_with('{') => {
-                    let end = matching_brace(src, i + 1).ok_or(("syntax error, unterminated string".to_string(), i))?;
+                    let end = matching_brace(src, i + 1)
+                        .ok_or(("syntax error, unterminated string".to_string(), i))?;
                     let name = src[i + 2..end].trim();
                     if !literal.is_empty() {
                         parts.push(InterpPart::Lit(std::mem::take(&mut literal)));
                     }
-                    let code = if name.chars().all(is_ident_char) { format!("${name}") } else { name.to_string() };
+                    let code = if name.chars().all(is_ident_char) {
+                        format!("${name}")
+                    } else {
+                        name.to_string()
+                    };
                     parts.push(InterpPart::Code(code, i + 2));
                     i = end + 1;
                 }
@@ -452,15 +498,18 @@ mod tests {
 
     #[test]
     fn it_tokenizes_numbers() {
-        assert_eq!(toks("42 1.5 .5 1e3 0x1F 1_000"), vec![
-            Tok::Int(42),
-            Tok::Float(1.5),
-            Tok::Float(0.5),
-            Tok::Float(1000.0),
-            Tok::Int(31),
-            Tok::Int(1000),
-            Tok::Eof
-        ]);
+        assert_eq!(
+            toks("42 1.5 .5 1e3 0x1F 1_000"),
+            vec![
+                Tok::Int(42),
+                Tok::Float(1.5),
+                Tok::Float(0.5),
+                Tok::Float(1000.0),
+                Tok::Int(31),
+                Tok::Int(1000),
+                Tok::Eof
+            ]
+        );
     }
 
     #[test]
@@ -478,8 +527,14 @@ mod tests {
                 Tok::Eof
             ]
         );
-        assert_eq!(toks(r#""plain\n""#), vec![Tok::Str("plain\n".into()), Tok::Eof]);
-        assert_eq!(toks(r"'it\'s \n'"), vec![Tok::Str("it's \\n".into()), Tok::Eof]);
+        assert_eq!(
+            toks(r#""plain\n""#),
+            vec![Tok::Str("plain\n".into()), Tok::Eof]
+        );
+        assert_eq!(
+            toks(r"'it\'s \n'"),
+            vec![Tok::Str("it's \\n".into()), Tok::Eof]
+        );
     }
 
     #[test]

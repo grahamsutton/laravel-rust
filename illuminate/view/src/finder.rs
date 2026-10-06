@@ -42,10 +42,10 @@ impl FileViewFinder {
         if let Some(path) = name.strip_prefix("__path::") {
             return Ok(PathBuf::from(path));
         }
-        if let Some(path) = self.views.read().unwrap().get(name) {
-            if path.is_file() {
-                return Ok(path.clone());
-            }
+        if let Some(path) = self.views.read().unwrap().get(name)
+            && path.is_file()
+        {
+            return Ok(path.clone());
         }
         let found = if name.contains(HINT_PATH_DELIMITER) {
             self.find_namespaced(name)?
@@ -53,7 +53,10 @@ impl FileViewFinder {
             let paths = self.paths.read().unwrap().clone();
             self.find_in_paths(name, &paths)?
         };
-        self.views.write().unwrap().insert(name.to_string(), found.clone());
+        self.views
+            .write()
+            .unwrap()
+            .insert(name.to_string(), found.clone());
         Ok(found)
     }
 
@@ -65,7 +68,10 @@ impl FileViewFinder {
     fn find_namespaced(&self, name: &str) -> Result<PathBuf> {
         let segments: Vec<&str> = name.split(HINT_PATH_DELIMITER).collect();
         if segments.len() != 2 {
-            return Err(InvalidArgumentException::new(format!("View [{name}] has an invalid name.")).into());
+            return Err(InvalidArgumentException::new(format!(
+                "View [{name}] has an invalid name."
+            ))
+            .into());
         }
         let hints = self
             .hints
@@ -73,7 +79,12 @@ impl FileViewFinder {
             .unwrap()
             .get(segments[0])
             .cloned()
-            .ok_or_else(|| InvalidArgumentException::new(format!("No hint path defined for [{}].", segments[0])))?;
+            .ok_or_else(|| {
+                InvalidArgumentException::new(format!(
+                    "No hint path defined for [{}].",
+                    segments[0]
+                ))
+            })?;
         self.find_in_paths(segments[1], &hints)
     }
 
@@ -105,19 +116,30 @@ impl FileViewFinder {
 
     /// Add a location to the start of the search paths.
     pub fn prepend_location(&self, location: impl Into<PathBuf>) {
-        self.paths.write().unwrap().insert(0, resolve(location.into()));
+        self.paths
+            .write()
+            .unwrap()
+            .insert(0, resolve(location.into()));
         self.flush();
     }
 
     /// Add a namespace hint (`mail` → `resources/views/vendor/mail`).
-    pub fn add_namespace(&self, namespace: &str, hints: impl IntoIterator<Item = impl Into<PathBuf>>) {
+    pub fn add_namespace(
+        &self,
+        namespace: &str,
+        hints: impl IntoIterator<Item = impl Into<PathBuf>>,
+    ) {
         let mut all = self.hints.write().unwrap();
         let entry = all.entry(namespace.to_string()).or_default();
         entry.extend(hints.into_iter().map(|p| resolve(p.into())));
     }
 
     /// Prepend namespace hints.
-    pub fn prepend_namespace(&self, namespace: &str, hints: impl IntoIterator<Item = impl Into<PathBuf>>) {
+    pub fn prepend_namespace(
+        &self,
+        namespace: &str,
+        hints: impl IntoIterator<Item = impl Into<PathBuf>>,
+    ) {
         let mut all = self.hints.write().unwrap();
         let entry = all.entry(namespace.to_string()).or_default();
         let mut hints: Vec<PathBuf> = hints.into_iter().map(|p| resolve(p.into())).collect();
@@ -128,11 +150,15 @@ impl FileViewFinder {
     }
 
     /// Replace a namespace's hints.
-    pub fn replace_namespace(&self, namespace: &str, hints: impl IntoIterator<Item = impl Into<PathBuf>>) {
-        self.hints
-            .write()
-            .unwrap()
-            .insert(namespace.to_string(), hints.into_iter().map(|p| resolve(p.into())).collect());
+    pub fn replace_namespace(
+        &self,
+        namespace: &str,
+        hints: impl IntoIterator<Item = impl Into<PathBuf>>,
+    ) {
+        self.hints.write().unwrap().insert(
+            namespace.to_string(),
+            hints.into_iter().map(|p| resolve(p.into())).collect(),
+        );
         self.flush();
     }
 
@@ -179,7 +205,9 @@ fn resolve(path: PathBuf) -> PathBuf {
 /// Normalize a view name: `admin/profile` → `admin.profile`.
 pub fn normalize_name(name: &str) -> String {
     match name.split_once(HINT_PATH_DELIMITER) {
-        Some((namespace, view)) => format!("{namespace}{HINT_PATH_DELIMITER}{}", view.replace('/', ".")),
+        Some((namespace, view)) => {
+            format!("{namespace}{HINT_PATH_DELIMITER}{}", view.replace('/', "."))
+        }
         None => name.replace('/', "."),
     }
 }
@@ -201,12 +229,28 @@ mod tests {
         let finder = FileViewFinder::new([dir.path()]);
         finder.add_namespace("mail", [mail.path()]);
 
-        assert!(finder.find("admin.profile").unwrap().ends_with("admin/profile.blade.html"));
+        assert!(
+            finder
+                .find("admin.profile")
+                .unwrap()
+                .ends_with("admin/profile.blade.html")
+        );
         assert!(finder.find("legacy").unwrap().ends_with("legacy.blade.php"));
         assert!(finder.find("static").unwrap().ends_with("static.html"));
-        assert!(finder.find("mail::layout").unwrap().ends_with("layout.blade.html"));
-        assert_eq!(finder.find("missing").unwrap_err().to_string(), "View [missing] not found.");
-        assert_eq!(finder.find("nope::x").unwrap_err().to_string(), "No hint path defined for [nope].");
+        assert!(
+            finder
+                .find("mail::layout")
+                .unwrap()
+                .ends_with("layout.blade.html")
+        );
+        assert_eq!(
+            finder.find("missing").unwrap_err().to_string(),
+            "View [missing] not found."
+        );
+        assert_eq!(
+            finder.find("nope::x").unwrap_err().to_string(),
+            "No hint path defined for [nope]."
+        );
         assert_eq!(normalize_name("admin/profile"), "admin.profile");
     }
 }

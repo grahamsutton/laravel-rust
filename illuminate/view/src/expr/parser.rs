@@ -28,9 +28,17 @@ impl<'a> Parser<'a> {
     /// Create a parser for the given source, which starts on `line`.
     pub(crate) fn new(src: &'a str, line: usize) -> PResult<Self> {
         let tokens = tokenize(src).map_err(|(message, offset)| {
-            ViewCompilationException::new(message, line + count_lines(&src[..offset.min(src.len())]))
+            ViewCompilationException::new(
+                message,
+                line + count_lines(&src[..offset.min(src.len())]),
+            )
         })?;
-        Ok(Self { src, tokens, pos: 0, line })
+        Ok(Self {
+            src,
+            tokens,
+            pos: 0,
+            line,
+        })
     }
 
     /// Parse a single, complete expression.
@@ -135,7 +143,11 @@ impl<'a> Parser<'a> {
     }
 
     pub(crate) fn expect_eof(&self) -> PResult<()> {
-        if self.at_eof() { Ok(()) } else { Err(self.unexpected("expecting end of expression")) }
+        if self.at_eof() {
+            Ok(())
+        } else {
+            Err(self.unexpected("expecting end of expression"))
+        }
     }
 
     fn current_line(&self) -> usize {
@@ -168,8 +180,7 @@ impl<'a> Parser<'a> {
     /// Parse an expression whose operators bind at least as tightly as `min_bp`.
     pub(crate) fn parse_expr(&mut self, min_bp: u8) -> PResult<Expr> {
         let mut left = self.parse_unary()?;
-        loop {
-            let Some((lbp, rbp, op)) = self.infix() else { break };
+        while let Some((lbp, rbp, op)) = self.infix() {
             if lbp < min_bp {
                 break;
             }
@@ -178,7 +189,11 @@ impl<'a> Parser<'a> {
                 Infix::Ternary => {
                     if self.eat_op(":") {
                         let otherwise = self.parse_expr(rbp)?;
-                        Expr::Ternary { cond: Box::new(left), then: None, otherwise: Box::new(otherwise) }
+                        Expr::Ternary {
+                            cond: Box::new(left),
+                            then: None,
+                            otherwise: Box::new(otherwise),
+                        }
                     } else {
                         let then = self.parse_expr(0)?;
                         self.expect_op(":")?;
@@ -192,7 +207,11 @@ impl<'a> Parser<'a> {
                 }
                 Infix::Binary(op) => {
                     let right = self.parse_expr(rbp)?;
-                    Expr::Binary { op, left: Box::new(left), right: Box::new(right) }
+                    Expr::Binary {
+                        op,
+                        left: Box::new(left),
+                        right: Box::new(right),
+                    }
                 }
             };
         }
@@ -243,13 +262,19 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_unary(&mut self) -> PResult<Expr> {
-        let unary = |op: UnaryOp, expr: Expr| Expr::Unary { op, expr: Box::new(expr) };
+        let unary = |op: UnaryOp, expr: Expr| Expr::Unary {
+            op,
+            expr: Box::new(expr),
+        };
         match self.peek().clone() {
             Tok::Op("!") => {
                 self.advance();
                 Ok(unary(UnaryOp::Not, self.parse_expr(NOT_BP)?))
             }
-            Tok::Ident(name) if name.eq_ignore_ascii_case("not") && !matches!(self.peek_at(1), Tok::Op("(" | "::")) => {
+            Tok::Ident(name)
+                if name.eq_ignore_ascii_case("not")
+                    && !matches!(self.peek_at(1), Tok::Op("(" | "::")) =>
+            {
                 self.advance();
                 Ok(unary(UnaryOp::Not, self.parse_expr(NOT_BP)?))
             }
@@ -271,15 +296,24 @@ impl<'a> Parser<'a> {
             }
             Tok::Cast(ty) => {
                 self.advance();
-                Ok(Expr::Cast { ty, expr: Box::new(self.parse_expr(UNARY_BP)?) })
+                Ok(Expr::Cast {
+                    ty,
+                    expr: Box::new(self.parse_expr(UNARY_BP)?),
+                })
             }
             Tok::Op(op @ ("++" | "--")) => {
                 self.advance();
                 let target = self.parse_postfix()?;
                 if !target.is_assignable() {
-                    return Err(self.error(format!("syntax error, cannot use {op} on a non-variable")));
+                    return Err(
+                        self.error(format!("syntax error, cannot use {op} on a non-variable"))
+                    );
                 }
-                Ok(Expr::IncDec { target: Box::new(target), increment: op == "++", prefix: true })
+                Ok(Expr::IncDec {
+                    target: Box::new(target),
+                    increment: op == "++",
+                    prefix: true,
+                })
             }
             _ => {
                 let expr = self.parse_postfix()?;
@@ -306,7 +340,11 @@ impl<'a> Parser<'a> {
             Tok::Op(">>=") => Some(BinaryOp::Shr),
             Tok::Op("++") | Tok::Op("--") if target.is_assignable() => {
                 let increment = self.advance() == Tok::Op("++");
-                return Ok(Expr::IncDec { target: Box::new(target), increment, prefix: false });
+                return Ok(Expr::IncDec {
+                    target: Box::new(target),
+                    increment,
+                    prefix: false,
+                });
             }
             _ => return Ok(target),
         };
@@ -315,7 +353,11 @@ impl<'a> Parser<'a> {
         }
         self.advance();
         let value = self.parse_expr(ASSIGN_BP)?;
-        Ok(Expr::Assign { target: Box::new(target), op, value: Box::new(value) })
+        Ok(Expr::Assign {
+            target: Box::new(target),
+            op,
+            value: Box::new(value),
+        })
     }
 
     fn parse_postfix(&mut self) -> PResult<Expr> {
@@ -329,7 +371,12 @@ impl<'a> Parser<'a> {
                         Tok::Ident(name) => {
                             if self.is_op("(") {
                                 let args = self.parse_args()?;
-                                expr = Expr::MethodCall { target: Box::new(expr), name, args, nullsafe };
+                                expr = Expr::MethodCall {
+                                    target: Box::new(expr),
+                                    name,
+                                    args,
+                                    nullsafe,
+                                };
                             } else {
                                 expr = Expr::Prop {
                                     target: Box::new(expr),
@@ -348,7 +395,11 @@ impl<'a> Parser<'a> {
                         Tok::Op("{") => {
                             let name = self.parse_expr(0)?;
                             self.expect_op("}")?;
-                            expr = Expr::Prop { target: Box::new(expr), name: Box::new(name), nullsafe };
+                            expr = Expr::Prop {
+                                target: Box::new(expr),
+                                name: Box::new(name),
+                                nullsafe,
+                            };
                         }
                         _ => {
                             self.pos -= 1;
@@ -359,26 +410,36 @@ impl<'a> Parser<'a> {
                 Tok::Op("[") => {
                     self.advance();
                     if self.eat_op("]") {
-                        expr = Expr::Index { target: Box::new(expr), index: None };
+                        expr = Expr::Index {
+                            target: Box::new(expr),
+                            index: None,
+                        };
                     } else {
                         let index = self.parse_expr(0)?;
                         self.expect_op("]")?;
-                        expr = Expr::Index { target: Box::new(expr), index: Some(Box::new(index)) };
+                        expr = Expr::Index {
+                            target: Box::new(expr),
+                            index: Some(Box::new(index)),
+                        };
                     }
                 }
-                Tok::Op("(") if matches!(
-                    expr,
-                    Expr::Var(_)
-                        | Expr::Prop { .. }
-                        | Expr::Index { .. }
-                        | Expr::Closure(_)
-                        | Expr::Call { .. }
-                        | Expr::MethodCall { .. }
-                        | Expr::Invoke { .. }
-                ) =>
+                Tok::Op("(")
+                    if matches!(
+                        expr,
+                        Expr::Var(_)
+                            | Expr::Prop { .. }
+                            | Expr::Index { .. }
+                            | Expr::Closure(_)
+                            | Expr::Call { .. }
+                            | Expr::MethodCall { .. }
+                            | Expr::Invoke { .. }
+                    ) =>
                 {
                     let args = self.parse_args()?;
-                    expr = Expr::Invoke { callee: Box::new(expr), args };
+                    expr = Expr::Invoke {
+                        callee: Box::new(expr),
+                        args,
+                    };
                 }
                 Tok::Op("::") if matches!(expr, Expr::Var(_)) => {
                     self.advance();
@@ -387,7 +448,12 @@ impl<'a> Parser<'a> {
                         return Err(self.unexpected("expecting a method name"));
                     };
                     let args = self.parse_args()?;
-                    expr = Expr::MethodCall { target: Box::new(expr), name: method, args, nullsafe: false };
+                    expr = Expr::MethodCall {
+                        target: Box::new(expr),
+                        name: method,
+                        args,
+                        nullsafe: false,
+                    };
                 }
                 _ => break,
             }
@@ -400,10 +466,10 @@ impl<'a> Parser<'a> {
         let mut args = Vec::new();
         while !self.eat_op(")") {
             let spread = self.eat_op("...");
-            if let (Tok::Ident(_), Tok::Op(":")) = (self.peek(), self.peek_at(1)) {
-                if !matches!(self.peek_at(2), Tok::Op(":")) {
-                    return Err(self.error("Named arguments are not supported in Blade expressions"));
-                }
+            if let (Tok::Ident(_), Tok::Op(":")) = (self.peek(), self.peek_at(1))
+                && !matches!(self.peek_at(2), Tok::Op(":"))
+            {
+                return Err(self.error("Named arguments are not supported in Blade expressions"));
             }
             let value = self.parse_expr(0)?;
             args.push(Arg { value, spread });
@@ -469,13 +535,23 @@ impl<'a> Parser<'a> {
                 return Ok(Expr::Empty(Box::new(expr)));
             }
             "fn" => return self.parse_arrow_function(),
-            "static" if matches!(self.peek(), Tok::Ident(n) if n.eq_ignore_ascii_case("fn") || n.eq_ignore_ascii_case("function")) => {
-                let Tok::Ident(next) = self.advance() else { unreachable!() };
-                return if next.eq_ignore_ascii_case("fn") { self.parse_arrow_function() } else { self.parse_closure() };
+            "static" if matches!(self.peek(), Tok::Ident(n) if n.eq_ignore_ascii_case("fn") || n.eq_ignore_ascii_case("function")) =>
+            {
+                let Tok::Ident(next) = self.advance() else {
+                    unreachable!()
+                };
+                return if next.eq_ignore_ascii_case("fn") {
+                    self.parse_arrow_function()
+                } else {
+                    self.parse_closure()
+                };
             }
             "function" if self.is_op("(") => return self.parse_closure(),
             "match" if self.is_op("(") => return self.parse_match(),
-            "new" => return Err(self.error("Creating objects with \"new\" is not supported in Blade expressions")),
+            "new" => {
+                return Err(self
+                    .error("Creating objects with \"new\" is not supported in Blade expressions"));
+            }
             _ => {}
         }
         if self.is_op("::") {
@@ -485,12 +561,21 @@ impl<'a> Parser<'a> {
                 Tok::Ident(member) => {
                     if self.is_op("(") {
                         let args = self.parse_args()?;
-                        Ok(Expr::StaticCall { class, method: member, args })
+                        Ok(Expr::StaticCall {
+                            class,
+                            method: member,
+                            args,
+                        })
                     } else {
-                        Ok(Expr::ClassConst { class, name: member })
+                        Ok(Expr::ClassConst {
+                            class,
+                            name: member,
+                        })
                     }
                 }
-                Tok::Var(_) => Err(self.error("Static properties are not supported in Blade expressions")),
+                Tok::Var(_) => {
+                    Err(self.error("Static properties are not supported in Blade expressions"))
+                }
                 _ => {
                     self.pos -= 1;
                     Err(self.unexpected("expecting a static member"))
@@ -500,7 +585,10 @@ impl<'a> Parser<'a> {
         if self.is_op("(") {
             let args = self.parse_args()?;
             let function: Arc<str> = name.trim_start_matches('\\').into();
-            return Ok(Expr::Call { name: function, args });
+            return Ok(Expr::Call {
+                name: function,
+                args,
+            });
         }
         Ok(Expr::Const(name.trim_start_matches('\\').into()))
     }
@@ -517,9 +605,17 @@ impl<'a> Parser<'a> {
             let first = self.parse_expr(0)?;
             let item = if !spread && self.eat_op("=>") {
                 let value = self.parse_expr(0)?;
-                ArrayItem { key: Some(first), value, spread }
+                ArrayItem {
+                    key: Some(first),
+                    value,
+                    spread,
+                }
             } else {
-                ArrayItem { key: None, value: first, spread }
+                ArrayItem {
+                    key: None,
+                    value: first,
+                    spread,
+                }
             };
             items.push(item);
             if !self.eat_op(",") {
@@ -549,19 +645,18 @@ impl<'a> Parser<'a> {
         let mut params = Vec::new();
         while !self.eat_op(")") {
             // Skip type declarations, nullability, references and variadics.
-            loop {
-                match self.peek() {
-                    Tok::Ident(_) | Tok::Op("?") | Tok::Op("&") | Tok::Op("...") | Tok::Op("|") => {
-                        self.advance();
-                    }
-                    _ => break,
-                }
+            while let Tok::Ident(_) | Tok::Op("?" | "&" | "..." | "|") = self.peek() {
+                self.advance();
             }
             let Tok::Var(name) = self.advance() else {
                 self.pos -= 1;
                 return Err(self.unexpected("expecting a parameter"));
             };
-            let default = if self.eat_op("=") { Some(self.parse_expr(0)?) } else { None };
+            let default = if self.eat_op("=") {
+                Some(self.parse_expr(0)?)
+            } else {
+                None
+            };
             params.push(Param { name, default });
             if !self.eat_op(",") {
                 self.expect_op(")")?;
@@ -573,13 +668,8 @@ impl<'a> Parser<'a> {
 
     fn skip_return_type(&mut self) {
         if self.eat_op(":") {
-            loop {
-                match self.peek() {
-                    Tok::Ident(_) | Tok::Op("?") | Tok::Op("|") => {
-                        self.advance();
-                    }
-                    _ => break,
-                }
+            while let Tok::Ident(_) | Tok::Op("?" | "|") = self.peek() {
+                self.advance();
             }
         }
     }
@@ -592,7 +682,11 @@ impl<'a> Parser<'a> {
         let mut captures = Vec::new();
         body.collect_vars(&mut captures);
         captures.retain(|name| !params.iter().any(|p| &p.name == name));
-        Ok(Expr::Closure(Arc::new(ClosureDef { params, captures, body: vec![Stmt::Return(Some(body))] })))
+        Ok(Expr::Closure(Arc::new(ClosureDef {
+            params,
+            captures,
+            body: vec![Stmt::Return(Some(body))],
+        })))
     }
 
     fn parse_closure(&mut self) -> PResult<Expr> {
@@ -615,7 +709,11 @@ impl<'a> Parser<'a> {
         }
         self.skip_return_type();
         let body = self.parse_block()?;
-        Ok(Expr::Closure(Arc::new(ClosureDef { params, captures, body })))
+        Ok(Expr::Closure(Arc::new(ClosureDef {
+            params,
+            captures,
+            body,
+        })))
     }
 
     fn parse_match(&mut self) -> PResult<Expr> {
@@ -645,7 +743,10 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        Ok(Expr::Match { subject: Box::new(subject), arms })
+        Ok(Expr::Match {
+            subject: Box::new(subject),
+            arms,
+        })
     }
 
     // ------------------------------------------------------------------
@@ -730,7 +831,12 @@ impl<'a> Parser<'a> {
                     let (key, value) = self.parse_foreach_target()?;
                     self.expect_op(")")?;
                     let body = self.parse_block()?;
-                    return Ok(Stmt::Foreach { iterable, key, value, body });
+                    return Ok(Stmt::Foreach {
+                        iterable,
+                        key,
+                        value,
+                        body,
+                    });
                 }
                 _ => {}
             }
@@ -768,7 +874,10 @@ impl<'a> Parser<'a> {
                 break;
             }
         }
-        Ok(Stmt::If { branches, otherwise })
+        Ok(Stmt::If {
+            branches,
+            otherwise,
+        })
     }
 
     /// Parse the `$key => $value` (or `$value`, or `[$a, $b]`) part of a foreach.
@@ -809,7 +918,10 @@ pub(crate) fn parse_foreach(src: &str, line: usize) -> PResult<(Expr, Option<Exp
     let mut parser = Parser::new(src, line)?;
     let iterable = parser.parse_expr(0)?;
     if !parser.eat_keyword("as") {
-        return Err(ViewCompilationException::new("Malformed @foreach statement.", line));
+        return Err(ViewCompilationException::new(
+            "Malformed @foreach statement.",
+            line,
+        ));
     }
     let (key, value) = parser.parse_foreach_target()?;
     parser.expect_eof()?;
@@ -824,7 +936,9 @@ pub(crate) fn parse_for(src: &str, line: usize) -> PResult<(Vec<Expr>, Vec<Expr>
         let mut exprs = Vec::new();
         let terminator = if index < 2 { ";" } else { "" };
         loop {
-            if (terminator.is_empty() && parser.at_eof()) || (!terminator.is_empty() && parser.is_op(terminator)) {
+            if (terminator.is_empty() && parser.at_eof())
+                || (!terminator.is_empty() && parser.is_op(terminator))
+            {
                 break;
             }
             exprs.push(parser.parse_expr(0)?);
@@ -833,7 +947,10 @@ pub(crate) fn parse_for(src: &str, line: usize) -> PResult<(Vec<Expr>, Vec<Expr>
             }
         }
         if !terminator.is_empty() && !parser.eat_op(terminator) {
-            return Err(ViewCompilationException::new("Malformed @for statement.", line));
+            return Err(ViewCompilationException::new(
+                "Malformed @for statement.",
+                line,
+            ));
         }
         sections.push(exprs);
     }
@@ -855,17 +972,48 @@ mod tests {
     #[test]
     fn it_respects_precedence() {
         let expr = parse("1 + 2 * 3");
-        let Expr::Binary { op: BinaryOp::Add, right, .. } = expr else { panic!("{expr:?}") };
-        assert!(matches!(*right, Expr::Binary { op: BinaryOp::Mul, .. }));
+        let Expr::Binary {
+            op: BinaryOp::Add,
+            right,
+            ..
+        } = expr
+        else {
+            panic!("{expr:?}")
+        };
+        assert!(matches!(
+            *right,
+            Expr::Binary {
+                op: BinaryOp::Mul,
+                ..
+            }
+        ));
 
         let expr = parse("! $a && $b");
-        assert!(matches!(expr, Expr::Binary { op: BinaryOp::And, .. }));
+        assert!(matches!(
+            expr,
+            Expr::Binary {
+                op: BinaryOp::And,
+                ..
+            }
+        ));
 
         let expr = parse("'a' . 1 + 2");
-        assert!(matches!(expr, Expr::Binary { op: BinaryOp::Concat, .. }));
+        assert!(matches!(
+            expr,
+            Expr::Binary {
+                op: BinaryOp::Concat,
+                ..
+            }
+        ));
 
         let expr = parse("-2 ** 2");
-        assert!(matches!(expr, Expr::Unary { op: UnaryOp::Neg, .. }));
+        assert!(matches!(
+            expr,
+            Expr::Unary {
+                op: UnaryOp::Neg,
+                ..
+            }
+        ));
 
         let expr = parse("$a ?? $b ? 1 : 2");
         assert!(matches!(expr, Expr::Ternary { .. }));
@@ -874,7 +1022,14 @@ mod tests {
     #[test]
     fn it_parses_assignments_inside_expressions() {
         let expr = parse("$a && $b = 5");
-        let Expr::Binary { op: BinaryOp::And, right, .. } = expr else { panic!() };
+        let Expr::Binary {
+            op: BinaryOp::And,
+            right,
+            ..
+        } = expr
+        else {
+            panic!()
+        };
         assert!(matches!(*right, Expr::Assign { .. }));
         assert!(matches!(parse("$items[] = 1"), Expr::Assign { .. }));
         assert!(matches!(parse("$i++"), Expr::IncDec { prefix: false, .. }));
@@ -882,19 +1037,37 @@ mod tests {
 
     #[test]
     fn it_parses_calls_and_closures() {
-        assert!(matches!(parse("Str::limit($title, 20)"), Expr::StaticCall { .. }));
-        assert!(matches!(parse("\\Illuminate\\Support\\Str::upper('a')"), Expr::StaticCall { ref class, .. } if &**class == "Str"));
-        assert!(matches!(parse("$users->map(fn ($u) => $u->name)"), Expr::MethodCall { .. }));
+        assert!(matches!(
+            parse("Str::limit($title, 20)"),
+            Expr::StaticCall { .. }
+        ));
+        assert!(
+            matches!(parse("\\Illuminate\\Support\\Str::upper('a')"), Expr::StaticCall { ref class, .. } if &**class == "Str")
+        );
+        assert!(matches!(
+            parse("$users->map(fn ($u) => $u->name)"),
+            Expr::MethodCall { .. }
+        ));
         assert!(matches!(parse("$isSelected($value)"), Expr::Invoke { .. }));
-        assert!(matches!(parse("match ($a) { 1, 2 => 'x', default => 'y' }"), Expr::Match { .. }));
-        assert!(matches!(parse("function ($x) use ($y) { return $x + $y; }"), Expr::Closure(_)));
+        assert!(matches!(
+            parse("match ($a) { 1, 2 => 'x', default => 'y' }"),
+            Expr::Match { .. }
+        ));
+        assert!(matches!(
+            parse("function ($x) use ($y) { return $x + $y; }"),
+            Expr::Closure(_)
+        ));
     }
 
     #[test]
     fn it_reports_errors_with_lines() {
         let error = Parser::expression("$a +\n\n )", 10).unwrap_err();
         assert_eq!(error.line, 12);
-        assert!(error.message.contains("unexpected token \")\""), "{}", error.message);
+        assert!(
+            error.message.contains("unexpected token \")\""),
+            "{}",
+            error.message
+        );
     }
 
     #[test]
@@ -909,7 +1082,11 @@ mod tests {
 
     #[test]
     fn it_parses_statements() {
-        let stmts = Parser::statements("$a = 1; $b = [1, 2]; $b[] = 3; if ($a) { $c = 1; } else { $c = 2; }", 1).unwrap();
+        let stmts = Parser::statements(
+            "$a = 1; $b = [1, 2]; $b[] = 3; if ($a) { $c = 1; } else { $c = 2; }",
+            1,
+        )
+        .unwrap();
         assert_eq!(stmts.len(), 4);
         let stmts = Parser::statements("$x = 1", 1).unwrap();
         assert_eq!(stmts.len(), 1);

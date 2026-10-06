@@ -6,36 +6,73 @@ use illuminate_support::json;
 #[test]
 fn for_loops() {
     let template = "@for ($i = 0; $i < 3; $i++)\nThe current value is {{ $i }}\n@endfor\n";
-    assert_eq!(blade(template, ()), "The current value is 0\nThe current value is 1\nThe current value is 2\n");
-    assert_eq!(blade("@for ($i = 10; $i > 0; $i -= 4){{ $i }} @endfor", ()), "10 6 2 ");
+    assert_eq!(
+        blade(template, ()),
+        "The current value is 0\nThe current value is 1\nThe current value is 2\n"
+    );
+    assert_eq!(
+        blade("@for ($i = 10; $i > 0; $i -= 4){{ $i }} @endfor", ()),
+        "10 6 2 "
+    );
 }
 
 #[test]
 fn foreach_loops() {
-    let template = "@foreach ($users as $user)\n<p>This is user {{ $user['id'] }}</p>\n@endforeach\n";
+    let template =
+        "@foreach ($users as $user)\n<p>This is user {{ $user['id'] }}</p>\n@endforeach\n";
     assert_eq!(
         blade(template, json!({"users": [{"id": 1}, {"id": 2}]})),
         "<p>This is user 1</p>\n<p>This is user 2</p>\n"
     );
     assert_eq!(
-        blade("@foreach ($prices as $item => $price){{ $item }}={{ $price }};@endforeach", json!({"prices": {"apple": 1, "pear": 2}})),
+        blade(
+            "@foreach ($prices as $item => $price){{ $item }}={{ $price }};@endforeach",
+            json!({"prices": {"apple": 1, "pear": 2}})
+        ),
         "apple=1;pear=2;"
     );
-    assert_eq!(blade("@foreach ($users as $user){{ $user->name }} @endforeach", json!({"users": [{"name": "Taylor"}]})), "Taylor ");
-    assert_eq!(blade("@foreach ([[1, 2], [3, 4]] as [$a, $b]){{ $a + $b }} @endforeach", ()), "3 7 ");
-    assert_eq!(blade("@foreach ($nothing as $x)x @endforeach!", json!({"nothing": null})), "!");
+    assert_eq!(
+        blade(
+            "@foreach ($users as $user){{ $user->name }} @endforeach",
+            json!({"users": [{"name": "Taylor"}]})
+        ),
+        "Taylor "
+    );
+    assert_eq!(
+        blade(
+            "@foreach ([[1, 2], [3, 4]] as [$a, $b]){{ $a + $b }} @endforeach",
+            ()
+        ),
+        "3 7 "
+    );
+    assert_eq!(
+        blade(
+            "@foreach ($nothing as $x)x @endforeach!",
+            json!({"nothing": null})
+        ),
+        "!"
+    );
 }
 
 #[test]
 fn forelse_loops() {
     let template = "@forelse ($users as $user)\n    <li>{{ $user }}</li>\n@empty\n    <p>No users</p>\n@endforelse\n";
-    assert_eq!(blade(template, json!({"users": ["a", "b"]})), "    <li>a</li>\n    <li>b</li>\n");
-    assert_eq!(blade(template, json!({"users": []})), "    <p>No users</p>\n");
+    assert_eq!(
+        blade(template, json!({"users": ["a", "b"]})),
+        "    <li>a</li>\n    <li>b</li>\n"
+    );
+    assert_eq!(
+        blade(template, json!({"users": []})),
+        "    <p>No users</p>\n"
+    );
 }
 
 #[test]
 fn while_loops() {
-    assert_eq!(blade("@php($i = 0)@while ($i < 3){{ $i++ }}@endwhile", ()), "012");
+    assert_eq!(
+        blade("@php($i = 0)@while ($i < 3){{ $i++ }}@endwhile", ()),
+        "012"
+    );
 }
 
 #[test]
@@ -69,7 +106,10 @@ fn the_loop_variable() {
 fn nested_loops_expose_the_parent() {
     let template = "@foreach ($users as $user)@foreach ($user['posts'] as $post)@if ($loop->parent->first)[first:{{ $post }}]@else[{{ $post }}@{{ $loop->depth }}]@endif\n@endforeach{{ $loop->depth }}@endforeach{{ $loop ?? 'none' }}";
     let data = json!({"users": [{"posts": ["a", "b"]}, {"posts": ["c"]}]});
-    assert_eq!(blade(template, data), "[first:a][first:b]1[c{{ $loop->depth }}]1none");
+    assert_eq!(
+        blade(template, data),
+        "[first:a][first:b]1[c{{ $loop->depth }}]1none"
+    );
 }
 
 #[test]
@@ -80,5 +120,8 @@ fn loops_over_collections_and_paginators() {
         "path": "/", "per_page": 15, "prev_page_url": null, "to": 2, "total": 2
     }});
     let template = "@foreach ($users as $user){{ $user->name }} @endforeach\n({{ $users->total() }} total, page {{ $users->currentPage() }}, {{ count($users) }} shown)";
-    assert_eq!(blade(template, paginator), "Taylor Abigail (2 total, page 1, 2 shown)");
+    assert_eq!(
+        blade(template, paginator),
+        "Taylor Abigail (2 total, page 1, 2 shown)"
+    );
 }

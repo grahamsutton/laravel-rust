@@ -95,7 +95,10 @@ fn is_word(b: u8) -> bool {
 /// Directives Laravel compiles to something other than a trailing `?>`,
 /// so they don't swallow the following newline.
 fn keeps_newline(name: &str) -> bool {
-    matches!(name.to_ascii_lowercase().as_str(), "extends" | "extendsfirst" | "class" | "style")
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "extends" | "extendsfirst" | "class" | "style"
+    )
 }
 
 impl<'a> Lexer<'a> {
@@ -116,7 +119,8 @@ impl<'a> Lexer<'a> {
 
     fn flush_text(&mut self) {
         if !self.text.is_empty() {
-            self.tokens.push(Token::Text(std::mem::take(&mut self.text)));
+            self.tokens
+                .push(Token::Text(std::mem::take(&mut self.text)));
         }
     }
 
@@ -166,8 +170,8 @@ impl<'a> Lexer<'a> {
     fn curly(&mut self) -> LResult<()> {
         let rest = self.rest();
         let line = self.line;
-        if rest.starts_with("{{--") {
-            match rest[4..].find("--}}") {
+        if let Some(comment) = rest.strip_prefix("{{--") {
+            match comment.find("--}}") {
                 Some(end) => {
                     self.advance(4 + end + 4);
                 }
@@ -203,22 +207,25 @@ impl<'a> Lexer<'a> {
     fn at(&mut self) -> LResult<()> {
         let rest = self.rest();
         let line = self.line;
+        // Escaped echoes: @{{ name }} → {{ name }}
+        for (open, close) in [("@{{{", "}}}"), ("@{!!", "!!}"), ("@{{", "}}")] {
+            if let Some(body) = rest.strip_prefix(open) {
+                let end = body
+                    .find(close)
+                    .map(|e| open.len() + e + close.len())
+                    .unwrap_or(rest.len());
+                let literal = rest[1..end].to_string();
+                self.advance(end);
+                self.push_text(&literal);
+                return Ok(());
+            }
+        }
+        // Directives must not be glued to a word ("user@example.com").
         let previous_is_word = self.pos > 0 && is_word(self.src.as_bytes()[self.pos - 1]);
         if previous_is_word {
             self.advance(1);
             self.push_text("@");
             return Ok(());
-        }
-        // Escaped echoes: @{{ name }} → {{ name }}
-        for (open, close) in [("@{{{", "}}}"), ("@{!!", "!!}"), ("@{{", "}}")] {
-            if rest.starts_with(open) {
-                let end = rest[open.len()..].find(close).map(|e| open.len() + e + close.len()).unwrap_or(rest.len());
-                let literal = &rest[1..end];
-                let literal = literal.to_string();
-                self.advance(end);
-                self.push_text(&literal);
-                return Ok(());
-            }
         }
         if starts_with_word(rest, "@verbatim") {
             let after = &rest["@verbatim".len()..];
@@ -229,7 +236,10 @@ impl<'a> Lexer<'a> {
                     self.push_text(&content);
                     Ok(())
                 }
-                None => Err(self.error("Unclosed @verbatim directive. Did you forget an @endverbatim?", line)),
+                None => Err(self.error(
+                    "Unclosed @verbatim directive. Did you forget an @endverbatim?",
+                    line,
+                )),
             };
         }
 
@@ -248,7 +258,9 @@ impl<'a> Lexer<'a> {
             self.push_text("@");
             return Ok(());
         }
-        if rest[end..].starts_with("::") && rest.as_bytes().get(end + 2).is_some_and(|b| is_word(*b)) {
+        if rest[end..].starts_with("::")
+            && rest.as_bytes().get(end + 2).is_some_and(|b| is_word(*b))
+        {
             end += 2;
             while end < bytes.len() && is_word(bytes[end]) {
                 end += 1;
@@ -272,7 +284,14 @@ impl<'a> Lexer<'a> {
         if name.eq_ignore_ascii_case("php") && self.directives.is_directive("php") {
             self.advance(end);
             if let Some(args) = self.try_args(false)? {
-                self.emit(Token::Directive { name, args: Some(args), line }, true);
+                self.emit(
+                    Token::Directive {
+                        name,
+                        args: Some(args),
+                        line,
+                    },
+                    true,
+                );
                 return Ok(());
             }
             let rest = self.rest();
@@ -283,7 +302,9 @@ impl<'a> Lexer<'a> {
                     self.emit(Token::PhpBlock { src, line }, true);
                     Ok(())
                 }
-                None => Err(self.error("Unclosed @php directive. Did you forget an @endphp?", line)),
+                None => {
+                    Err(self.error("Unclosed @php directive. Did you forget an @endphp?", line))
+                }
             };
         }
 
@@ -332,25 +353,23 @@ impl<'a> Lexer<'a> {
         let is_slot_close = (lower.starts_with("</x-slot") || lower.starts_with("</x:slot"))
             && rest[8..].starts_with([':', ' ', '\t', '\n', '\r', '>']);
 
-        if is_slot_close {
-            if let Some(end) = rest.find('>') {
-                self.advance(end + 1);
-                self.push_text(" ");
-                self.emit(Token::SlotClose { line }, true);
-                return Ok(());
-            }
+        if is_slot_close && let Some(end) = rest.find('>') {
+            self.advance(end + 1);
+            self.push_text(" ");
+            self.emit(Token::SlotClose { line }, true);
+            return Ok(());
         }
-        if is_slot_open {
-            if let Some((token, len)) = self.slot_tag(line) {
-                self.advance(len);
-                self.push_text(" ");
-                self.emit(token, false);
-                self.push_text(" ");
-                return Ok(());
-            }
+        if is_slot_open && let Some((token, len)) = self.slot_tag(line) {
+            self.advance(len);
+            self.push_text(" ");
+            self.emit(token, false);
+            self.push_text(" ");
+            return Ok(());
         }
         if rest.starts_with("</x-") || rest.starts_with("</x:") {
-            let name_len = rest[4..].find(|c: char| !(c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.'))).unwrap_or(rest.len() - 4);
+            let name_len = rest[4..]
+                .find(|c: char| !(c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.')))
+                .unwrap_or(rest.len() - 4);
             let name = rest[4..4 + name_len].to_string();
             let after = &rest[4 + name_len..];
             let spaces = after.len() - after.trim_start().len();
@@ -362,12 +381,11 @@ impl<'a> Lexer<'a> {
         }
         if (rest.starts_with("<x-") || rest.starts_with("<x:"))
             && rest[3..].starts_with(|c: char| c.is_alphanumeric() || c == '_')
+            && let Some((token, len)) = self.component_tag(line)
         {
-            if let Some((token, len)) = self.component_tag(line) {
-                self.advance(len);
-                self.emit(token, true);
-                return Ok(());
-            }
+            self.advance(len);
+            self.emit(token, true);
+            return Ok(());
         }
         self.advance(1);
         self.push_text("<");
@@ -379,10 +397,20 @@ impl<'a> Lexer<'a> {
         let name_len = rest[3..]
             .find(|c: char| !(c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.')))
             .unwrap_or(rest.len() - 3);
-        let name = rest[3..3 + name_len].trim_end_matches(['.', ':', '-']).to_string();
+        let name = rest[3..3 + name_len]
+            .trim_end_matches(['.', ':', '-'])
+            .to_string();
         let consumed_name = 3 + name.len();
         let (attrs, end, self_closing) = parse_attributes(rest, consumed_name, line)?;
-        Some((Token::ComponentOpen { name, attrs, self_closing, line }, end))
+        Some((
+            Token::ComponentOpen {
+                name,
+                attrs,
+                self_closing,
+                line,
+            },
+            end,
+        ))
     }
 
     fn slot_tag(&self, line: usize) -> Option<(Token, usize)> {
@@ -404,7 +432,14 @@ impl<'a> Lexer<'a> {
         if self_closing {
             return None;
         }
-        Some((Token::SlotOpen { inline_name, attrs, line }, end))
+        Some((
+            Token::SlotOpen {
+                inline_name,
+                attrs,
+                line,
+            },
+            end,
+        ))
     }
 }
 
@@ -414,7 +449,11 @@ fn starts_with_word(rest: &str, word: &str) -> bool {
 
 /// Parse attributes starting at `index`, up to `>` or `/>`.
 /// Returns the attributes, the index after the tag, and whether it self-closes.
-fn parse_attributes(src: &str, mut index: usize, line: usize) -> Option<(Vec<RawAttr>, usize, bool)> {
+fn parse_attributes(
+    src: &str,
+    mut index: usize,
+    line: usize,
+) -> Option<(Vec<RawAttr>, usize, bool)> {
     let mut attrs = Vec::new();
     let mut line = line;
     loop {
@@ -438,7 +477,11 @@ fn parse_attributes(src: &str, mut index: usize, line: usize) -> Option<(Vec<Raw
             let directive = &trimmed[1..6];
             let close = balanced_parens(&trimmed[6..])?;
             let inner = &trimmed[7..6 + close];
-            let helper = if directive == "class" { "toCssClasses" } else { "toCssStyles" };
+            let helper = if directive == "class" {
+                "toCssClasses"
+            } else {
+                "toCssStyles"
+            };
             attrs.push(RawAttr {
                 name: format!(":{directive}"),
                 value: Some(format!("\\Illuminate\\Support\\Arr::{helper}({inner})")),
@@ -449,30 +492,42 @@ fn parse_attributes(src: &str, mut index: usize, line: usize) -> Option<(Vec<Raw
             continue;
         }
         // {{ $attributes->merge(...) }}
-        if trimmed.starts_with("{{") {
-            let end = find_close(&trimmed[2..], "}}")?;
+        if let Some(echo) = trimmed.strip_prefix("{{") {
+            let end = find_close(echo, "}}")?;
             let inner = trimmed[2..2 + end].trim();
             if !inner.starts_with("$attributes") {
                 return None;
             }
-            attrs.push(RawAttr { name: ":attributes".into(), value: Some(inner.to_string()), line: attr_line });
+            attrs.push(RawAttr {
+                name: ":attributes".into(),
+                value: Some(inner.to_string()),
+                line: attr_line,
+            });
             line += trimmed[..4 + end].bytes().filter(|b| *b == b'\n').count();
             index += 2 + end + 2;
             continue;
         }
         // :$userId short syntax
         if let Some(after) = trimmed.strip_prefix(":$") {
-            let len = after.find(|c: char| !(c.is_alphanumeric() || c == '_')).unwrap_or(after.len());
+            let len = after
+                .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .unwrap_or(after.len());
             if len == 0 {
                 return None;
             }
             let var = &after[..len];
-            attrs.push(RawAttr { name: format!(":{var}"), value: Some(format!("${var}")), line: attr_line });
+            attrs.push(RawAttr {
+                name: format!(":{var}"),
+                value: Some(format!("${var}")),
+                line: attr_line,
+            });
             index += 2 + len;
             continue;
         }
         let name_len = trimmed
-            .find(|c: char| !(c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.' | '@' | '%')))
+            .find(|c: char| {
+                !(c.is_alphanumeric() || matches!(c, '_' | '-' | ':' | '.' | '@' | '%'))
+            })
             .unwrap_or(trimmed.len());
         if name_len == 0 {
             return None;
@@ -488,7 +543,9 @@ fn parse_attributes(src: &str, mut index: usize, line: usize) -> Option<(Vec<Raw
                 }
                 _ => {
                     let len = value_src
-                        .find(|c: char| c.is_whitespace() || matches!(c, '>' | '"' | '\'' | '=' | '<'))
+                        .find(|c: char| {
+                            c.is_whitespace() || matches!(c, '>' | '"' | '\'' | '=' | '<')
+                        })
                         .unwrap_or(value_src.len());
                     let mut len = len;
                     if value_src[..len].ends_with('/') && value_src[len..].starts_with('>') {
@@ -501,10 +558,18 @@ fn parse_attributes(src: &str, mut index: usize, line: usize) -> Option<(Vec<Raw
                 }
             };
             line += value.bytes().filter(|b| *b == b'\n').count();
-            attrs.push(RawAttr { name, value: Some(value), line: attr_line });
+            attrs.push(RawAttr {
+                name,
+                value: Some(value),
+                line: attr_line,
+            });
             index += 1 + len;
         } else {
-            attrs.push(RawAttr { name, value: None, line: attr_line });
+            attrs.push(RawAttr {
+                name,
+                value: None,
+                line: attr_line,
+            });
         }
     }
 }
@@ -601,9 +666,17 @@ mod tests {
             lex("Hello, {{ $name }}.{{-- secret --}}{!! $raw !!}"),
             vec![
                 text("Hello, "),
-                Token::Echo { src: " $name ".into(), escape: true, line: 1 },
+                Token::Echo {
+                    src: " $name ".into(),
+                    escape: true,
+                    line: 1
+                },
                 text("."),
-                Token::Echo { src: " $raw ".into(), escape: false, line: 1 },
+                Token::Echo {
+                    src: " $raw ".into(),
+                    escape: false,
+                    line: 1
+                },
             ]
         );
     }
@@ -613,9 +686,17 @@ mod tests {
         assert_eq!(
             lex("@if ($a)\nA\n@endif\n\nB"),
             vec![
-                Token::Directive { name: "if".into(), args: Some("$a".into()), line: 1 },
+                Token::Directive {
+                    name: "if".into(),
+                    args: Some("$a".into()),
+                    line: 1
+                },
                 text("A\n"),
-                Token::Directive { name: "endif".into(), args: None, line: 3 },
+                Token::Directive {
+                    name: "endif".into(),
+                    args: None,
+                    line: 3
+                },
                 text("\nB"),
             ]
         );
@@ -623,21 +704,38 @@ mod tests {
 
     #[test]
     fn escapes_and_emails_stay_literal() {
-        assert_eq!(lex("@{{ name }} @@if($x) user@example.com @media (x)"), vec![text(
-            "{{ name }} @if($x) user@example.com @media (x)"
-        )]);
+        assert_eq!(
+            lex("@{{ name }} @@if($x) user@example.com @media (x)"),
+            vec![text("{{ name }} @if($x) user@example.com @media (x)")]
+        );
     }
 
     #[test]
     fn verbatim_and_php_blocks() {
-        assert_eq!(lex("@verbatim {{ x }} @endverbatim"), vec![text(" {{ x }} ")]);
+        assert_eq!(
+            lex("@verbatim {{ x }} @endverbatim"),
+            vec![text(" {{ x }} ")]
+        );
         assert_eq!(
             lex("@php\n$a = 1;\n@endphp\nX"),
-            vec![Token::PhpBlock { src: "\n$a = 1;\n".into(), line: 1 }, text("X")]
+            vec![
+                Token::PhpBlock {
+                    src: "\n$a = 1;\n".into(),
+                    line: 1
+                },
+                text("X")
+            ]
         );
         assert_eq!(
             lex("@php($a = 1)\nX"),
-            vec![Token::Directive { name: "php".into(), args: Some("$a = 1".into()), line: 1 }, text("X")]
+            vec![
+                Token::Directive {
+                    name: "php".into(),
+                    args: Some("$a = 1".into()),
+                    line: 1
+                },
+                text("X")
+            ]
         );
     }
 
@@ -646,7 +744,11 @@ mod tests {
         assert_eq!(
             lex("@if (count($a) > 0 && $b == ')')x"),
             vec![
-                Token::Directive { name: "if".into(), args: Some("count($a) > 0 && $b == ')'".into()), line: 1 },
+                Token::Directive {
+                    name: "if".into(),
+                    args: Some("count($a) > 0 && $b == ')'".into()),
+                    line: 1
+                },
                 text("x")
             ]
         );
@@ -654,28 +756,56 @@ mod tests {
 
     #[test]
     fn component_tags() {
-        let tokens = lex("<x-alert type=\"error\" :message=\"$msg\" disabled class='a {{ $b }}'>\nHi</x-alert>\n<x-forms.input :$name/>");
+        let tokens = lex(
+            "<x-alert type=\"error\" :message=\"$msg\" disabled class='a {{ $b }}'>\nHi</x-alert>\n<x-forms.input :$name/>",
+        );
         assert_eq!(
             tokens[0],
             Token::ComponentOpen {
                 name: "alert".into(),
                 attrs: vec![
-                    RawAttr { name: "type".into(), value: Some("error".into()), line: 1 },
-                    RawAttr { name: ":message".into(), value: Some("$msg".into()), line: 1 },
-                    RawAttr { name: "disabled".into(), value: None, line: 1 },
-                    RawAttr { name: "class".into(), value: Some("a {{ $b }}".into()), line: 1 },
+                    RawAttr {
+                        name: "type".into(),
+                        value: Some("error".into()),
+                        line: 1
+                    },
+                    RawAttr {
+                        name: ":message".into(),
+                        value: Some("$msg".into()),
+                        line: 1
+                    },
+                    RawAttr {
+                        name: "disabled".into(),
+                        value: None,
+                        line: 1
+                    },
+                    RawAttr {
+                        name: "class".into(),
+                        value: Some("a {{ $b }}".into()),
+                        line: 1
+                    },
                 ],
                 self_closing: false,
                 line: 1
             }
         );
         assert_eq!(tokens[1], text("Hi"));
-        assert_eq!(tokens[2], Token::ComponentClose { name: "alert".into(), line: 2 });
+        assert_eq!(
+            tokens[2],
+            Token::ComponentClose {
+                name: "alert".into(),
+                line: 2
+            }
+        );
         assert_eq!(
             tokens[3],
             Token::ComponentOpen {
                 name: "forms.input".into(),
-                attrs: vec![RawAttr { name: ":name".into(), value: Some("$name".into()), line: 3 }],
+                attrs: vec![RawAttr {
+                    name: ":name".into(),
+                    value: Some("$name".into()),
+                    line: 3
+                }],
                 self_closing: true,
                 line: 3
             }
@@ -691,7 +821,11 @@ mod tests {
                 text(" "),
                 Token::SlotOpen {
                     inline_name: Some("title".into()),
-                    attrs: vec![RawAttr { name: "class".into(), value: Some("bold".into()), line: 1 }],
+                    attrs: vec![RawAttr {
+                        name: "class".into(),
+                        value: Some("bold".into()),
+                        line: 1
+                    }],
                     line: 1
                 },
                 text(" T "),

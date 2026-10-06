@@ -65,12 +65,12 @@ impl ComponentAttributeBag {
     /// Replace the attributes. An `attributes` entry holding another bag is
     /// merged in (this is how `<x-button {{ $attributes }}>` forwards them).
     pub fn set_attributes(&mut self, mut attributes: IndexMap<String, ViewValue>) {
-        if let Some(ViewValue::Object(parent)) = attributes.get("attributes") {
-            if let Some(parent) = parent.downcast_ref::<ComponentAttributeBag>() {
-                let parent = parent.clone();
-                attributes.shift_remove("attributes");
-                attributes = parent.merge(attributes, false).attributes;
-            }
+        if let Some(ViewValue::Object(parent)) = attributes.get("attributes")
+            && let Some(parent) = parent.downcast_ref::<ComponentAttributeBag>()
+        {
+            let parent = parent.clone();
+            attributes.shift_remove("attributes");
+            attributes = parent.merge(attributes, false).attributes;
         }
         self.attributes = attributes;
     }
@@ -136,12 +136,20 @@ impl ComponentAttributeBag {
 
     /// Only the attributes whose names start with one of the given strings.
     pub fn where_starts_with(&self, needles: &[String]) -> Self {
-        self.filter_keys(|k| needles.iter().any(|n| !n.is_empty() && k.starts_with(n.as_str())))
+        self.filter_keys(|k| {
+            needles
+                .iter()
+                .any(|n| !n.is_empty() && k.starts_with(n.as_str()))
+        })
     }
 
     /// Only the attributes whose names don't start with any of the given strings.
     pub fn where_doesnt_start_with(&self, needles: &[String]) -> Self {
-        self.filter_keys(|k| !needles.iter().any(|n| !n.is_empty() && k.starts_with(n.as_str())))
+        self.filter_keys(|k| {
+            !needles
+                .iter()
+                .any(|n| !n.is_empty() && k.starts_with(n.as_str()))
+        })
     }
 
     fn filter_keys(&self, keep: impl Fn(&str) -> bool) -> Self {
@@ -157,18 +165,28 @@ impl ComponentAttributeBag {
 
     /// Merge default attributes into the bag. `class` and `style` values are
     /// appended to the defaults; any other attribute overrides its default.
-    pub fn merge<K: Into<String>>(&self, defaults: impl IntoIterator<Item = (K, ViewValue)>, escape: bool) -> Self {
+    pub fn merge<K: Into<String>>(
+        &self,
+        defaults: impl IntoIterator<Item = (K, ViewValue)>,
+        escape: bool,
+    ) -> Self {
         let defaults: IndexMap<String, ViewValue> = defaults
             .into_iter()
             .map(|(k, v)| {
-                let v = if should_escape(escape, &v) { ViewValue::from(illuminate_support::e(v.to_string_lossy())) } else { v };
+                let v = if should_escape(escape, &v) {
+                    ViewValue::from(illuminate_support::e(v.to_string_lossy()))
+                } else {
+                    v
+                };
                 (k.into(), v)
             })
             .collect();
         let mut merged = IndexMap::with_capacity(defaults.len() + self.attributes.len());
         for (key, value) in &defaults {
             let value = match value.downcast_ref::<AppendableAttributeValue>() {
-                Some(appendable) if !self.attributes.contains_key(key) => resolve_appendable(appendable, escape),
+                Some(appendable) if !self.attributes.contains_key(key) => {
+                    resolve_appendable(appendable, escape)
+                }
                 _ => value.clone(),
             };
             merged.insert(key.clone(), value);
@@ -176,7 +194,9 @@ impl ComponentAttributeBag {
         let is_appendable = |key: &str| {
             key == "class"
                 || key == "style"
-                || defaults.get(key).is_some_and(|d| d.downcast_ref::<AppendableAttributeValue>().is_some())
+                || defaults
+                    .get(key)
+                    .is_some_and(|d| d.downcast_ref::<AppendableAttributeValue>().is_some())
         };
         // Appendable attributes come first, like Laravel's partition().
         let ordered = self
@@ -185,20 +205,25 @@ impl ComponentAttributeBag {
             .filter(|(k, _)| is_appendable(k))
             .chain(self.attributes.iter().filter(|(k, _)| !is_appendable(k)));
         for (key, value) in ordered {
-            let appendable_default = defaults.get(key).and_then(|d| d.downcast_ref::<AppendableAttributeValue>());
+            let appendable_default = defaults
+                .get(key)
+                .and_then(|d| d.downcast_ref::<AppendableAttributeValue>());
             if is_appendable(key) {
                 let default_value = match appendable_default {
                     Some(appendable) => resolve_appendable(appendable, escape),
-                    None => defaults.get(key).cloned().unwrap_or_else(|| ViewValue::from("")),
+                    None => defaults
+                        .get(key)
+                        .cloned()
+                        .unwrap_or_else(|| ViewValue::from("")),
                 };
                 let mut value = value.clone();
                 let mut default_value = default_value;
                 if key == "style" {
                     value = ViewValue::from(Str::finish(&value.to_string_lossy(), ";"));
-                    if let ViewValue::Str(s) = &default_value {
-                        if !s.is_empty() {
-                            default_value = ViewValue::from(Str::finish(s, ";"));
-                        }
+                    if let ViewValue::Str(s) = &default_value
+                        && !s.is_empty()
+                    {
+                        default_value = ViewValue::from(Str::finish(s, ";"));
                     }
                 }
                 let mut parts: Vec<String> = Vec::new();
@@ -220,12 +245,18 @@ impl ComponentAttributeBag {
 
     /// Conditionally merge classes: `$attributes->class(['p-4', 'bg-red' => $hasError])`.
     pub fn class(&self, classes: &ViewValue) -> Self {
-        self.merge([("class", ViewValue::from(php::css_classes(&wrap(classes))))], true)
+        self.merge(
+            [("class", ViewValue::from(php::css_classes(&wrap(classes))))],
+            true,
+        )
     }
 
     /// Conditionally merge styles.
     pub fn style(&self, styles: &ViewValue) -> Self {
-        self.merge([("style", ViewValue::from(php::css_styles(&wrap(styles))))], true)
+        self.merge(
+            [("style", ViewValue::from(php::css_styles(&wrap(styles))))],
+            true,
+        )
     }
 
     /// Render the attributes as HTML: `class="mt-4" disabled="disabled"`.
@@ -262,7 +293,12 @@ impl ComponentAttributeBag {
         self.only(&prop_names(props))
     }
 
-    fn method(&self, name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<ViewValue> {
+    fn method(
+        &self,
+        name: &str,
+        args: &[ViewValue],
+        registry: &Arc<Registry>,
+    ) -> Result<ViewValue> {
         let a0 = arg(args, 0);
         let bag = |bag: ComponentAttributeBag| ViewValue::object(bag);
         Ok(match name {
@@ -276,13 +312,25 @@ impl ComponentAttributeBag {
                 .next()
                 .cloned()
                 .unwrap_or_else(|| a0.clone()),
-            "get" => self.attributes.get(&str_arg(args, 0)?).cloned().unwrap_or_else(|| arg(args, 1).clone()),
+            "get" => self
+                .attributes
+                .get(&str_arg(args, 0)?)
+                .cloned()
+                .unwrap_or_else(|| arg(args, 1).clone()),
             "has" => {
-                let keys = if args.len() > 1 { many(args)? } else { names(a0)? };
+                let keys = if args.len() > 1 {
+                    many(args)?
+                } else {
+                    names(a0)?
+                };
                 ViewValue::Bool(keys.iter().all(|k| self.has(k)))
             }
             "hasAny" => {
-                let keys = if args.len() > 1 { many(args)? } else { names(a0)? };
+                let keys = if args.len() > 1 {
+                    many(args)?
+                } else {
+                    names(a0)?
+                };
                 ViewValue::Bool(keys.iter().any(|k| self.has(k)))
             }
             "missing" => ViewValue::Bool(!self.has(&str_arg(args, 0)?)),
@@ -291,7 +339,13 @@ impl ComponentAttributeBag {
             "filter" => {
                 let mut kept = IndexMap::new();
                 for (key, value) in &self.attributes {
-                    if call_callable(a0, &[value.clone(), ViewValue::from(key.as_str())], registry)?.truthy() {
+                    if call_callable(
+                        a0,
+                        &[value.clone(), ViewValue::from(key.as_str())],
+                        registry,
+                    )?
+                    .truthy()
+                    {
                         kept.insert(key.clone(), value.clone());
                     }
                 }
@@ -309,13 +363,18 @@ impl ComponentAttributeBag {
             "isNotEmpty" => ViewValue::Bool(!self.is_empty()),
             "toHtml" | "__toString" => ViewValue::html(self.to_html()),
             "string" => ViewValue::from(
-                self.attributes.get(&str_arg(args, 0)?).map(|v| v.to_string_lossy()).unwrap_or_else(|| arg(args, 1).to_string_lossy()),
+                self.attributes
+                    .get(&str_arg(args, 0)?)
+                    .map(|v| v.to_string_lossy())
+                    .unwrap_or_else(|| arg(args, 1).to_string_lossy()),
             ),
             "boolean" => ViewValue::Bool(
                 self.attributes
                     .get(&str_arg(args, 0)?)
                     .map(|v| match v {
-                        ViewValue::Str(s) => matches!(s.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"),
+                        ViewValue::Str(s) => {
+                            matches!(s.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes")
+                        }
                         other => other.truthy(),
                     })
                     .unwrap_or(false),
@@ -338,12 +397,20 @@ impl ComponentAttributeBag {
 
     /// The attributes as an array value.
     pub fn to_value(&self) -> ViewValue {
-        ViewValue::map(self.attributes.iter().map(|(k, v)| (ArrayKey::new(k), v.clone())))
+        ViewValue::map(
+            self.attributes
+                .iter()
+                .map(|(k, v)| (ArrayKey::new(k), v.clone())),
+        )
     }
 }
 
 fn should_escape(escape: bool, value: &ViewValue) -> bool {
-    escape && !matches!(value, ViewValue::Object(_) | ViewValue::Null | ViewValue::Bool(_) | ViewValue::Html(_))
+    escape
+        && !matches!(
+            value,
+            ViewValue::Object(_) | ViewValue::Null | ViewValue::Bool(_) | ViewValue::Html(_)
+        )
 }
 
 fn resolve_appendable(appendable: &AppendableAttributeValue, escape: bool) -> ViewValue {
@@ -376,7 +443,10 @@ fn many(args: &[ViewValue]) -> Result<Vec<String>> {
 
 fn pairs(value: &ViewValue) -> Result<Vec<(String, ViewValue)>> {
     match value {
-        ViewValue::Array(list) => Ok(list.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()),
+        ViewValue::Array(list) => Ok(list
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.clone()))
+            .collect()),
         ViewValue::Null => Ok(Vec::new()),
         other => Err(crate::exception::TypeError::new(format!(
             "ComponentAttributeBag::merge(): Argument #1 must be of type array, {} given",
@@ -422,11 +492,19 @@ impl ViewObject for ComponentAttributeBag {
     }
 
     fn invoke(&self, args: &[ViewValue]) -> Option<Result<ViewValue>> {
-        Some(pairs(arg(args, 0)).map(|defaults| ViewValue::html(self.merge(defaults, true).to_html())))
+        Some(
+            pairs(arg(args, 0))
+                .map(|defaults| ViewValue::html(self.merge(defaults, true).to_html())),
+        )
     }
 
     fn offset_get(&self, key: &ViewValue) -> Option<ViewValue> {
-        Some(self.attributes.get(&key.to_string_lossy()).cloned().unwrap_or_default())
+        Some(
+            self.attributes
+                .get(&key.to_string_lossy())
+                .cloned()
+                .unwrap_or_default(),
+        )
     }
 
     fn to_html(&self) -> Option<String> {
@@ -468,37 +546,70 @@ mod tests {
             ("x-data", true.into()),
             ("title", "Say \"hi\"".into()),
         ]);
-        assert_eq!(attributes.to_html(), r#"class="mt-4" disabled="disabled" x-data="" title="Say \"hi\"""#);
+        assert_eq!(
+            attributes.to_html(),
+            r#"class="mt-4" disabled="disabled" x-data="" title="Say \"hi\"""#
+        );
     }
 
     #[test]
     fn merge_appends_classes_and_overrides_others() {
         let attributes = bag(&[("class", "mb-4".into()), ("type", "submit".into())]);
         let merged = attributes.merge(
-            [("class", ViewValue::from("alert alert-error")), ("type", "button".into()), ("role", "alert".into())],
+            [
+                ("class", ViewValue::from("alert alert-error")),
+                ("type", "button".into()),
+                ("role", "alert".into()),
+            ],
             true,
         );
-        assert_eq!(merged.to_html(), r#"class="alert alert-error mb-4" type="submit" role="alert""#);
+        assert_eq!(
+            merged.to_html(),
+            r#"class="alert alert-error mb-4" type="submit" role="alert""#
+        );
     }
 
     #[test]
     fn merge_handles_styles_and_prepends() {
-        let attributes = bag(&[("style", "color: red".into()), ("data-controller", "extra".into())]);
+        let attributes = bag(&[
+            ("style", "color: red".into()),
+            ("data-controller", "extra".into()),
+        ]);
         let merged = attributes.merge(
             [
                 ("style", ViewValue::from("font-weight: bold")),
-                ("data-controller", ViewValue::object(AppendableAttributeValue("profile".into()))),
+                (
+                    "data-controller",
+                    ViewValue::object(AppendableAttributeValue("profile".into())),
+                ),
             ],
             true,
         );
-        assert_eq!(merged.to_html(), r#"style="font-weight: bold; color: red;" data-controller="profile extra""#);
+        assert_eq!(
+            merged.to_html(),
+            r#"style="font-weight: bold; color: red;" data-controller="profile extra""#
+        );
     }
 
     #[test]
     fn it_filters_attributes() {
-        let attributes = bag(&[("wire:model", "name".into()), ("class", "x".into()), ("wire:key", "1".into())]);
-        assert_eq!(attributes.where_starts_with(&["wire:model".into()]).to_html(), r#"wire:model="name""#);
-        assert_eq!(attributes.where_doesnt_start_with(&["wire:".into()]).to_html(), r#"class="x""#);
+        let attributes = bag(&[
+            ("wire:model", "name".into()),
+            ("class", "x".into()),
+            ("wire:key", "1".into()),
+        ]);
+        assert_eq!(
+            attributes
+                .where_starts_with(&["wire:model".into()])
+                .to_html(),
+            r#"wire:model="name""#
+        );
+        assert_eq!(
+            attributes
+                .where_doesnt_start_with(&["wire:".into()])
+                .to_html(),
+            r#"class="x""#
+        );
         assert_eq!(attributes.only(&["class".into()]).to_html(), r#"class="x""#);
     }
 

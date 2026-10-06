@@ -6,9 +6,15 @@ use illuminate_view::{ViewData, ViewValue, data};
 
 #[test]
 fn it_echoes_escaped_data() {
-    assert_eq!(blade("Hello, {{ $name }}.", json!({"name": "Samantha"})), "Hello, Samantha.");
     assert_eq!(
-        blade("{{ $html }}", json!({"html": "<script>alert('x')</script> & \"q\""})),
+        blade("Hello, {{ $name }}.", json!({"name": "Samantha"})),
+        "Hello, Samantha."
+    );
+    assert_eq!(
+        blade(
+            "{{ $html }}",
+            json!({"html": "<script>alert('x')</script> & \"q\""})
+        ),
         "&lt;script&gt;alert(&#039;x&#039;)&lt;/script&gt; &amp; &quot;q&quot;"
     );
     // Double encoding is on by default, like Laravel.
@@ -20,7 +26,10 @@ fn it_echoes_escaped_data() {
 
 #[test]
 fn it_echoes_raw_data() {
-    assert_eq!(blade("Hello, {!! $name !!}.", json!({"name": "<b>Taylor</b>"})), "Hello, <b>Taylor</b>.");
+    assert_eq!(
+        blade("Hello, {!! $name !!}.", json!({"name": "<b>Taylor</b>"})),
+        "Hello, <b>Taylor</b>."
+    );
 }
 
 #[test]
@@ -42,12 +51,18 @@ fn scalars_echo_like_php() {
 fn without_double_encoding_keeps_entities() {
     let views = Views::new();
     views.factory.blade().without_double_encoding();
-    assert_eq!(views.inline("{{ $v }}", json!({"v": "&amp; <b>"})), "&amp; &lt;b&gt;");
+    assert_eq!(
+        views.inline("{{ $v }}", json!({"v": "&amp; <b>"})),
+        "&amp; &lt;b&gt;"
+    );
 }
 
 #[test]
 fn comments_are_removed() {
-    assert_eq!(blade("A{{-- This comment will not be present --}}B", ()), "AB");
+    assert_eq!(
+        blade("A{{-- This comment will not be present --}}B", ()),
+        "AB"
+    );
     assert_eq!(blade("A{{-- multi\nline {{ $missing }} --}}B", ()), "AB");
     assert_eq!(blade("{{-- comment --}}\nB", ()), "\nB");
 }
@@ -56,23 +71,33 @@ fn comments_are_removed() {
 fn escaped_echoes_and_directives_stay_literal() {
     assert_eq!(blade("Hello, @{{ name }}.", ()), "Hello, {{ name }}.");
     assert_eq!(blade("@{!! raw !!}", ()), "{!! raw !!}");
+    assert_eq!(blade("vue@{{ name }}", ()), "vue{{ name }}");
     assert_eq!(blade("@@if()", ()), "@if()");
     assert_eq!(blade("@@foreach ($a as $b)", ()), "@foreach($a as $b)");
 }
 
 #[test]
 fn verbatim_blocks_are_untouched() {
-    let out = blade("@verbatim\n    <div>Hello, {{ name }} @if(x) </div>\n@endverbatim", ());
+    let out = blade(
+        "@verbatim\n    <div>Hello, {{ name }} @if(x) </div>\n@endverbatim",
+        (),
+    );
     assert_eq!(out, "\n    <div>Hello, {{ name }} @if(x) </div>\n");
 }
 
 #[test]
 fn unknown_directives_and_emails_are_literal() {
     assert_eq!(
-        blade("Mail taylor@laravel.com @media (min-width: 640px) { a { b: c } } @tailwind base;", ()),
+        blade(
+            "Mail taylor@laravel.com @media (min-width: 640px) { a { b: c } } @tailwind base;",
+            ()
+        ),
         "Mail taylor@laravel.com @media (min-width: 640px) { a { b: c } } @tailwind base;"
     );
-    assert_eq!(blade("<button @click=\"open = !open\">Go</button>", ()), "<button @click=\"open = !open\">Go</button>");
+    assert_eq!(
+        blade("<button @click=\"open = !open\">Go</button>", ()),
+        "<button @click=\"open = !open\">Go</button>"
+    );
 }
 
 #[test]
@@ -80,8 +105,12 @@ fn echoes_keep_their_newlines_and_directives_swallow_one() {
     let out = blade("{{ $a }}\n{{ $b }}\n", json!({"a": 1, "b": 2}));
     assert_eq!(out, "1\n2\n");
 
-    let template = "<ul>\n    @foreach ($items as $item)\n    <li>{{ $item }}</li>\n    @endforeach\n</ul>\n";
-    assert_eq!(blade(template, json!({"items": ["a", "b"]})), "<ul>\n        <li>a</li>\n        <li>b</li>\n    </ul>\n");
+    let template =
+        "<ul>\n    @foreach ($items as $item)\n    <li>{{ $item }}</li>\n    @endforeach\n</ul>\n";
+    assert_eq!(
+        blade(template, json!({"items": ["a", "b"]})),
+        "<ul>\n        <li>a</li>\n        <li>b</li>\n    </ul>\n"
+    );
 
     // Trailing spaces after a directive keep the newline (like Laravel).
     assert_eq!(blade("@if(true)  \nA @endif", ()), "  \nA ");
@@ -92,7 +121,10 @@ fn echoes_keep_their_newlines_and_directives_swallow_one() {
 
 #[test]
 fn echoes_can_call_functions() {
-    let out = blade("{{ strtoupper($name) }} {{ count($items) }} {{ implode(', ', $items) }}", json!({"name": "taylor", "items": ["a", "b"]}));
+    let out = blade(
+        "{{ strtoupper($name) }} {{ count($items) }} {{ implode(', ', $items) }}",
+        json!({"name": "taylor", "items": ["a", "b"]}),
+    );
     assert_eq!(out, "TAYLOR 2 a, b");
 }
 
@@ -108,7 +140,10 @@ fn json_and_js_directives() {
         "{\n    \"a\": 1\n}"
     );
     assert_eq!(blade("{{ Js::from('it\\'s') }}", ()), "'it\\u0027s'");
-    assert_eq!(blade("@js($data)", json!({"data": ["x"]})), "JSON.parse('[\\u0022x\\u0022]')");
+    assert_eq!(
+        blade("@js($data)", json!({"data": ["x"]})),
+        "JSON.parse('[\\u0022x\\u0022]')"
+    );
 }
 
 #[test]
@@ -119,7 +154,10 @@ fn class_and_style_directives() {
         "<span class=\"p-4 text-gray-500 bg-red\"></span>"
     );
     assert_eq!(
-        blade("<span @style(['background-color: red', 'font-weight: bold' => $isActive])></span>", json!({"isActive": true})),
+        blade(
+            "<span @style(['background-color: red', 'font-weight: bold' => $isActive])></span>",
+            json!({"isActive": true})
+        ),
         "<span style=\"background-color: red; font-weight: bold;\"></span>"
     );
 }
@@ -128,7 +166,10 @@ fn class_and_style_directives() {
 fn attribute_directives() {
     let template = "<input @checked($a) @selected($b) @disabled($c) @readonly($d) @required($e)>";
     assert_eq!(
-        blade(template, json!({"a": true, "b": false, "c": 1, "d": "", "e": "yes"})),
+        blade(
+            template,
+            json!({"a": true, "b": false, "c": 1, "d": "", "e": "yes"})
+        ),
         "<input checked  disabled  required>"
     );
     assert_eq!(blade("{{ 1 }}@bool(true)/@bool(0)", ()), "1true/false");
@@ -141,8 +182,17 @@ fn php_blocks_assign_variables() {
     assert_eq!(blade("@php($x = 5){{ $x * 2 }}", ()), "10");
     assert_eq!(blade("@php $y = 'inline'; @endphp{{ $y }}", ()), "inline");
     assert_eq!(blade("@php echo '<b>'; @endphp", ()), "<b>");
-    assert_eq!(blade("@php($a = 1)\n@php($a++)\n@php(++$a)\n{{ $a }}", ()), "3");
-    assert_eq!(blade("@php($x = 1) @unset($x) {{ isset($x) ? 'set' : 'unset' }}", ()), "  unset");
+    assert_eq!(
+        blade("@php($a = 1)\n@php($a++)\n@php(++$a)\n{{ $a }}", ()),
+        "3"
+    );
+    assert_eq!(
+        blade(
+            "@php($x = 1) @unset($x) {{ isset($x) ? 'set' : 'unset' }}",
+            ()
+        ),
+        "  unset"
+    );
 }
 
 #[test]
@@ -150,5 +200,8 @@ fn view_data_can_be_built_by_hand() {
     let mut data = ViewData::new();
     data.insert("count".into(), 3.into());
     data.insert("names".into(), ViewValue::from(vec!["a", "b"]));
-    assert_eq!(blade("{{ $count }}: {{ implode(' ', $names) }}", data), "3: a b");
+    assert_eq!(
+        blade("{{ $count }}: {{ implode(' ', $names) }}", data),
+        "3: a b"
+    );
 }

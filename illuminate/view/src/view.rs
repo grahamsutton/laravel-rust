@@ -72,25 +72,52 @@ pub struct View {
 
 impl std::fmt::Debug for View {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("View").field("name", &self.name).field("data", &self.data).finish()
+        f.debug_struct("View")
+            .field("name", &self.name)
+            .field("data", &self.data)
+            .finish()
     }
 }
 
 impl View {
     pub(crate) fn named(factory: &Factory, name: &str, data: ViewData) -> Self {
-        Self { factory: factory.clone(), name: name.to_string(), source: Source::Named, data }
+        Self {
+            factory: factory.clone(),
+            name: name.to_string(),
+            source: Source::Named,
+            data,
+        }
     }
 
     pub(crate) fn file(factory: &Factory, path: PathBuf, data: ViewData) -> Self {
-        Self { factory: factory.clone(), name: path.display().to_string(), source: Source::File(path), data }
+        Self {
+            factory: factory.clone(),
+            name: path.display().to_string(),
+            source: Source::File(path),
+            data,
+        }
     }
 
     pub(crate) fn inline(factory: &Factory, template: &str, data: ViewData) -> Self {
-        Self { factory: factory.clone(), name: "__inline".into(), source: Source::Inline(template.into()), data }
+        Self {
+            factory: factory.clone(),
+            name: "__inline".into(),
+            source: Source::Inline(template.into()),
+            data,
+        }
     }
 
-    pub(crate) fn inline_template(factory: &Factory, template: Arc<Template>, data: ViewData) -> Self {
-        Self { factory: factory.clone(), name: "__components::inline".into(), source: Source::Compiled(template), data }
+    pub(crate) fn inline_template(
+        factory: &Factory,
+        template: Arc<Template>,
+        data: ViewData,
+    ) -> Self {
+        Self {
+            factory: factory.clone(),
+            name: "__components::inline".into(),
+            source: Source::Compiled(template),
+            data,
+        }
     }
 
     /// The name of the view.
@@ -105,7 +132,12 @@ impl View {
 
     /// The view's data as JSON.
     pub fn data_json(&self) -> Value {
-        Value::Object(self.data.iter().map(|(k, v)| (k.clone(), v.to_json())).collect())
+        Value::Object(
+            self.data
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_json()))
+                .collect(),
+        )
     }
 
     /// Get a piece of the view's data.
@@ -165,7 +197,10 @@ impl View {
 
     /// Add validation errors to the view (`$errors`).
     pub fn with_errors(mut self, errors: impl Into<MessageBag>) -> Self {
-        self.data.insert("errors".into(), ViewValue::object(ViewErrorBag::new().put("default", errors.into())));
+        self.data.insert(
+            "errors".into(),
+            ViewValue::object(ViewErrorBag::new().put("default", errors.into())),
+        );
         self
     }
 
@@ -213,11 +248,10 @@ impl View {
     pub fn fragment(&self, name: &str) -> Result<String> {
         let mut renderer = Renderer::new(&self.factory);
         renderer.render_view(self)?;
-        renderer
-            .fragments()
-            .get(name)
-            .cloned()
-            .ok_or_else(|| crate::exception::InvalidArgumentException::new(format!("Fragment [{name}] not found.")).into())
+        renderer.fragments().get(name).cloned().ok_or_else(|| {
+            crate::exception::InvalidArgumentException::new(format!("Fragment [{name}] not found."))
+                .into()
+        })
     }
 
     /// Render the view and return the named fragments, concatenated.
@@ -229,7 +263,10 @@ impl View {
             match renderer.fragments().get(*name) {
                 Some(content) => out.push_str(content),
                 None => {
-                    return Err(crate::exception::InvalidArgumentException::new(format!("Fragment [{name}] not found.")).into());
+                    return Err(crate::exception::InvalidArgumentException::new(format!(
+                        "Fragment [{name}] not found."
+                    ))
+                    .into());
                 }
             }
         }
@@ -238,12 +275,20 @@ impl View {
 
     /// Render the named fragment if the condition is true, otherwise the whole view.
     pub fn fragment_if(&self, condition: bool, name: &str) -> Result<String> {
-        if condition { self.fragment(name) } else { self.render() }
+        if condition {
+            self.fragment(name)
+        } else {
+            self.render()
+        }
     }
 
     /// Render the named fragments if the condition is true, otherwise the whole view.
     pub fn fragments_if(&self, condition: bool, names: &[&str]) -> Result<String> {
-        if condition { self.fragments(names) } else { self.render() }
+        if condition {
+            self.fragments(names)
+        } else {
+            self.render()
+        }
     }
 }
 
@@ -254,8 +299,13 @@ impl IntoResponse for View {
         match self.render_with_data() {
             Ok((html, data)) => {
                 let mut response = Response::new(html);
-                let json = Value::Object(data.iter().map(|(k, v)| (k.clone(), v.to_json())).collect());
-                response.set_extension(Arc::new(ViewInfo { name: self.name.clone(), data: json, values: data }));
+                let json =
+                    Value::Object(data.iter().map(|(k, v)| (k.clone(), v.to_json())).collect());
+                response.set_extension(Arc::new(ViewInfo {
+                    name: self.name.clone(),
+                    data: json,
+                    values: data,
+                }));
                 response
             }
             Err(error) => render_exception(error),

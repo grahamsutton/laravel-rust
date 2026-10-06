@@ -54,7 +54,9 @@ pub struct Factory {
 
 impl std::fmt::Debug for Factory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Factory").field("paths", &self.inner.finder.paths()).finish_non_exhaustive()
+        f.debug_struct("Factory")
+            .field("paths", &self.inner.finder.paths())
+            .finish_non_exhaustive()
     }
 }
 
@@ -68,6 +70,12 @@ pub trait IntoViewData {
 impl IntoViewData for ViewData {
     fn into_view_data(self) -> ViewData {
         self
+    }
+}
+
+impl IntoViewData for &ViewData {
+    fn into_view_data(self) -> ViewData {
+        self.clone()
     }
 }
 
@@ -126,7 +134,10 @@ impl Factory {
     }
 
     /// Create a factory using an existing Blade compiler.
-    pub fn with_compiler(paths: impl IntoIterator<Item = impl Into<PathBuf>>, blade: BladeCompiler) -> Self {
+    pub fn with_compiler(
+        paths: impl IntoIterator<Item = impl Into<PathBuf>>,
+        blade: BladeCompiler,
+    ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 finder: FileViewFinder::new(paths),
@@ -195,7 +206,10 @@ impl Factory {
     pub fn first(&self, names: &[&str], data: impl IntoViewData) -> Result<View> {
         match names.iter().find(|name| self.exists(name)) {
             Some(name) => Ok(self.make(name, data)),
-            None => Err(crate::exception::InvalidArgumentException::new("None of the views in the given array exist.").into()),
+            None => Err(crate::exception::InvalidArgumentException::new(
+                "None of the views in the given array exist.",
+            )
+            .into()),
         }
     }
 
@@ -210,12 +224,26 @@ impl Factory {
     }
 
     /// Render a view if the condition is true (an empty string otherwise).
-    pub fn render_when(&self, condition: bool, name: &str, data: impl IntoViewData) -> Result<String> {
-        if condition { self.make(name, data).render() } else { Ok(String::new()) }
+    pub fn render_when(
+        &self,
+        condition: bool,
+        name: &str,
+        data: impl IntoViewData,
+    ) -> Result<String> {
+        if condition {
+            self.make(name, data).render()
+        } else {
+            Ok(String::new())
+        }
     }
 
     /// Render a view unless the condition is true.
-    pub fn render_unless(&self, condition: bool, name: &str, data: impl IntoViewData) -> Result<String> {
+    pub fn render_unless(
+        &self,
+        condition: bool,
+        name: &str,
+        data: impl IntoViewData,
+    ) -> Result<String> {
         self.render_when(!condition, name, data)
     }
 
@@ -238,7 +266,11 @@ impl Factory {
 
     /// Share a piece of data with every view.
     pub fn share(&self, key: &str, value: impl Into<ViewValue>) {
-        self.inner.shared.write().unwrap().insert(key.to_string(), value.into());
+        self.inner
+            .shared
+            .write()
+            .unwrap()
+            .insert(key.to_string(), value.into());
     }
 
     /// Share several pieces of data with every view.
@@ -275,8 +307,15 @@ impl Factory {
     ///     data
     /// });
     /// ```
-    pub fn share_resolver(&self, resolver: impl Fn(&Request) -> Map<String, Value> + Send + Sync + 'static) {
-        self.inner.resolvers.write().unwrap().push(Arc::new(resolver));
+    pub fn share_resolver(
+        &self,
+        resolver: impl Fn(&Request) -> Map<String, Value> + Send + Sync + 'static,
+    ) {
+        self.inner
+            .resolvers
+            .write()
+            .unwrap()
+            .push(Arc::new(resolver));
     }
 
     /// Data from the share resolvers for the current request.
@@ -303,7 +342,11 @@ impl Factory {
 
     /// Register a view composer, called just before a matching view renders.
     /// Patterns may use `*` wildcards.
-    pub fn composer(&self, views: impl ViewPatterns, callback: impl Fn(&mut View) + Send + Sync + 'static) {
+    pub fn composer(
+        &self,
+        views: impl ViewPatterns,
+        callback: impl Fn(&mut View) + Send + Sync + 'static,
+    ) {
         let callback: ViewCallback = Arc::new(callback);
         let mut composers = self.inner.composers.write().unwrap();
         for pattern in views.patterns() {
@@ -312,7 +355,11 @@ impl Factory {
     }
 
     /// Register a view creator, called as soon as a matching view is created.
-    pub fn creator(&self, views: impl ViewPatterns, callback: impl Fn(&mut View) + Send + Sync + 'static) {
+    pub fn creator(
+        &self,
+        views: impl ViewPatterns,
+        callback: impl Fn(&mut View) + Send + Sync + 'static,
+    ) {
         let callback: ViewCallback = Arc::new(callback);
         let mut creators = self.inner.creators.write().unwrap();
         for pattern in views.patterns() {
@@ -360,13 +407,17 @@ impl Factory {
 
     /// Prepend a path to a namespace.
     pub fn prepend_namespace(&self, namespace: &str, path: impl Into<PathBuf>) -> &Self {
-        self.inner.finder.prepend_namespace(namespace, [path.into()]);
+        self.inner
+            .finder
+            .prepend_namespace(namespace, [path.into()]);
         self
     }
 
     /// Replace a namespace's paths.
     pub fn replace_namespace(&self, namespace: &str, path: impl Into<PathBuf>) -> &Self {
-        self.inner.finder.replace_namespace(namespace, [path.into()]);
+        self.inner
+            .finder
+            .replace_namespace(namespace, [path.into()]);
         self
     }
 

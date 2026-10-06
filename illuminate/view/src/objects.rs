@@ -102,8 +102,21 @@ impl DateObject {
             "isWeekend" => ViewValue::Bool(date.is_weekend()),
             "isWeekday" => ViewValue::Bool(date.is_weekday()),
             "isLeapYear" => ViewValue::Bool(date.is_leap_year()),
-            "isSameDay" | "eq" | "equalTo" | "gt" | "greaterThan" | "isAfter" | "gte" | "greaterThanOrEqualTo"
-            | "lt" | "lessThan" | "isBefore" | "lte" | "lessThanOrEqualTo" | "ne" | "notEqualTo" => {
+            "isSameDay"
+            | "eq"
+            | "equalTo"
+            | "gt"
+            | "greaterThan"
+            | "isAfter"
+            | "gte"
+            | "greaterThanOrEqualTo"
+            | "lt"
+            | "lessThan"
+            | "isBefore"
+            | "lte"
+            | "lessThanOrEqualTo"
+            | "ne"
+            | "notEqualTo" => {
                 let other = match Self::other(args) {
                     Ok(other) => other,
                     Err(e) => return Some(Err(e)),
@@ -122,8 +135,8 @@ impl DateObject {
                 (Some(a), Some(b)) => ViewValue::Bool(date.between(&a, &b)),
                 _ => return Some(Err(error("Could not parse the given dates"))),
             },
-            "diffInSeconds" | "diffInMinutes" | "diffInHours" | "diffInDays" | "diffInWeeks" | "diffInMonths"
-            | "diffInYears" => {
+            "diffInSeconds" | "diffInMinutes" | "diffInHours" | "diffInDays" | "diffInWeeks"
+            | "diffInMonths" | "diffInYears" => {
                 let other = match Self::other(args) {
                     Ok(other) => other,
                     Err(e) => return Some(Err(e)),
@@ -210,7 +223,11 @@ impl ViewObject for DateObject {
 }
 
 /// Call a date method on a string that holds a date.
-pub(crate) fn date_string_method(value: &str, method: &str, args: &[ViewValue]) -> Option<Result<ViewValue>> {
+pub(crate) fn date_string_method(
+    value: &str,
+    method: &str,
+    args: &[ViewValue],
+) -> Option<Result<ViewValue>> {
     if !looks_like_date(value) {
         return None;
     }
@@ -229,7 +246,10 @@ pub(crate) fn date_string_property(value: &str, property: &str) -> Option<ViewVa
 fn looks_like_date(value: &str) -> bool {
     let value = value.trim();
     value.len() >= 8 && value.as_bytes()[0].is_ascii_digit()
-        || matches!(value.to_ascii_lowercase().as_str(), "now" | "today" | "tomorrow" | "yesterday")
+        || matches!(
+            value.to_ascii_lowercase().as_str(),
+            "now" | "today" | "tomorrow" | "yesterday"
+        )
         || value.len() > 10 && value.contains(',')
 }
 
@@ -302,13 +322,21 @@ impl MessageBagObject {
                 if Str::is(key, name) {
                     grouped.set(
                         name,
-                        ViewValue::list(messages.iter().map(|m| ViewValue::from(format_message(format, m, name)))),
+                        ViewValue::list(
+                            messages
+                                .iter()
+                                .map(|m| ViewValue::from(format_message(format, m, name))),
+                        ),
                     );
                 }
             }
             return ViewValue::from(grouped);
         }
-        ViewValue::list(bag.get(key).into_iter().map(|m| ViewValue::from(format_message(format, m, key))))
+        ViewValue::list(
+            bag.get(key)
+                .into_iter()
+                .map(|m| ViewValue::from(format_message(format, m, key))),
+        )
     }
 
     fn all_messages(&self, format: Option<&str>) -> ViewValue {
@@ -323,7 +351,10 @@ impl MessageBagObject {
 
     fn messages_value(&self) -> ViewValue {
         ViewValue::map(self.0.messages().iter().map(|(key, messages)| {
-            (ArrayKey::new(key), ViewValue::list(messages.iter().map(|m| ViewValue::from(m.as_str()))))
+            (
+                ArrayKey::new(key),
+                ViewValue::list(messages.iter().map(|m| ViewValue::from(m.as_str()))),
+            )
         }))
     }
 
@@ -357,12 +388,20 @@ impl MessageBagObject {
                             bag.first(&key).map(|m| (key.clone(), m.to_string()))
                         };
                         match message {
-                            Some((name, message)) => ViewValue::from(format_message(format.as_deref(), &message, &name)),
+                            Some((name, message)) => {
+                                ViewValue::from(format_message(format.as_deref(), &message, &name))
+                            }
                             None => ViewValue::from(""),
                         }
                     }
-                    None => match bag.messages().iter().find_map(|(k, m)| m.first().map(|m| (k, m))) {
-                        Some((key, message)) => ViewValue::from(format_message(format.as_deref(), message, key)),
+                    None => match bag
+                        .messages()
+                        .iter()
+                        .find_map(|(k, m)| m.first().map(|m| (k, m)))
+                    {
+                        Some((key, message)) => {
+                            ViewValue::from(format_message(format.as_deref(), message, key))
+                        }
                         None => ViewValue::from(""),
                     },
                 }
@@ -396,7 +435,12 @@ impl ViewObject for MessageBagObject {
 
     fn iterate(&self) -> Option<Vec<(ViewValue, ViewValue)>> {
         match self.messages_value() {
-            ViewValue::Array(array) => Some(array.iter().map(|(k, v)| (k.to_value(), v.clone())).collect()),
+            ViewValue::Array(array) => Some(
+                array
+                    .iter()
+                    .map(|(k, v)| (k.to_value(), v.clone()))
+                    .collect(),
+            ),
             _ => None,
         }
     }
@@ -445,7 +489,9 @@ impl ViewErrorBag {
     /// (which becomes the default bag).
     pub fn from_value(value: &ViewValue) -> Self {
         let mut errors = ViewErrorBag::new();
-        let Some(array) = value.as_array() else { return errors };
+        let Some(array) = value.as_array() else {
+            return errors;
+        };
         let mut default = MessageBag::new();
         for (key, item) in array.iter() {
             let key = key.to_string();
@@ -502,16 +548,23 @@ impl ViewObject for ViewErrorBag {
     fn call(&self, method: &str, args: &[ViewValue]) -> Option<Result<ViewValue>> {
         match method {
             "getBag" => Some(
-                str_arg(args, 0).map(|name| ViewValue::object(MessageBagObject(self.get_bag(&name)))),
+                str_arg(args, 0)
+                    .map(|name| ViewValue::object(MessageBagObject(self.get_bag(&name)))),
             ),
             "hasBag" => Some(Ok(ViewValue::Bool(
-                self.has_bag(&opt_str(args, 0).ok().flatten().unwrap_or_else(|| "default".into())),
+                self.has_bag(
+                    &opt_str(args, 0)
+                        .ok()
+                        .flatten()
+                        .unwrap_or_else(|| "default".into()),
+                ),
             ))),
-            "getBags" => Some(Ok(ViewValue::map(
-                self.bags
-                    .iter()
-                    .map(|(k, v)| (ArrayKey::new(k), ViewValue::object(MessageBagObject(v.clone())))),
-            ))),
+            "getBags" => Some(Ok(ViewValue::map(self.bags.iter().map(|(k, v)| {
+                (
+                    ArrayKey::new(k),
+                    ViewValue::object(MessageBagObject(v.clone())),
+                )
+            })))),
             other => self.default_bag().call(other, args),
         }
     }
@@ -527,9 +580,58 @@ impl ViewObject for ViewErrorBag {
     fn to_json(&self) -> Value {
         let mut map = serde_json::Map::new();
         for (name, bag) in &self.bags {
-            map.insert(name.clone(), serde_json::to_value(&**bag).unwrap_or(Value::Null));
+            map.insert(
+                name.clone(),
+                serde_json::to_value(&**bag).unwrap_or(Value::Null),
+            );
         }
         Value::Object(map)
+    }
+}
+
+// ----------------------------------------------------------------------
+// The application
+// ----------------------------------------------------------------------
+
+/// What `app()` returns inside templates (unless the framework registers
+/// its own `app` function): the locale and environment.
+#[derive(Clone, Debug)]
+pub struct AppObject {
+    /// The current locale (`app()->getLocale()`).
+    pub locale: String,
+    /// The current environment (`app()->environment()`).
+    pub environment: String,
+}
+
+impl ViewObject for AppObject {
+    fn class_name(&self) -> &str {
+        "Illuminate\\Foundation\\Application"
+    }
+
+    fn call(&self, method: &str, args: &[ViewValue]) -> Option<Result<ViewValue>> {
+        Some(Ok(match method {
+            "getLocale" | "currentLocale" => ViewValue::from(self.locale.as_str()),
+            "isLocale" => ViewValue::Bool(
+                args.first()
+                    .is_some_and(|locale| locale.to_string_lossy() == self.locale),
+            ),
+            "environment" => match patterns(args) {
+                Ok(patterns) if patterns.is_empty() => ViewValue::from(self.environment.as_str()),
+                Ok(patterns) => {
+                    ViewValue::Bool(patterns.iter().any(|p| Str::is(p, &self.environment)))
+                }
+                Err(e) => return Some(Err(e)),
+            },
+            "isLocal" => ViewValue::Bool(self.environment == "local"),
+            "isProduction" => ViewValue::Bool(self.environment == "production"),
+            "runningUnitTests" => ViewValue::Bool(self.environment == "testing"),
+            "isDownForMaintenance" => ViewValue::Bool(false),
+            _ => return None,
+        }))
+    }
+
+    fn to_json(&self) -> Value {
+        serde_json::json!({"locale": self.locale, "environment": self.environment})
     }
 }
 
@@ -564,7 +666,9 @@ impl ViewObject for RequestObject {
             Ok(match method {
                 "is" => ViewValue::Bool(patterns(args)?.iter().any(|p| request.is(p))),
                 "routeIs" => ViewValue::Bool(patterns(args)?.iter().any(|p| request.route_is(p))),
-                "fullUrlIs" => ViewValue::Bool(patterns(args)?.iter().any(|p| request.full_url_is(p))),
+                "fullUrlIs" => {
+                    ViewValue::Bool(patterns(args)?.iter().any(|p| request.full_url_is(p)))
+                }
                 "path" => ViewValue::from(request.path()),
                 "url" => ViewValue::from(request.url()),
                 "fullUrl" => ViewValue::from(request.full_url()),
@@ -574,14 +678,22 @@ impl ViewObject for RequestObject {
                 "input" | "get" => match opt_str(args, 0)? {
                     Some(key) => {
                         let value = ViewValue::from(request.input(&key));
-                        if value.is_null() { arg(args, 1).clone() } else { value }
+                        if value.is_null() {
+                            arg(args, 1).clone()
+                        } else {
+                            value
+                        }
                     }
                     None => ViewValue::from(request.all()),
                 },
                 "query" => match opt_str(args, 0)? {
                     Some(key) => {
                         let value = ViewValue::from(request.query(&key));
-                        if value.is_null() { arg(args, 1).clone() } else { value }
+                        if value.is_null() {
+                            arg(args, 1).clone()
+                        } else {
+                            value
+                        }
                     }
                     None => ViewValue::from(request.query_all()),
                 },
@@ -622,13 +734,20 @@ impl ViewObject for RequestObject {
                 "segment" => ViewValue::from(request.segment(int_arg(args, 0, 1).max(1) as usize)),
                 "segments" => ViewValue::list(request.segments().into_iter().map(ViewValue::from)),
                 "route" => match opt_str(args, 0)? {
-                    Some(name) => request.route(&name).map(ViewValue::from).unwrap_or_else(|| arg(args, 1).clone()),
+                    Some(name) => request
+                        .route(&name)
+                        .map(ViewValue::from)
+                        .unwrap_or_else(|| arg(args, 1).clone()),
                     None => ViewValue::from(request.route_name()),
                 },
                 "host" => ViewValue::from(request.host()),
                 "getHost" => ViewValue::from(request.host()),
                 "scheme" | "getScheme" => ViewValue::from(request.scheme()),
-                _ => return Err(error(format!("Call to undefined method Illuminate\\Http\\Request::{method}()"))),
+                _ => {
+                    return Err(error(format!(
+                        "Call to undefined method Illuminate\\Http\\Request::{method}()"
+                    )));
+                }
             })
         })();
         Some(result)
@@ -653,29 +772,49 @@ mod tests {
         assert!(nested.get_bag("default").has("email"));
         assert!(nested.get_bag("login").has("password"));
 
-        let flat = ViewErrorBag::from_value(&ViewValue::from(json!({"email": ["Required."], "name": "Too short."})));
+        let flat = ViewErrorBag::from_value(&ViewValue::from(
+            json!({"email": ["Required."], "name": "Too short."}),
+        ));
         assert_eq!(flat.get_bag("default").first("name"), Some("Too short."));
     }
 
     #[test]
     fn error_bags_forward_to_the_default_bag() {
-        let errors = ViewErrorBag::from_value(&ViewValue::from(json!({"email": ["Required.", "Invalid."]})));
-        let call = |method: &str, args: Vec<ViewValue>| errors.call(method, &args).unwrap().unwrap();
+        let errors = ViewErrorBag::from_value(&ViewValue::from(
+            json!({"email": ["Required.", "Invalid."]}),
+        ));
+        let call =
+            |method: &str, args: Vec<ViewValue>| errors.call(method, &args).unwrap().unwrap();
         assert_eq!(call("has", vec!["email".into()]), ViewValue::Bool(true));
-        assert_eq!(call("first", vec!["email".into()]), ViewValue::from("Required."));
-        assert_eq!(call("first", vec!["email".into(), "<li>:message</li>".into()]), ViewValue::from("<li>Required.</li>"));
+        assert_eq!(
+            call("first", vec!["email".into()]),
+            ViewValue::from("Required.")
+        );
+        assert_eq!(
+            call("first", vec!["email".into(), "<li>:message</li>".into()]),
+            ViewValue::from("<li>Required.</li>")
+        );
         assert_eq!(call("count", vec![]), ViewValue::Int(2));
         assert_eq!(call("any", vec![]), ViewValue::Bool(true));
-        assert_eq!(call("all", vec![]).to_json(), json!(["Required.", "Invalid."]));
+        assert_eq!(
+            call("all", vec![]).to_json(),
+            json!(["Required.", "Invalid."])
+        );
     }
 
     #[test]
     fn dates_expose_carbon_methods() {
         let date = DateObject(Carbon::parse("2024-03-12 15:30:00").unwrap());
-        assert_eq!(date.call("format", &["Y".into()]).unwrap().unwrap(), ViewValue::from("2024"));
+        assert_eq!(
+            date.call("format", &["Y".into()]).unwrap().unwrap(),
+            ViewValue::from("2024")
+        );
         assert_eq!(date.get("month"), Some(ViewValue::Int(3)));
         assert_eq!(
-            date.call("addDays", &[2.into()]).unwrap().unwrap().to_string_lossy(),
+            date.call("addDays", &[2.into()])
+                .unwrap()
+                .unwrap()
+                .to_string_lossy(),
             "2024-03-14 15:30:00"
         );
         assert!(date_string_method("2024-03-12", "toFormattedDateString", &[]).is_some());

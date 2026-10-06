@@ -102,10 +102,8 @@ pub(crate) fn parse_numeric(s: &str) -> Option<Num> {
     if i != bytes.len() {
         return None;
     }
-    if !is_float {
-        if let Ok(v) = t.parse::<i64>() {
-            return Some(Num::Int(v));
-        }
+    if !is_float && let Ok(v) = t.parse::<i64>() {
+        return Some(Num::Int(v));
     }
     t.parse::<f64>().ok().map(Num::Float)
 }
@@ -133,7 +131,11 @@ pub(crate) fn format_float_precision(f: f64, precision: i32) -> String {
         return if f > 0.0 { "INF".into() } else { "-INF".into() };
     }
     if f == 0.0 {
-        return if f.is_sign_negative() { "-0".into() } else { "0".into() };
+        return if f.is_sign_negative() {
+            "-0".into()
+        } else {
+            "0".into()
+        };
     }
     let sci = format!("{:.*e}", (precision - 1) as usize, f);
     let (mantissa, exponent) = sci.split_once('e').unwrap_or((&sci, "0"));
@@ -190,9 +192,15 @@ pub(crate) fn float_to_json(f: f64) -> String {
 pub(crate) fn to_str(value: &ViewValue) -> Result<String> {
     match value {
         ViewValue::Array(_) => Err(TypeError::new("Array to string conversion").into()),
-        ViewValue::Closure(_) => Err(TypeError::new("Object of class Closure could not be converted to string").into()),
+        ViewValue::Closure(_) => {
+            Err(TypeError::new("Object of class Closure could not be converted to string").into())
+        }
         ViewValue::Object(o) => o.to_string_value().ok_or_else(|| {
-            TypeError::new(format!("Object of class {} could not be converted to string", o.class_name())).into()
+            TypeError::new(format!(
+                "Object of class {} could not be converted to string",
+                o.class_name()
+            ))
+            .into()
         }),
         other => Ok(other.to_string_lossy()),
     }
@@ -261,31 +269,40 @@ impl Arith {
 
 /// Perform arithmetic with PHP's semantics.
 pub(crate) fn arithmetic(op: Arith, left: &ViewValue, right: &ViewValue) -> Result<ViewValue> {
-    if op == Arith::Add {
-        if let (ViewValue::Array(a), ViewValue::Array(b)) = (left, right) {
-            let mut union = (**a).clone();
-            for (key, value) in b.iter() {
-                if union.get(key).is_none() {
-                    union.insert(key.clone(), value.clone());
-                }
+    if op == Arith::Add
+        && let (ViewValue::Array(a), ViewValue::Array(b)) = (left, right)
+    {
+        let mut union = (**a).clone();
+        for (key, value) in b.iter() {
+            if union.get(key).is_none() {
+                union.insert(key.clone(), value.clone());
             }
-            return Ok(ViewValue::Array(Arc::new(union)));
         }
+        return Ok(ViewValue::Array(Arc::new(union)));
     }
     let symbol = op.symbol();
     let l = to_number(left, symbol, right)?;
     let r = to_number(right, symbol, left)?;
     Ok(match op {
         Arith::Add => match (l, r) {
-            (Num::Int(a), Num::Int(b)) => a.checked_add(b).map(Num::Int).unwrap_or(Num::Float(a as f64 + b as f64)),
+            (Num::Int(a), Num::Int(b)) => a
+                .checked_add(b)
+                .map(Num::Int)
+                .unwrap_or(Num::Float(a as f64 + b as f64)),
             _ => Num::Float(l.as_f64() + r.as_f64()),
         },
         Arith::Sub => match (l, r) {
-            (Num::Int(a), Num::Int(b)) => a.checked_sub(b).map(Num::Int).unwrap_or(Num::Float(a as f64 - b as f64)),
+            (Num::Int(a), Num::Int(b)) => a
+                .checked_sub(b)
+                .map(Num::Int)
+                .unwrap_or(Num::Float(a as f64 - b as f64)),
             _ => Num::Float(l.as_f64() - r.as_f64()),
         },
         Arith::Mul => match (l, r) {
-            (Num::Int(a), Num::Int(b)) => a.checked_mul(b).map(Num::Int).unwrap_or(Num::Float(a as f64 * b as f64)),
+            (Num::Int(a), Num::Int(b)) => a
+                .checked_mul(b)
+                .map(Num::Int)
+                .unwrap_or(Num::Float(a as f64 * b as f64)),
             _ => Num::Float(l.as_f64() * r.as_f64()),
         },
         Arith::Div => {
@@ -293,7 +310,11 @@ pub(crate) fn arithmetic(op: Arith, left: &ViewValue, right: &ViewValue) -> Resu
                 return Err(crate::exception::DivisionByZeroError::new("Division by zero").into());
             }
             match (l, r) {
-                (Num::Int(a), Num::Int(b)) if a % b == 0 => Num::Int(a / b),
+                (Num::Int(a), Num::Int(b))
+                    if a.checked_rem(b) == Some(0) && a.checked_div(b).is_some() =>
+                {
+                    Num::Int(a / b)
+                }
                 _ => Num::Float(l.as_f64() / r.as_f64()),
             }
         }
@@ -344,7 +365,8 @@ pub fn loose_eq(a: &ViewValue, b: &ViewValue) -> bool {
         }
         (Array(x), Array(y)) => {
             x.len() == y.len()
-                && x.iter().all(|(key, value)| y.get(key).is_some_and(|other| loose_eq(value, other)))
+                && x.iter()
+                    .all(|(key, value)| y.get(key).is_some_and(|other| loose_eq(value, other)))
         }
         (Object(x), Object(y)) => Arc::ptr_eq(x, y),
         (Object(o), Str(s)) | (Str(s), Object(o)) => o.to_string_value().is_some_and(|v| v == **s),
@@ -390,7 +412,9 @@ pub fn compare(a: &ViewValue, b: &ViewValue) -> Ordering {
             a.truthy().cmp(&b.truthy())
         }
         (Int(x), Int(y)) => x.cmp(y),
-        (Int(_) | Float(_), Int(_) | Float(_)) => cmp_f64(a.as_f64().unwrap_or(0.0), b.as_f64().unwrap_or(0.0)),
+        (Int(_) | Float(_), Int(_) | Float(_)) => {
+            cmp_f64(a.as_f64().unwrap_or(0.0), b.as_f64().unwrap_or(0.0))
+        }
         (Int(_) | Float(_), Str(s) | Html(s)) => match parse_numeric(s) {
             Some(n) => cmp_f64(a.as_f64().unwrap_or(0.0), n.as_f64()),
             None => a.to_string_lossy().as_str().cmp(&**s),
@@ -483,7 +507,11 @@ fn entity_length(s: &str) -> Option<usize> {
         }
         let start = i;
         while i < bytes.len()
-            && (if hex { bytes[i].is_ascii_hexdigit() } else { bytes[i].is_ascii_digit() })
+            && (if hex {
+                bytes[i].is_ascii_hexdigit()
+            } else {
+                bytes[i].is_ascii_digit()
+            })
         {
             i += 1;
         }
@@ -555,21 +583,22 @@ fn encode_value(value: &ViewValue, flags: i64, depth: usize, out: &mut String) -
             }
         }
         ViewValue::Str(s) | ViewValue::Html(s) => {
-            if flags & JSON_NUMERIC_CHECK != 0 {
-                if let Some(n) = parse_numeric(s) {
-                    return encode_value(&n.into_value(), flags, depth, out);
-                }
+            if flags & JSON_NUMERIC_CHECK != 0
+                && let Some(n) = parse_numeric(s)
+            {
+                return encode_value(&n.into_value(), flags, depth, out);
             }
             encode_string(s, flags, out)
         }
         ViewValue::Array(array) => encode_array(array, flags, depth, out)?,
         ViewValue::Object(object) => {
             let json = ViewValue::from(object.to_json());
-            if let ViewValue::Array(array) = &json {
-                if array.is_empty() && !object.to_json().is_array() {
-                    out.push_str("{}");
-                    return Ok(());
-                }
+            if let ViewValue::Array(array) = &json
+                && array.is_empty()
+                && !object.to_json().is_array()
+            {
+                out.push_str("{}");
+                return Ok(());
             }
             encode_value(&json, flags, depth + 1, out)?
         }
@@ -650,7 +679,8 @@ pub fn json_decode(source: &str) -> ViewValue {
 
 /// Implement `Js::from()`: a JavaScript expression for the given value.
 pub fn js_from(value: &ViewValue, flags: i64) -> Result<String> {
-    const REQUIRED: i64 = JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE;
+    const REQUIRED: i64 =
+        JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE;
     let value = match value {
         ViewValue::Html(s) => ViewValue::Str(s.clone()),
         ViewValue::Object(o) => match o.to_html() {
@@ -682,7 +712,11 @@ pub fn css_classes(value: &ViewValue) -> String {
 /// `Arr::toCssStyles()`.
 pub fn css_styles(value: &ViewValue) -> String {
     conditional_list(value, |s| {
-        if s.ends_with(';') { s.to_string() } else { format!("{s};") }
+        if s.ends_with(';') {
+            s.to_string()
+        } else {
+            format!("{s};")
+        }
     })
 }
 
@@ -752,18 +786,49 @@ mod tests {
     }
 
     #[test]
+    fn arithmetic_never_overflows() {
+        let min = ViewValue::Int(i64::MIN);
+        assert_eq!(
+            arithmetic(Arith::Div, &min, &(-1).into()).unwrap(),
+            ViewValue::Float(9.223372036854776e18)
+        );
+        assert_eq!(
+            arithmetic(Arith::Mod, &min, &(-1).into()).unwrap(),
+            ViewValue::Int(0)
+        );
+        assert!(matches!(
+            arithmetic(Arith::Add, &ViewValue::Int(i64::MAX), &1.into()).unwrap(),
+            ViewValue::Float(_)
+        ));
+    }
+
+    #[test]
     fn arithmetic_follows_php() {
-        assert_eq!(arithmetic(Arith::Div, &10.into(), &4.into()).unwrap(), ViewValue::Float(2.5));
-        assert_eq!(arithmetic(Arith::Div, &10.into(), &5.into()).unwrap(), ViewValue::Int(2));
-        assert_eq!(arithmetic(Arith::Add, &"5".into(), &3.into()).unwrap(), ViewValue::Int(8));
+        assert_eq!(
+            arithmetic(Arith::Div, &10.into(), &4.into()).unwrap(),
+            ViewValue::Float(2.5)
+        );
+        assert_eq!(
+            arithmetic(Arith::Div, &10.into(), &5.into()).unwrap(),
+            ViewValue::Int(2)
+        );
+        assert_eq!(
+            arithmetic(Arith::Add, &"5".into(), &3.into()).unwrap(),
+            ViewValue::Int(8)
+        );
         assert!(arithmetic(Arith::Div, &1.into(), &0.into()).is_err());
         assert!(arithmetic(Arith::Add, &"abc".into(), &1.into()).is_err());
-        assert_eq!(arithmetic(Arith::Pow, &2.into(), &10.into()).unwrap(), ViewValue::Int(1024));
+        assert_eq!(
+            arithmetic(Arith::Pow, &2.into(), &10.into()).unwrap(),
+            ViewValue::Int(1024)
+        );
     }
 
     #[test]
     fn json_encoding_matches_php() {
-        let value = ViewValue::from(json!({"url": "http://laravel.com", "name": "Café", "tags": [], "meta": {}}));
+        let value = ViewValue::from(
+            json!({"url": "http://laravel.com", "name": "Café", "tags": [], "meta": {}}),
+        );
         assert_eq!(
             json_encode(&value, 0).unwrap(),
             "{\"url\":\"http:\\/\\/laravel.com\",\"name\":\"Caf\\u00e9\",\"tags\":[],\"meta\":[]}"
@@ -780,8 +845,14 @@ mod tests {
 
     #[test]
     fn js_from_matches_laravel() {
-        assert_eq!(js_from(&ViewValue::from("it's"), 0).unwrap(), "'it\\u0027s'");
-        assert_eq!(js_from(&ViewValue::from(json!(["a"])), 0).unwrap(), "JSON.parse('[\\u0022a\\u0022]')");
+        assert_eq!(
+            js_from(&ViewValue::from("it's"), 0).unwrap(),
+            "'it\\u0027s'"
+        );
+        assert_eq!(
+            js_from(&ViewValue::from(json!(["a"])), 0).unwrap(),
+            "JSON.parse('[\\u0022a\\u0022]')"
+        );
         assert_eq!(js_from(&ViewValue::from(1), 0).unwrap(), "1");
         assert_eq!(js_from(&ViewValue::empty_array(), 0).unwrap(), "[]");
     }
@@ -789,7 +860,10 @@ mod tests {
     #[test]
     fn escaping_can_skip_double_encoding() {
         assert_eq!(escape("&amp; & <b>", true), "&amp;amp; &amp; &lt;b&gt;");
-        assert_eq!(escape("&amp; & <b> &#039; &#x27;", false), "&amp; &amp; &lt;b&gt; &#039; &#x27;");
+        assert_eq!(
+            escape("&amp; & <b> &#039; &#x27;", false),
+            "&amp; &amp; &lt;b&gt; &#039; &#x27;"
+        );
     }
 
     #[test]

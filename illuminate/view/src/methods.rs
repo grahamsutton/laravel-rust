@@ -53,10 +53,16 @@ pub(crate) fn call_method(
         },
         ViewValue::Closure(closure) => match name {
             "call" | "__invoke" => closure.call(&args),
-            _ => Err(BadMethodCallException::new(format!("Call to undefined method Closure::{name}()")).into()),
+            _ => Err(BadMethodCallException::new(format!(
+                "Call to undefined method Closure::{name}()"
+            ))
+            .into()),
         },
         ViewValue::Null => Err(error(format!("Call to a member function {name}() on null"))),
-        other => Err(error(format!("Call to a member function {name}() on {}", other.type_name()))),
+        other => Err(error(format!(
+            "Call to a member function {name}() on {}",
+            other.type_name()
+        ))),
     }
 }
 
@@ -141,10 +147,14 @@ fn pagination_links(array: &ViewArray) -> String {
     };
     let current = get("current_page").as_i64().unwrap_or(1);
     let last = get("last_page").as_i64();
-    if last.is_some_and(|l| l <= 1) || (last.is_none() && current <= 1 && get("next_page_url").is_null()) {
+    if last.is_some_and(|l| l <= 1)
+        || (last.is_none() && current <= 1 && get("next_page_url").is_null())
+    {
         return String::new();
     }
-    let mut html = String::from("<nav role=\"navigation\" aria-label=\"Pagination Navigation\">\n    <ul class=\"pagination\">\n");
+    let mut html = String::from(
+        "<nav role=\"navigation\" aria-label=\"Pagination Navigation\">\n    <ul class=\"pagination\">\n",
+    );
     match get("prev_page_url") {
         ViewValue::Null => html.push_str(
             "        <li class=\"page-item disabled\" aria-disabled=\"true\"><span class=\"page-link\">&laquo; Previous</span></li>\n",
@@ -221,15 +231,20 @@ fn callback_args(value: &ViewValue, key: &ArrayKey) -> [ViewValue; 2] {
     [value.clone(), key.to_value()]
 }
 
-fn array_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<ViewValue> {
+fn array_method(
+    array: &Arc<ViewArray>,
+    name: &str,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Result<ViewValue> {
     if is_paginator(array) {
         if let Some(value) = paginator_method(array, name, args) {
             return Ok(value);
         }
-        if let Some(items) = paginator_items(array) {
-            if collection_method_exists(name) {
-                return collection_method(&items, name, args, registry);
-            }
+        if let Some(items) = paginator_items(array)
+            && collection_method_exists(name)
+        {
+            return collection_method(&items, name, args, registry);
         }
     }
     if collection_method_exists(name) {
@@ -237,29 +252,128 @@ fn array_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], registry
     }
     // Serialized models: `$user->fullName()` reads `full_name` (or `fullName`).
     let snake = Str::snake(name);
-    let found = array.get_str(&snake).or_else(|| array.get_str(name)).or_else(|| {
-        name.strip_prefix("get")
-            .filter(|rest| rest.starts_with(|c: char| c.is_uppercase()))
-            .and_then(|rest| array.get_str(&Str::snake(rest)))
-    });
+    let found = array
+        .get_str(&snake)
+        .or_else(|| array.get_str(name))
+        .or_else(|| {
+            name.strip_prefix("get")
+                .filter(|rest| rest.starts_with(|c: char| c.is_uppercase()))
+                .and_then(|rest| array.get_str(&Str::snake(rest)))
+        });
     match found {
         Some(ViewValue::Closure(closure)) => closure.call(args),
         Some(value) => Ok(value.clone()),
-        None => Err(BadMethodCallException::new(format!("Call to undefined method {name}() on array")).into()),
+        None => Err(BadMethodCallException::new(format!(
+            "Call to undefined method {name}() on array"
+        ))
+        .into()),
     }
 }
 
 const COLLECTION_METHODS: &[&str] = &[
-    "count", "isEmpty", "isNotEmpty", "first", "last", "keys", "values", "all", "toArray", "jsonSerialize",
-    "toJson", "toPrettyJson", "contains", "doesntContain", "containsStrict", "has", "hasAny", "get", "pluck", "implode",
-    "join", "sum", "avg", "average", "max", "min", "median", "take", "skip", "slice", "sortBy", "sortByDesc", "sort",
-    "sortDesc", "sortKeys", "sortKeysDesc", "reverse", "where", "whereStrict", "whereIn", "whereNotIn", "whereNull",
-    "whereNotNull", "whereBetween", "firstWhere", "filter", "reject", "map", "mapWithKeys", "flatMap", "each",
-    "groupBy", "keyBy", "chunk", "unique", "merge", "only", "except", "search", "flip", "flatten", "collapse",
-    "push", "prepend", "put", "pull", "forget", "every", "some", "isList", "random", "shuffle", "split", "pipe",
-    "when", "unless", "whenEmpty", "whenNotEmpty", "zip", "combine", "diff", "intersect", "nth", "pad", "countBy",
-    "sole", "firstOrFail", "collect", "toBase", "dump", "dd", "concat", "partition", "reduce", "takeWhile",
-    "takeUntil", "skipWhile", "skipUntil", "dot", "undot", "mapInto", "tap", "transform",
+    "count",
+    "isEmpty",
+    "isNotEmpty",
+    "first",
+    "last",
+    "keys",
+    "values",
+    "all",
+    "toArray",
+    "jsonSerialize",
+    "toJson",
+    "toPrettyJson",
+    "contains",
+    "doesntContain",
+    "containsStrict",
+    "has",
+    "hasAny",
+    "get",
+    "pluck",
+    "implode",
+    "join",
+    "sum",
+    "avg",
+    "average",
+    "max",
+    "min",
+    "median",
+    "take",
+    "skip",
+    "slice",
+    "sortBy",
+    "sortByDesc",
+    "sort",
+    "sortDesc",
+    "sortKeys",
+    "sortKeysDesc",
+    "reverse",
+    "where",
+    "whereStrict",
+    "whereIn",
+    "whereNotIn",
+    "whereNull",
+    "whereNotNull",
+    "whereBetween",
+    "firstWhere",
+    "filter",
+    "reject",
+    "map",
+    "mapWithKeys",
+    "flatMap",
+    "each",
+    "groupBy",
+    "keyBy",
+    "chunk",
+    "unique",
+    "merge",
+    "only",
+    "except",
+    "search",
+    "flip",
+    "flatten",
+    "collapse",
+    "push",
+    "prepend",
+    "put",
+    "pull",
+    "forget",
+    "every",
+    "some",
+    "isList",
+    "random",
+    "shuffle",
+    "split",
+    "pipe",
+    "when",
+    "unless",
+    "whenEmpty",
+    "whenNotEmpty",
+    "zip",
+    "combine",
+    "diff",
+    "intersect",
+    "nth",
+    "pad",
+    "countBy",
+    "sole",
+    "firstOrFail",
+    "collect",
+    "toBase",
+    "dump",
+    "dd",
+    "concat",
+    "partition",
+    "reduce",
+    "takeWhile",
+    "takeUntil",
+    "skipWhile",
+    "skipUntil",
+    "dot",
+    "undot",
+    "mapInto",
+    "tap",
+    "transform",
 ];
 
 fn collection_method_exists(name: &str) -> bool {
@@ -280,14 +394,23 @@ fn sorted_by(
         };
         entries.push((k.clone(), v.clone(), sort_key));
     }
-    entries.sort_by(|a, b| {
+    stable_sort_by(&mut entries, |a, b| {
         let ordering = php::compare(&a.2, &b.2);
-        if descending { ordering.reverse() } else { ordering }
+        if descending {
+            ordering.reverse()
+        } else {
+            ordering
+        }
     });
     Ok(from_pairs(entries.into_iter().map(|(k, v, _)| (k, v))))
 }
 
-fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<ViewValue> {
+fn collection_method(
+    array: &Arc<ViewArray>,
+    name: &str,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Result<ViewValue> {
     let a0 = arg(args, 0);
     let call = |callback: &ViewValue, value: &ViewValue, key: &ArrayKey| {
         call_callable(callback, &callback_args(value, key), registry)
@@ -297,9 +420,17 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         "isEmpty" => ViewValue::Bool(array.is_empty()),
         "isNotEmpty" => ViewValue::Bool(!array.is_empty()),
         "isList" => ViewValue::Bool(array.is_list()),
-        "all" | "toArray" | "jsonSerialize" | "collect" | "toBase" => ViewValue::Array(array.clone()),
-        "toJson" => ViewValue::from(php::json_encode(&ViewValue::Array(array.clone()), int_arg(args, 0, 0))?),
-        "toPrettyJson" => ViewValue::from(php::json_encode(&ViewValue::Array(array.clone()), php::JSON_PRETTY_PRINT)?),
+        "all" | "toArray" | "jsonSerialize" | "collect" | "toBase" => {
+            ViewValue::Array(array.clone())
+        }
+        "toJson" => ViewValue::from(php::json_encode(
+            &ViewValue::Array(array.clone()),
+            int_arg(args, 0, 0),
+        )?),
+        "toPrettyJson" => ViewValue::from(php::json_encode(
+            &ViewValue::Array(array.clone()),
+            php::JSON_PRETTY_PRINT,
+        )?),
         "keys" => list(array.keys().map(ArrayKey::to_value)),
         "values" => list(array.values().cloned()),
         "first" | "firstOrFail" | "sole" => {
@@ -350,11 +481,19 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
                         found
                     }
                     needle => array.values().any(|v| {
-                        if name == "containsStrict" { php::strict_eq(v, needle) } else { php::loose_eq(v, needle) }
+                        if name == "containsStrict" {
+                            php::strict_eq(v, needle)
+                        } else {
+                            php::loose_eq(v, needle)
+                        }
                     }),
                 },
                 _ => {
-                    let (op, value) = if args.len() >= 3 { (str_arg(args, 1)?, arg(args, 2)) } else { ("=".into(), arg(args, 1)) };
+                    let (op, value) = if args.len() >= 3 {
+                        (str_arg(args, 1)?, arg(args, 2))
+                    } else {
+                        ("=".into(), arg(args, 1))
+                    };
                     let mut found = false;
                     for item in array.values() {
                         if compare_op(&item_value(item, a0, registry)?, &op, value) {
@@ -365,14 +504,26 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
                     found
                 }
             };
-            ViewValue::Bool(if name == "doesntContain" { !found } else { found })
+            ViewValue::Bool(if name == "doesntContain" {
+                !found
+            } else {
+                found
+            })
         }
         "has" => {
-            let keys: Vec<ViewValue> = if args.len() > 1 { args.to_vec() } else { key_values(a0) };
+            let keys: Vec<ViewValue> = if args.len() > 1 {
+                args.to_vec()
+            } else {
+                key_values(a0)
+            };
             ViewValue::Bool(keys.iter().all(|k| array.get_value(k).is_some()))
         }
         "hasAny" => {
-            let keys: Vec<ViewValue> = if args.len() > 1 { args.to_vec() } else { key_values(a0) };
+            let keys: Vec<ViewValue> = if args.len() > 1 {
+                args.to_vec()
+            } else {
+                key_values(a0)
+            };
             ViewValue::Bool(keys.iter().any(|k| array.get_value(k).is_some()))
         }
         "get" => match array.get_value(a0) {
@@ -396,7 +547,10 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         "implode" | "join" => {
             let (values, glue): (Vec<ViewValue>, String) = match (a0, args.get(1)) {
                 (key @ ViewValue::Str(_), Some(glue)) if name == "implode" => {
-                    let values = array.values().map(|item| item_value(item, key, registry)).collect::<Result<_>>()?;
+                    let values = array
+                        .values()
+                        .map(|item| item_value(item, key, registry))
+                        .collect::<Result<_>>()?;
                     (values, php::to_str(glue)?)
                 }
                 (callback @ ViewValue::Closure(_), glue) => {
@@ -404,16 +558,25 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
                     for (k, v) in array.iter() {
                         values.push(call(callback, v, k)?);
                     }
-                    (values, glue.map(php::to_str).transpose()?.unwrap_or_default())
+                    (
+                        values,
+                        glue.map(php::to_str).transpose()?.unwrap_or_default(),
+                    )
                 }
                 (glue, final_glue) if name == "join" && final_glue.is_some() => {
                     let glue = php::to_str(glue)?;
                     let final_glue = php::to_str(final_glue.unwrap_or(&functions::NULL))?;
-                    let parts: Vec<String> = array.values().map(php::to_str).collect::<Result<_>>()?;
+                    let parts: Vec<String> =
+                        array.values().map(php::to_str).collect::<Result<_>>()?;
                     let joined = match parts.len() {
                         0 => String::new(),
                         1 => parts[0].clone(),
-                        n => format!("{}{}{}", parts[..n - 1].join(&glue), final_glue, parts[n - 1]),
+                        n => format!(
+                            "{}{}{}",
+                            parts[..n - 1].join(&glue),
+                            final_glue,
+                            parts[n - 1]
+                        ),
                     };
                     return Ok(ViewValue::from(joined));
                 }
@@ -456,12 +619,16 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
                     if values.is_empty() {
                         ViewValue::Null
                     } else {
-                        values.sort_by(php::compare);
+                        stable_sort_by(&mut values, php::compare);
                         let middle = values.len() / 2;
                         if values.len() % 2 == 1 {
                             values[middle].clone()
                         } else {
-                            let total = php::arithmetic(php::Arith::Add, &values[middle - 1], &values[middle])?;
+                            let total = php::arithmetic(
+                                php::Arith::Add,
+                                &values[middle - 1],
+                                &values[middle],
+                            )?;
                             php::arithmetic(php::Arith::Div, &total, &ViewValue::Int(2))?
                         }
                     }
@@ -473,7 +640,9 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
                             None => value,
                             Some(current) => {
                                 let ordering = php::compare(&value, &current);
-                                if (name == "max" && ordering.is_gt()) || (name == "min" && ordering.is_lt()) {
+                                if (name == "max" && ordering.is_gt())
+                                    || (name == "min" && ordering.is_lt())
+                                {
                                     value
                                 } else {
                                     current
@@ -510,13 +679,16 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         "sortByDesc" => sorted_by(array, args.first(), true, registry)?,
         "sort" => match args.first() {
             Some(callback @ ViewValue::Closure(_)) => {
-                let mut entries: Vec<(ArrayKey, ViewValue)> = array.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+                let mut entries: Vec<(ArrayKey, ViewValue)> =
+                    array.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
                 let mut failure = None;
-                entries.sort_by(|a, b| match call_callable(callback, &[a.1.clone(), b.1.clone()], registry) {
-                    Ok(result) => result.as_i64().unwrap_or(0).cmp(&0),
-                    Err(e) => {
-                        failure.get_or_insert(e);
-                        Ordering::Equal
+                stable_sort_by(&mut entries, |a, b| {
+                    match call_callable(callback, &[a.1.clone(), b.1.clone()], registry) {
+                        Ok(result) => result.as_i64().unwrap_or(0).cmp(&0),
+                        Err(e) => {
+                            failure.get_or_insert(e);
+                            Ordering::Equal
+                        }
                     }
                 });
                 if let Some(e) = failure {
@@ -528,8 +700,11 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         },
         "sortDesc" => sorted_by(array, None, true, registry)?,
         "sortKeys" | "sortKeysDesc" => {
-            let mut entries: Vec<(ArrayKey, ViewValue)> = array.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-            entries.sort_by(|a, b| php::compare(&a.0.to_value(), &b.0.to_value()));
+            let mut entries: Vec<(ArrayKey, ViewValue)> =
+                array.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            stable_sort_by(&mut entries, |a, b| {
+                php::compare(&a.0.to_value(), &b.0.to_value())
+            });
             if name == "sortKeysDesc" {
                 entries.reverse();
             }
@@ -539,13 +714,24 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         "where" | "whereStrict" => {
             let (op, value) = match args.len() {
                 1 => ("=".to_string(), ViewValue::Bool(true)),
-                2 => (if name == "whereStrict" { "===".into() } else { "=".into() }, arg(args, 1).clone()),
+                2 => (
+                    if name == "whereStrict" {
+                        "===".into()
+                    } else {
+                        "=".into()
+                    },
+                    arg(args, 1).clone(),
+                ),
                 _ => (str_arg(args, 1)?, arg(args, 2).clone()),
             };
             let mut out = ViewArray::new();
             for (k, item) in array.iter() {
                 let actual = item_value(item, a0, registry)?;
-                let keep = if args.len() == 1 { actual.truthy() } else { compare_op(&actual, &op, &value) };
+                let keep = if args.len() == 1 {
+                    actual.truthy()
+                } else {
+                    compare_op(&actual, &op, &value)
+                };
                 if keep {
                     out.insert(k.clone(), item.clone());
                 }
@@ -561,7 +747,11 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
             let mut found = ViewValue::Null;
             for item in array.values() {
                 let actual = item_value(item, a0, registry)?;
-                let matches = if args.len() == 1 { actual.truthy() } else { compare_op(&actual, &op, &value) };
+                let matches = if args.len() == 1 {
+                    actual.truthy()
+                } else {
+                    compare_op(&actual, &op, &value)
+                };
                 if matches {
                     found = item.clone();
                     break;
@@ -570,12 +760,20 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
             found
         }
         "whereIn" | "whereNotIn" => {
-            let candidates: Vec<ViewValue> = to_array(arg(args, 1)).map(|a| a.values().cloned().collect()).unwrap_or_default();
+            let candidates: Vec<ViewValue> = to_array(arg(args, 1))
+                .map(|a| a.values().cloned().collect())
+                .unwrap_or_default();
             let strict = bool_arg(args, 2, false);
             let mut out = ViewArray::new();
             for (k, item) in array.iter() {
                 let actual = item_value(item, a0, registry)?;
-                let present = candidates.iter().any(|c| if strict { php::strict_eq(c, &actual) } else { php::loose_eq(c, &actual) });
+                let present = candidates.iter().any(|c| {
+                    if strict {
+                        php::strict_eq(c, &actual)
+                    } else {
+                        php::loose_eq(c, &actual)
+                    }
+                });
                 if present == (name == "whereIn") {
                     out.insert(k.clone(), item.clone());
                 }
@@ -597,7 +795,10 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         }
         "whereBetween" => {
             let bounds = to_array(arg(args, 1)).unwrap_or_default();
-            let (low, high) = (bounds.first().cloned().unwrap_or_default(), bounds.last().cloned().unwrap_or_default());
+            let (low, high) = (
+                bounds.first().cloned().unwrap_or_default(),
+                bounds.last().cloned().unwrap_or_default(),
+            );
             let mut out = ViewArray::new();
             for (k, item) in array.iter() {
                 let actual = item_value(item, a0, registry)?;
@@ -662,7 +863,11 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
                 let ok = match a0 {
                     ViewValue::Closure(_) => call(a0, item, k)?.truthy(),
                     key if args.len() >= 2 => {
-                        let (op, value) = if args.len() >= 3 { (str_arg(args, 1)?, arg(args, 2)) } else { ("=".into(), arg(args, 1)) };
+                        let (op, value) = if args.len() >= 3 {
+                            (str_arg(args, 1)?, arg(args, 2))
+                        } else {
+                            ("=".into(), arg(args, 1))
+                        };
                         compare_op(&item_value(item, key, registry)?, &op, value)
                     }
                     key => item_value(item, key, registry)?.truthy(),
@@ -709,9 +914,14 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
             ViewValue::from(out)
         }
         "chunk" | "split" => {
-            let items: Vec<(ArrayKey, ViewValue)> = array.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+            let items: Vec<(ArrayKey, ViewValue)> =
+                array.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
             let n = int_arg(args, 0, 1).max(1) as usize;
-            let size = if name == "split" { items.len().div_ceil(n).max(1) } else { n };
+            let size = if name == "split" {
+                items.len().div_ceil(n).max(1)
+            } else {
+                n
+            };
             list(items.chunks(size).map(|chunk| {
                 if name == "split" {
                     list(chunk.iter().map(|(_, v)| v.clone()))
@@ -749,8 +959,15 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
             ViewValue::from(out)
         }
         "only" | "except" => {
-            let keys: Vec<ViewValue> = if args.len() > 1 { args.to_vec() } else { key_values(a0) };
-            let keys: Vec<ArrayKey> = keys.iter().map(ArrayKey::from_value).collect::<Result<_>>()?;
+            let keys: Vec<ViewValue> = if args.len() > 1 {
+                args.to_vec()
+            } else {
+                key_values(a0)
+            };
+            let keys: Vec<ArrayKey> = keys
+                .iter()
+                .map(ArrayKey::from_value)
+                .collect::<Result<_>>()?;
             from_pairs(
                 array
                     .iter()
@@ -764,7 +981,11 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
                 let matches = match a0 {
                     ViewValue::Closure(_) => call(a0, item, k)?.truthy(),
                     needle => {
-                        if bool_arg(args, 1, false) { php::strict_eq(item, needle) } else { php::loose_eq(item, needle) }
+                        if bool_arg(args, 1, false) {
+                            php::strict_eq(item, needle)
+                        } else {
+                            php::loose_eq(item, needle)
+                        }
                     }
                 };
                 if matches {
@@ -828,11 +1049,17 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         "forget" | "pull" => {
             let mut out = (**array).clone();
             let removed = out.remove(&ArrayKey::from_value(a0)?);
-            if name == "pull" { removed.unwrap_or_default() } else { ViewValue::from(out) }
+            if name == "pull" {
+                removed.unwrap_or_default()
+            } else {
+                ViewValue::from(out)
+            }
         }
         "random" => {
             if array.is_empty() {
-                return Err(error("You requested 1 items, but there are only 0 items available."));
+                return Err(error(
+                    "You requested 1 items, but there are only 0 items available.",
+                ));
             }
             let index = (std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -861,14 +1088,28 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         }
         "when" | "unless" => {
             let condition = match a0 {
-                ViewValue::Closure(_) => call_callable(a0, &[ViewValue::Array(array.clone())], registry)?.truthy(),
+                ViewValue::Closure(_) => {
+                    call_callable(a0, &[ViewValue::Array(array.clone())], registry)?.truthy()
+                }
                 other => other.truthy(),
             };
-            let callback = if condition == (name == "when") { args.get(1) } else { args.get(2) };
+            let callback = if condition == (name == "when") {
+                args.get(1)
+            } else {
+                args.get(2)
+            };
             match callback {
                 Some(callback) => {
-                    let result = call_callable(callback, &[ViewValue::Array(array.clone()), a0.clone()], registry)?;
-                    if result.is_null() { ViewValue::Array(array.clone()) } else { result }
+                    let result = call_callable(
+                        callback,
+                        &[ViewValue::Array(array.clone()), a0.clone()],
+                        registry,
+                    )?;
+                    if result.is_null() {
+                        ViewValue::Array(array.clone())
+                    } else {
+                        result
+                    }
                 }
                 None => ViewValue::Array(array.clone()),
             }
@@ -876,14 +1117,24 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         "whenEmpty" | "whenNotEmpty" => {
             if array.is_empty() == (name == "whenEmpty") {
                 let result = call_callable(a0, &[ViewValue::Array(array.clone())], registry)?;
-                if result.is_null() { ViewValue::Array(array.clone()) } else { result }
+                if result.is_null() {
+                    ViewValue::Array(array.clone())
+                } else {
+                    result
+                }
             } else {
                 ViewValue::Array(array.clone())
             }
         }
         "zip" => {
-            let others: Vec<Vec<ViewValue>> =
-                args.iter().map(|a| to_array(a).map(|a| a.values().cloned().collect()).unwrap_or_default()).collect();
+            let others: Vec<Vec<ViewValue>> = args
+                .iter()
+                .map(|a| {
+                    to_array(a)
+                        .map(|a| a.values().cloned().collect())
+                        .unwrap_or_default()
+                })
+                .collect();
             list(array.values().enumerate().map(|(i, v)| {
                 let mut row = vec![v.clone()];
                 row.extend(others.iter().map(|o| o.get(i).cloned().unwrap_or_default()));
@@ -891,7 +1142,9 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
             }))
         }
         "combine" => {
-            let values: Vec<ViewValue> = to_array(a0).map(|a| a.values().cloned().collect()).unwrap_or_default();
+            let values: Vec<ViewValue> = to_array(a0)
+                .map(|a| a.values().cloned().collect())
+                .unwrap_or_default();
             let mut out = ViewArray::new();
             for (key, value) in array.values().zip(values) {
                 out.insert(ArrayKey::from_value(key)?, value);
@@ -899,11 +1152,15 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
             ViewValue::from(out)
         }
         "diff" | "intersect" => {
-            let other: Vec<ViewValue> = to_array(a0).map(|a| a.values().cloned().collect()).unwrap_or_default();
+            let other: Vec<ViewValue> = to_array(a0)
+                .map(|a| a.values().cloned().collect())
+                .unwrap_or_default();
             from_pairs(
                 array
                     .iter()
-                    .filter(|(_, v)| other.iter().any(|o| php::loose_eq(o, v)) == (name == "intersect"))
+                    .filter(|(_, v)| {
+                        other.iter().any(|o| php::loose_eq(o, v)) == (name == "intersect")
+                    })
                     .map(|(k, v)| (k.clone(), v.clone())),
             )
         }
@@ -982,11 +1239,48 @@ fn collection_method(array: &Arc<ViewArray>, name: &str, args: &[ViewValue], reg
         "mapInto" => return Err(error("mapInto() is not supported in Blade templates")),
         "dump" => ViewValue::html(functions::dump_html(&ViewValue::Array(array.clone()))),
         "dd" => {
-            let response = illuminate_http::Response::new(functions::dump_html(&ViewValue::Array(array.clone()))).with_status(500);
+            let response = illuminate_http::Response::new(functions::dump_html(&ViewValue::Array(
+                array.clone(),
+            )))
+            .with_status(500);
             return Err(illuminate_http::HttpResponseException::new(response).into());
         }
-        _ => return Err(BadMethodCallException::new(format!("Method Collection::{name} does not exist.")).into()),
+        _ => {
+            return Err(BadMethodCallException::new(format!(
+                "Method Collection::{name} does not exist."
+            ))
+            .into());
+        }
     })
+}
+
+/// A stable merge sort that tolerates comparators which aren't a total
+/// order (PHP's loose comparisons aren't), where `slice::sort_by` may panic.
+pub(crate) fn stable_sort_by<T>(items: &mut Vec<T>, mut compare: impl FnMut(&T, &T) -> Ordering) {
+    fn merge_sort<T>(items: Vec<T>, compare: &mut impl FnMut(&T, &T) -> Ordering) -> Vec<T> {
+        if items.len() <= 1 {
+            return items;
+        }
+        let mut left = items;
+        let right = left.split_off(left.len() / 2);
+        let left = merge_sort(left, compare);
+        let right = merge_sort(right, compare);
+        let mut merged = Vec::with_capacity(left.len() + right.len());
+        let mut left = left.into_iter().peekable();
+        let mut right = right.into_iter().peekable();
+        while let (Some(l), Some(r)) = (left.peek(), right.peek()) {
+            if compare(r, l) == Ordering::Less {
+                merged.extend(right.next());
+            } else {
+                merged.extend(left.next());
+            }
+        }
+        merged.extend(left);
+        merged.extend(right);
+        merged
+    }
+    let taken = std::mem::take(items);
+    *items = merge_sort(taken, &mut compare);
 }
 
 fn key_values(value: &ViewValue) -> Vec<ViewValue> {
@@ -1015,7 +1309,9 @@ fn dot_into(array: &ViewArray, prefix: &str, out: &mut ViewArray) {
     for (key, value) in array.iter() {
         let name = format!("{prefix}{key}");
         match value {
-            ViewValue::Array(inner) if !inner.is_empty() => dot_into(inner, &format!("{name}."), out),
+            ViewValue::Array(inner) if !inner.is_empty() => {
+                dot_into(inner, &format!("{name}."), out)
+            }
             other => out.set(&name, other.clone()),
         }
     }
@@ -1028,7 +1324,9 @@ fn set_dotted(root: &mut ViewValue, key: &str, value: ViewValue) {
         if !matches!(slot, ViewValue::Array(_)) {
             *slot = ViewValue::empty_array();
         }
-        let ViewValue::Array(array) = slot else { return };
+        let ViewValue::Array(array) = slot else {
+            return;
+        };
         let array = Arc::make_mut(array);
         let key = ArrayKey::new(segment);
         if index == segments.len() - 1 {
@@ -1046,7 +1344,12 @@ fn set_dotted(root: &mut ViewValue, key: &str, value: ViewValue) {
 // Strings
 // ----------------------------------------------------------------------
 
-fn string_method(value: &Arc<str>, name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<ViewValue> {
+fn string_method(
+    value: &Arc<str>,
+    name: &str,
+    args: &[ViewValue],
+    registry: &Arc<Registry>,
+) -> Result<ViewValue> {
     if let Some(result) = objects::date_string_method(value, name, args) {
         return result;
     }
@@ -1059,7 +1362,10 @@ fn string_method(value: &Arc<str>, name: &str, args: &[ViewValue], registry: &Ar
         "isEmpty" => Ok(ViewValue::Bool(value.is_empty())),
         "isNotEmpty" => Ok(ViewValue::Bool(!value.is_empty())),
         "explode" | "split" => {
-            let parts: Vec<ViewValue> = value.split(&*str_arg(args, 0)?).map(ViewValue::from).collect();
+            let parts: Vec<ViewValue> = value
+                .split(&*str_arg(args, 0)?)
+                .map(ViewValue::from)
+                .collect();
             Ok(ViewValue::list(parts))
         }
         "exactly" => Ok(ViewValue::Bool(**value == *str_arg(args, 0)?)),
@@ -1087,7 +1393,9 @@ fn string_method(value: &Arc<str>, name: &str, args: &[ViewValue], registry: &Ar
         }
         _ => match crate::statics::str_method(name, &full_args, registry) {
             Some(result) => result,
-            None => Err(error(format!("Call to a member function {name}() on string"))),
+            None => Err(error(format!(
+                "Call to a member function {name}() on string"
+            ))),
         },
     }
 }
@@ -1113,20 +1421,72 @@ mod tests {
     #[test]
     fn arrays_behave_like_collections() {
         assert_eq!(call(users(), "count", vec![]), ViewValue::Int(3));
-        assert_eq!(call(users(), "pluck", vec!["name".into()]).to_json(), json!(["Taylor", "Abigail", "James"]));
-        assert_eq!(call(users(), "sum", vec!["age".into()]), ViewValue::Int(105));
+        assert_eq!(
+            call(users(), "pluck", vec!["name".into()]).to_json(),
+            json!(["Taylor", "Abigail", "James"])
+        );
+        assert_eq!(
+            call(users(), "sum", vec!["age".into()]),
+            ViewValue::Int(105)
+        );
         assert_eq!(call(users(), "avg", vec!["age".into()]), ViewValue::Int(35));
         let sorted = call(users(), "sortBy", vec!["age".into()]);
-        assert_eq!(call(sorted.clone(), "keys", vec![]).to_json(), json!([1, 2, 0]));
-        assert_eq!(call(sorted, "pluck", vec!["name".into()]).to_json(), json!(["Abigail", "James", "Taylor"]));
-        assert_eq!(call(users(), "where", vec!["team".into(), "core".into()]).count(), 2);
-        assert_eq!(call(users(), "firstWhere", vec!["age".into(), ">".into(), 36.into()]).get("name"), Some("Taylor".into()));
-        assert_eq!(call(users(), "groupBy", vec!["team".into()]).get("core").unwrap().count(), 2);
-        assert_eq!(call(users(), "implode", vec!["name".into(), ", ".into()]), ViewValue::from("Taylor, Abigail, James"));
-        assert_eq!(call(ViewValue::from(json!([1, 2, 3])), "take", vec![2.into()]).to_json(), json!([1, 2]));
-        assert_eq!(call(ViewValue::from(json!(["a", "b", "c"])), "join", vec![", ".into(), " and ".into()]), ViewValue::from("a, b and c"));
-        assert_eq!(call(ViewValue::from(json!([1, 2, 3])), "contains", vec![2.into()]), ViewValue::Bool(true));
-        assert_eq!(call(ViewValue::from(json!({"a": 1})), "has", vec!["a".into()]), ViewValue::Bool(true));
+        assert_eq!(
+            call(sorted.clone(), "keys", vec![]).to_json(),
+            json!([1, 2, 0])
+        );
+        assert_eq!(
+            call(sorted, "pluck", vec!["name".into()]).to_json(),
+            json!(["Abigail", "James", "Taylor"])
+        );
+        assert_eq!(
+            call(users(), "where", vec!["team".into(), "core".into()]).count(),
+            2
+        );
+        assert_eq!(
+            call(
+                users(),
+                "firstWhere",
+                vec!["age".into(), ">".into(), 36.into()]
+            )
+            .get("name"),
+            Some("Taylor".into())
+        );
+        assert_eq!(
+            call(users(), "groupBy", vec!["team".into()])
+                .get("core")
+                .unwrap()
+                .count(),
+            2
+        );
+        assert_eq!(
+            call(users(), "implode", vec!["name".into(), ", ".into()]),
+            ViewValue::from("Taylor, Abigail, James")
+        );
+        assert_eq!(
+            call(ViewValue::from(json!([1, 2, 3])), "take", vec![2.into()]).to_json(),
+            json!([1, 2])
+        );
+        assert_eq!(
+            call(
+                ViewValue::from(json!(["a", "b", "c"])),
+                "join",
+                vec![", ".into(), " and ".into()]
+            ),
+            ViewValue::from("a, b and c")
+        );
+        assert_eq!(
+            call(
+                ViewValue::from(json!([1, 2, 3])),
+                "contains",
+                vec![2.into()]
+            ),
+            ViewValue::Bool(true)
+        );
+        assert_eq!(
+            call(ViewValue::from(json!({"a": 1})), "has", vec!["a".into()]),
+            ViewValue::Bool(true)
+        );
     }
 
     #[test]
@@ -1137,11 +1497,24 @@ mod tests {
             "next_page_url": "http://localhost/users?page=3", "prev_page_url": "http://localhost/users?page=1",
         }));
         assert_eq!(call(paginator.clone(), "total", vec![]), ViewValue::Int(50));
-        assert_eq!(call(paginator.clone(), "currentPage", vec![]), ViewValue::Int(2));
+        assert_eq!(
+            call(paginator.clone(), "currentPage", vec![]),
+            ViewValue::Int(2)
+        );
         assert_eq!(call(paginator.clone(), "count", vec![]), ViewValue::Int(1));
-        assert_eq!(call(paginator.clone(), "hasMorePages", vec![]), ViewValue::Bool(true));
-        assert_eq!(call(paginator.clone(), "url", vec![3.into()]), ViewValue::from("http://localhost/users?page=3"));
-        assert!(call(paginator, "links", vec![]).to_string_lossy().contains("rel=\"next\""));
+        assert_eq!(
+            call(paginator.clone(), "hasMorePages", vec![]),
+            ViewValue::Bool(true)
+        );
+        assert_eq!(
+            call(paginator.clone(), "url", vec![3.into()]),
+            ViewValue::from("http://localhost/users?page=3")
+        );
+        assert!(
+            call(paginator, "links", vec![])
+                .to_string_lossy()
+                .contains("rel=\"next\"")
+        );
 
         let user = ViewValue::from(json!({"first_name": "Taylor"}));
         assert_eq!(call(user, "firstName", vec![]), ViewValue::from("Taylor"));
@@ -1149,8 +1522,17 @@ mod tests {
 
     #[test]
     fn strings_respond_to_str_and_date_methods() {
-        assert_eq!(call("hello world".into(), "title", vec![]), ViewValue::from("Hello World"));
-        assert_eq!(call("2024-03-12 10:00:00".into(), "format", vec!["M j".into()]), ViewValue::from("Mar 12"));
-        assert_eq!(call("2024-03-12".into(), "year", vec![]), ViewValue::Int(2024));
+        assert_eq!(
+            call("hello world".into(), "title", vec![]),
+            ViewValue::from("Hello World")
+        );
+        assert_eq!(
+            call("2024-03-12 10:00:00".into(), "format", vec!["M j".into()]),
+            ViewValue::from("Mar 12")
+        );
+        assert_eq!(
+            call("2024-03-12".into(), "year", vec![]),
+            ViewValue::Int(2024)
+        );
     }
 }

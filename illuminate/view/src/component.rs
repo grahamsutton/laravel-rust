@@ -124,7 +124,10 @@ impl ComponentArgs {
     /// Take an argument as a boolean.
     pub fn take_bool(&mut self, name: &str) -> Option<bool> {
         self.take(name).map(|v| match &v {
-            ViewValue::Str(s) => !matches!(s.to_ascii_lowercase().as_str(), "" | "0" | "false" | "off" | "no"),
+            ViewValue::Str(s) => !matches!(
+                s.to_ascii_lowercase().as_str(),
+                "" | "0" | "false" | "off" | "no"
+            ),
             other => other.truthy(),
         })
     }
@@ -136,7 +139,9 @@ impl ComponentArgs {
 
     /// Peek at an argument without taking it.
     pub fn get(&self, name: &str) -> Option<&ViewValue> {
-        self.find(name).and_then(|key| self.values.get(&key)).map(|(value, _)| value)
+        self.find(name)
+            .and_then(|key| self.values.get(&key))
+            .map(|(value, _)| value)
     }
 
     /// Determine if an argument was given.
@@ -166,7 +171,9 @@ pub(crate) fn sanitize(value: ViewValue) -> ViewValue {
                 && object.to_html().is_none()
                 && object.to_string_value().is_some() =>
         {
-            ViewValue::from(illuminate_support::e(object.to_string_value().unwrap_or_default()))
+            ViewValue::from(illuminate_support::e(
+                object.to_string_value().unwrap_or_default(),
+            ))
         }
         _ => value,
     }
@@ -265,7 +272,7 @@ impl ViewObject for ComponentSlot {
 /// The `$component` variable available inside slots: exposes the
 /// component's data as properties and its closures as methods.
 pub(crate) struct ComponentObject {
-    pub(crate) data: ViewData,
+    pub(crate) data: Arc<ViewData>,
 }
 
 impl ViewObject for ComponentObject {
@@ -285,7 +292,12 @@ impl ViewObject for ComponentObject {
     }
 
     fn to_json(&self) -> Value {
-        Value::Object(self.data.iter().map(|(k, v)| (k.clone(), v.to_json())).collect())
+        Value::Object(
+            self.data
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_json()))
+                .collect(),
+        )
     }
 }
 
@@ -296,8 +308,10 @@ mod tests {
     #[test]
     fn args_are_found_by_kebab_or_camel_case() {
         let mut args = ComponentArgs::default();
-        args.values.insert("alert-type".into(), (ViewValue::from("danger"), false));
-        args.values.insert("class".into(), (ViewValue::from("mt-4"), false));
+        args.values
+            .insert("alert-type".into(), (ViewValue::from("danger"), false));
+        args.values
+            .insert("class".into(), (ViewValue::from("mt-4"), false));
         assert!(args.has("alertType"));
         assert_eq!(args.take_string("alertType").as_deref(), Some("danger"));
         assert!(!args.has("alert-type"));

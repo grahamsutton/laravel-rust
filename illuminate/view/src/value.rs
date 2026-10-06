@@ -40,7 +40,9 @@ pub struct ViewClosure(ViewFunction);
 
 impl ViewClosure {
     /// Wrap a Rust closure so it may be called from a template.
-    pub fn new(callback: impl Fn(&[ViewValue]) -> Result<ViewValue> + Send + Sync + 'static) -> Self {
+    pub fn new(
+        callback: impl Fn(&[ViewValue]) -> Result<ViewValue> + Send + Sync + 'static,
+    ) -> Self {
         Self(Arc::new(callback))
     }
 
@@ -76,7 +78,9 @@ impl fmt::Debug for ViewClosure {
 /// stored as integer keys.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ArrayKey {
+    /// An integer key.
     Int(i64),
+    /// A string key.
     Str(Arc<str>),
 }
 
@@ -289,10 +293,10 @@ impl ViewArray {
 
     /// Set the value for a key.
     pub fn insert(&mut self, key: ArrayKey, value: ViewValue) {
-        if let ArrayKey::Int(i) = key {
-            if i >= self.next_index {
-                self.next_index = i.saturating_add(1);
-            }
+        if let ArrayKey::Int(i) = key
+            && i >= self.next_index
+        {
+            self.next_index = i.saturating_add(1);
         }
         self.entries.insert(key, value);
     }
@@ -345,7 +349,9 @@ impl ViewArray {
     }
 
     /// Iterate over the key / value pairs.
-    pub fn iter(&self) -> impl DoubleEndedIterator<Item = (&ArrayKey, &ViewValue)> + ExactSizeIterator {
+    pub fn iter(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (&ArrayKey, &ViewValue)> + ExactSizeIterator {
         self.entries.iter()
     }
 
@@ -561,7 +567,9 @@ impl ViewValue {
     }
 
     /// Wrap a closure.
-    pub fn closure(callback: impl Fn(&[ViewValue]) -> Result<ViewValue> + Send + Sync + 'static) -> Self {
+    pub fn closure(
+        callback: impl Fn(&[ViewValue]) -> Result<ViewValue> + Send + Sync + 'static,
+    ) -> Self {
         ViewValue::Closure(ViewClosure::new(callback))
     }
 
@@ -791,7 +799,9 @@ impl From<&Value> for ViewValue {
             Value::Bool(b) => ViewValue::Bool(*b),
             Value::Number(n) => number_to_view(n),
             Value::String(s) => ViewValue::Str(s.as_str().into()),
-            Value::Array(items) => ViewValue::Array(Arc::new(items.iter().map(ViewValue::from).collect())),
+            Value::Array(items) => {
+                ViewValue::Array(Arc::new(items.iter().map(ViewValue::from).collect()))
+            }
             Value::Object(map) => {
                 let mut array = ViewArray::with_capacity(map.len());
                 for (key, item) in map {
@@ -929,19 +939,31 @@ impl<T: Into<ViewValue>> From<Vec<T>> for ViewValue {
 
 impl<K: Into<String>, T: Into<ViewValue>> From<IndexMap<K, T>> for ViewValue {
     fn from(value: IndexMap<K, T>) -> Self {
-        ViewValue::map(value.into_iter().map(|(k, v)| (ArrayKey::new(&k.into()), v.into())))
+        ViewValue::map(
+            value
+                .into_iter()
+                .map(|(k, v)| (ArrayKey::new(&k.into()), v.into())),
+        )
     }
 }
 
 impl<K: Into<String>, T: Into<ViewValue>> From<BTreeMap<K, T>> for ViewValue {
     fn from(value: BTreeMap<K, T>) -> Self {
-        ViewValue::map(value.into_iter().map(|(k, v)| (ArrayKey::new(&k.into()), v.into())))
+        ViewValue::map(
+            value
+                .into_iter()
+                .map(|(k, v)| (ArrayKey::new(&k.into()), v.into())),
+        )
     }
 }
 
 impl<K: Into<String>, T: Into<ViewValue>> From<HashMap<K, T>> for ViewValue {
     fn from(value: HashMap<K, T>) -> Self {
-        ViewValue::map(value.into_iter().map(|(k, v)| (ArrayKey::new(&k.into()), v.into())))
+        ViewValue::map(
+            value
+                .into_iter()
+                .map(|(k, v)| (ArrayKey::new(&k.into()), v.into())),
+        )
     }
 }
 
@@ -982,7 +1004,12 @@ impl ViewData {
 
     /// The data as JSON.
     pub fn to_json(&self) -> Value {
-        Value::Object(self.0.iter().map(|(k, v)| (k.clone(), v.to_json())).collect())
+        Value::Object(
+            self.0
+                .iter()
+                .map(|(k, v)| (k.clone(), v.to_json()))
+                .collect(),
+        )
     }
 }
 
@@ -1050,14 +1077,22 @@ impl From<ViewData> for ViewValue {
 /// let data = data([("name", ViewValue::from("Taylor")), ("admin", true.into())]);
 /// assert_eq!(data.len(), 2);
 /// ```
-pub fn data<K: Into<String>, V: Into<ViewValue>>(pairs: impl IntoIterator<Item = (K, V)>) -> ViewData {
-    pairs.into_iter().map(|(k, v)| (k.into(), v.into())).collect()
+pub fn data<K: Into<String>, V: Into<ViewValue>>(
+    pairs: impl IntoIterator<Item = (K, V)>,
+) -> ViewData {
+    pairs
+        .into_iter()
+        .map(|(k, v)| (k.into(), v.into()))
+        .collect()
 }
 
 /// Convert serializable data (a JSON object) into view data.
 pub(crate) fn view_data_from_serialize<T: serde::Serialize + ?Sized>(data: &T) -> ViewData {
     match illuminate_support::to_value(data) {
-        Value::Object(map) => map.into_iter().map(|(k, v)| (k, ViewValue::from(v))).collect(),
+        Value::Object(map) => map
+            .into_iter()
+            .map(|(k, v)| (k, ViewValue::from(v)))
+            .collect(),
         _ => ViewData::new(),
     }
 }
@@ -1079,7 +1114,8 @@ mod tests {
 
     #[test]
     fn lists_round_trip_through_json() {
-        let original = json!({"users": [{"name": "Taylor"}, {"name": "Abigail"}], "total": 2, "ratio": 0.5});
+        let original =
+            json!({"users": [{"name": "Taylor"}, {"name": "Abigail"}], "total": 2, "ratio": 0.5});
         assert_eq!(ViewValue::from(original.clone()).to_json(), original);
     }
 

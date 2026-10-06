@@ -31,7 +31,11 @@ pub(crate) enum Node {
     /// Literal text.
     Text(String),
     /// `{{ $value }}` (escaped) or `{!! $value !!}` (raw).
-    Echo { expr: Expr, escape: bool, line: usize },
+    Echo {
+        expr: Expr,
+        escape: bool,
+        line: usize,
+    },
     /// `@php ... @endphp` or `@php(...)`.
     Php { stmts: Vec<Stmt>, line: usize },
     /// Any conditional: `@if`, `@unless`, `@isset`, `@auth`, `@error`, ...
@@ -63,7 +67,11 @@ pub(crate) enum Node {
         line: usize,
     },
     /// `@while`
-    While { cond: Expr, body: Vec<Node>, line: usize },
+    While {
+        cond: Expr,
+        body: Vec<Node>,
+        line: usize,
+    },
     /// `@break` / `@continue`, optionally conditional or with a level.
     Jump {
         kind: JumpKind,
@@ -72,7 +80,11 @@ pub(crate) enum Node {
         line: usize,
     },
     /// `@include`, `@includeIf`, `@includeWhen`, ...
-    Include { kind: IncludeKind, args: Vec<Expr>, line: usize },
+    Include {
+        kind: IncludeKind,
+        args: Vec<Expr>,
+        line: usize,
+    },
     /// `@each`
     Each { args: Vec<Expr>, line: usize },
     /// `@section ... @endsection|@show|@stop|@append|@overwrite`
@@ -83,7 +95,11 @@ pub(crate) enum Node {
         line: usize,
     },
     /// `@section('title', 'Page Title')`
-    SectionInline { name: Expr, content: Expr, line: usize },
+    SectionInline {
+        name: Expr,
+        content: Expr,
+        line: usize,
+    },
     /// `@yield('content', 'default')`
     Yield { args: Vec<Expr>, line: usize },
     /// `@parent`
@@ -105,7 +121,11 @@ pub(crate) enum Node {
     /// `@stack('scripts')`
     Stack { args: Vec<Expr>, line: usize },
     /// `@once ... @endonce`
-    Once { key: OnceKey, body: Vec<Node>, line: usize },
+    Once {
+        key: OnceKey,
+        body: Vec<Node>,
+        line: usize,
+    },
     /// A component tag (`<x-alert>`) or `@component` block.
     Component(Box<ComponentNode>),
     /// A named slot (`<x-slot:title>` or `@slot('title')`).
@@ -115,11 +135,23 @@ pub(crate) enum Node {
     /// `@aware([...])`
     Aware { expr: Expr, line: usize },
     /// `@fragment('name') ... @endfragment`
-    Fragment { name: Expr, body: Vec<Node>, line: usize },
+    Fragment {
+        name: Expr,
+        body: Vec<Node>,
+        line: usize,
+    },
     /// `@lang ... @endlang`
-    LangBlock { args: Vec<Expr>, body: Vec<Node>, line: usize },
+    LangBlock {
+        args: Vec<Expr>,
+        body: Vec<Node>,
+        line: usize,
+    },
     /// A directive that outputs something (`@csrf`, `@json`, `@class`, custom directives...).
-    Output { directive: OutputDirective, args: Vec<Expr>, line: usize },
+    Output {
+        directive: OutputDirective,
+        args: Vec<Expr>,
+        line: usize,
+    },
 }
 
 /// One branch of a conditional.
@@ -152,7 +184,11 @@ pub(crate) enum Cond {
     /// `@session('key')`: binds `$value`.
     Session(Vec<Expr>),
     /// A custom `Blade::if` condition (negated for `@unless...`).
-    Custom { name: String, args: Vec<Expr>, negate: bool },
+    Custom {
+        name: String,
+        args: Vec<Expr>,
+        negate: bool,
+    },
 }
 
 /// A `@case` (or `@default`, when `test` is `None`).

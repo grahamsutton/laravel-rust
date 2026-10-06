@@ -25,7 +25,7 @@
 //! let factory = Factory::new(Vec::<String>::new());
 //! let html = factory
 //!     .render_inline(
-//!         "@foreach ($users as $user){{ $loop->iteration }}. {{ $user['name'] }}@unless($loop->last), @endunless@endforeach",
+//!         "@foreach ($users as $user){{ $loop->iteration }}. {{ $user['name'] }}@unless($loop->last), @endunless\n@endforeach",
 //!         json!({"users": [{"name": "Taylor"}, {"name": "Abigail"}]}),
 //!     )
 //!     .unwrap();
@@ -63,17 +63,35 @@
 //! | `old` | `old()` | key, default | the default |
 //! | `vite` | `@vite([...])` | entry points, build directory | empty |
 //! | `vite_react_refresh` | `@viteReactRefresh` | none | empty |
-//! | `app` | `@inject('name', 'service')` | service name | none (error) |
+//! | `app_locale` | `app()->getLocale()`, `App::getLocale()` | none → locale | `config('app.locale')`, else `"en"` |
+//! | `app` | `@inject('name', 'service')`, `app()` | service name (none → the application) | no arguments: an [`AppObject`]; with a service: error |
 //! | `config` | `config()` | key, default | the container's config repository |
-//! | `route`, `url`, `asset`, `secure_asset`, `action`, `request`, ... | helpers | as in Laravel | none, except `request()` |
+//! | `request` | `request()` | key, default | the current request ([`RequestObject`]) |
+//! | `route`, `url`, `asset`, `secure_asset`, `action`, ... | helpers | as in Laravel | none (error) |
+//!
+//! The defaults let templates render outside a full application (in tests,
+//! say); the framework registers the real implementations at boot.
 //!
 //! Static calls look for a function registered as `"Class::method"` first,
 //! so `Blade::function("Route::has", ...)` makes `Route::has('login')` work.
+//! (`Auth::check()`, `Auth::user()`, `Gate::allows()`, `Config::get()`,
+//! `Session::get()`, `Lang::get()`, `URL::to()` and `App::environment()`
+//! fall back to the hooks above.)
+//!
+//! ## Whitespace
+//!
+//! Output matches Laravel's: a directive swallows the single newline that
+//! directly follows it (as PHP does after `?>`), echoes keep theirs, and
+//! component tags swallow the newline after them. Like Laravel, a directive
+//! glued to a word (`foo@if`) is plain text — that's what keeps
+//! `taylor@laravel.com` intact.
 //!
 //! The `$errors` variable is always defined. When the view data (or data
 //! from a [`Factory::share_resolver`]) contains `errors` as JSON shaped like
 //! `{"default": {"email": ["..."]}}` (or a flat `{"email": ["..."]}`), it is
 //! wrapped in a [`ViewErrorBag`].
+
+#![warn(missing_docs)]
 
 pub mod attributes;
 pub mod compiler;
@@ -102,10 +120,14 @@ pub use exception::{ViewCompilationException, ViewException};
 pub use facades::Blade;
 pub use factory::{Factory, IntoViewData, ShareResolver, ViewCallback, ViewPatterns};
 pub use finder::FileViewFinder;
-pub use objects::{DateObject, MessageBagObject, OptionalObject, RequestObject, ViewErrorBag};
+pub use objects::{
+    AppObject, DateObject, MessageBagObject, OptionalObject, RequestObject, ViewErrorBag,
+};
 pub use provider::ViewServiceProvider;
 pub use registry::{ComponentFactory, ConditionHandler, DirectiveHandler};
-pub use value::{ArrayKey, ViewArray, ViewClosure, ViewData, ViewFunction, ViewObject, ViewValue, data};
+pub use value::{
+    ArrayKey, ViewArray, ViewClosure, ViewData, ViewFunction, ViewObject, ViewValue, data,
+};
 pub use view::{View, ViewInfo};
 
 /// Get a view instance (the `view()` helper).

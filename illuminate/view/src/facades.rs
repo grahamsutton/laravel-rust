@@ -69,17 +69,25 @@ impl View {
     }
 
     /// Share data resolved from the current request with every view.
-    pub fn share_resolver(resolver: impl Fn(&Request) -> Map<String, Value> + Send + Sync + 'static) {
+    pub fn share_resolver(
+        resolver: impl Fn(&Request) -> Map<String, Value> + Send + Sync + 'static,
+    ) {
         Factory::resolve().share_resolver(resolver)
     }
 
     /// Register a view composer.
-    pub fn composer(views: impl ViewPatterns, callback: impl Fn(&mut crate::View) + Send + Sync + 'static) {
+    pub fn composer(
+        views: impl ViewPatterns,
+        callback: impl Fn(&mut crate::View) + Send + Sync + 'static,
+    ) {
         Factory::resolve().composer(views, callback)
     }
 
     /// Register a view creator.
-    pub fn creator(views: impl ViewPatterns, callback: impl Fn(&mut crate::View) + Send + Sync + 'static) {
+    pub fn creator(
+        views: impl ViewPatterns,
+        callback: impl Fn(&mut crate::View) + Send + Sync + 'static,
+    ) {
         Factory::resolve().creator(views, callback)
     }
 
@@ -129,7 +137,10 @@ impl Blade {
     }
 
     /// Register a custom directive.
-    pub fn directive(name: &str, handler: impl Fn(&[ViewValue]) -> Result<String> + Send + Sync + 'static) {
+    pub fn directive(
+        name: &str,
+        handler: impl Fn(&[ViewValue]) -> Result<String> + Send + Sync + 'static,
+    ) {
         Self::compiler().directive(name, handler)
     }
 
@@ -144,8 +155,16 @@ impl Blade {
     }
 
     /// Register a function callable from templates.
-    pub fn function(name: &str, function: impl Fn(&[ViewValue]) -> Result<ViewValue> + Send + Sync + 'static) {
+    pub fn function(
+        name: &str,
+        function: impl Fn(&[ViewValue]) -> Result<ViewValue> + Send + Sync + 'static,
+    ) {
         Self::compiler().function(name, function)
+    }
+
+    /// Register an already shared function.
+    pub fn function_arc(name: &str, function: crate::value::ViewFunction) {
+        Self::compiler().function_arc(name, function)
     }
 
     /// Register a class-based component.
@@ -165,6 +184,13 @@ impl Blade {
     /// Register a view directory of anonymous components under a prefix.
     pub fn anonymous_component_namespace(directory: &str, prefix: &str) {
         Self::compiler().anonymous_component_namespace(directory, prefix)
+    }
+
+    /// Register a custom echo handler for objects of type `T`.
+    pub fn stringable<T: crate::value::ViewObject>(
+        handler: impl Fn(&T) -> String + Send + Sync + 'static,
+    ) {
+        Self::compiler().stringable(handler)
     }
 
     /// Stop double-encoding HTML entities.
