@@ -14,6 +14,7 @@ pub mod http;
 pub mod inspiring;
 mod integration;
 pub mod providers;
+pub mod testing;
 
 pub use application::{Application, VERSION};
 pub use bootstrap::ConfigFile;

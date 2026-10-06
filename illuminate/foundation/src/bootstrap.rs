@@ -100,6 +100,10 @@ pub fn load_configuration(app: &Application) {
         }
     }
 
+    for (key, value) in app.config_overrides() {
+        repository.set(&key, value);
+    }
+
     let timezone = repository.string_or("app.timezone", "UTC");
     let _ = Carbon::set_default_timezone(&timezone);
 }

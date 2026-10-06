@@ -36,6 +36,7 @@ pub struct Application {
     booted_callbacks: Mutex<Vec<Callback>>,
     terminating_callbacks: Mutex<Vec<Callback>>,
     config_files: Mutex<Vec<ConfigFile>>,
+    config_overrides: Mutex<Vec<(String, Value)>>,
 }
 
 /// The application's well-known directories.
@@ -96,6 +97,7 @@ impl Application {
             booted_callbacks: Mutex::new(Vec::new()),
             terminating_callbacks: Mutex::new(Vec::new()),
             config_files: Mutex::new(Vec::new()),
+            config_overrides: Mutex::new(Vec::new()),
         });
         container.instance_arc::<Application>(app.clone());
         container.instance_arc::<Container>(container.clone());
@@ -363,6 +365,21 @@ impl Application {
     /// Register the application's configuration files.
     pub fn add_config_files(&self, files: impl IntoIterator<Item = ConfigFile>) {
         self.config_files.lock().unwrap().extend(files);
+    }
+
+    /// Override a configuration value after the configuration files load
+    /// (applied immediately if configuration has already been loaded).
+    pub fn override_config(&self, key: &str, value: impl Into<Value>) {
+        let value = value.into();
+        if self.has_been_bootstrapped() {
+            self.config_repository().set(key, value.clone());
+        }
+        self.config_overrides.lock().unwrap().push((key.to_string(), value));
+    }
+
+    /// The configuration overrides.
+    pub fn config_overrides(&self) -> Vec<(String, Value)> {
+        self.config_overrides.lock().unwrap().clone()
     }
 
     /// The registered configuration files.
