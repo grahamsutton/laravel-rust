@@ -320,6 +320,9 @@ impl Application {
     /// Set the current application locale.
     pub fn set_locale(&self, locale: &str) {
         self.config_repository().set("app.locale", locale);
+        if let Ok(translator) = self.try_make::<illuminate_translation::Translator>() {
+            let _ = translator.set_locale(locale);
+        }
     }
 
     /// Determine if the given locale is the current one.

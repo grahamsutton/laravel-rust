@@ -1,1 +1,196 @@
-//! The Laravel Framework, for Rust.
+//! # Laravel
+//!
+//! The PHP framework for web artisans — now in Rust.
+//!
+//! Laravel is a web application framework with expressive, elegant syntax.
+//! This crate is the single dependency your application needs: it brings
+//! every Illuminate component together, along with the prelude, facades, and
+//! helpers you know.
+//!
+//! ```ignore
+//! use laravel::prelude::*;
+//!
+//! pub fn routes() {
+//!     Route::get("/", || async {
+//!         view("welcome")
+//!     });
+//!
+//!     Route::get("/users/{user}", |user: User| async move {
+//!         user
+//!     });
+//! }
+//! ```
+
+// ---------------------------------------------------------------------------
+// The Illuminate components
+// ---------------------------------------------------------------------------
+
+pub use illuminate_cache as cache;
+pub use illuminate_config as config;
+pub use illuminate_container as container;
+pub use illuminate_cookie as cookie;
+pub use illuminate_encryption as encryption;
+pub use illuminate_events as events;
+pub use illuminate_filesystem as filesystem;
+pub use illuminate_foundation as foundation;
+pub use illuminate_hashing as hashing;
+pub use illuminate_http as http;
+pub use illuminate_log as log;
+pub use illuminate_pagination as pagination;
+pub use illuminate_pipeline as pipeline;
+pub use illuminate_routing as routing;
+pub use illuminate_session as session;
+pub use illuminate_support as support;
+pub use illuminate_translation as translation;
+
+/// Testing helpers: `TestApp`, `TestResponse`, and friends.
+pub mod testing {
+    pub use illuminate_foundation::testing::*;
+}
+
+/// The derive macros: `#[derive(Model)]`, `#[derive(Injectable)]`.
+pub use illuminate_macros::{Injectable, Model};
+
+pub use async_trait::async_trait;
+pub use illuminate_foundation::{Application, ApplicationBuilder, ConfigFile, Inspiring};
+pub use illuminate_support::{Error, Result, Value, json};
+
+// ---------------------------------------------------------------------------
+// Facades
+// ---------------------------------------------------------------------------
+
+/// Laravel's facades: static, expressive access to framework services.
+pub mod facades {
+    pub use illuminate_cache::facades::{Cache, RateLimiter};
+    pub use illuminate_config::Config;
+    pub use illuminate_cookie::facades::Cookie;
+    pub use illuminate_encryption::Crypt;
+    pub use illuminate_events::Event;
+    pub use illuminate_filesystem::facades::{File, Storage};
+    pub use illuminate_foundation::App;
+    pub use illuminate_hashing::Hash;
+    pub use illuminate_log::Log;
+    pub use illuminate_routing::{Redirect, Route, URL};
+    pub use illuminate_session::Session;
+    pub use illuminate_translation::Lang;
+}
+
+// ---------------------------------------------------------------------------
+// Global helpers
+// ---------------------------------------------------------------------------
+
+/// Laravel's global helper functions.
+pub mod helpers {
+    pub use illuminate_cache::cache;
+    pub use illuminate_config::{config, config_or};
+    pub use illuminate_container::{app, resolve, try_app};
+    pub use illuminate_cookie::cookie;
+    pub use illuminate_encryption::{decrypt, encrypt};
+    pub use illuminate_events::event;
+    pub use illuminate_foundation::{
+        app_path, base_path, bootstrap_path, config_path, database_path, lang_path, public_path,
+        resource_path, storage_path,
+    };
+    pub use illuminate_hashing::bcrypt;
+    pub use illuminate_http::{abort, abort_if, abort_unless, abort_with, request, response};
+    pub use illuminate_log::{info, logger};
+    pub use illuminate_routing::{asset, back, redirect, route, secure_asset, secure_url, to_route, url};
+    pub use illuminate_session::{csrf_field, csrf_token, method_field, old, session};
+    pub use illuminate_support::{
+        blank, class_basename, collect, data_get, data_set, e, env, filled, now, retry, str, tap,
+        throw_if, throw_unless, today, with,
+    };
+    pub use illuminate_translation::{__, trans, trans_choice};
+}
+
+// ---------------------------------------------------------------------------
+// The prelude
+// ---------------------------------------------------------------------------
+
+/// Everything you need to build an application: `use laravel::prelude::*;`
+pub mod prelude {
+    pub use crate::facades::*;
+    pub use crate::helpers::*;
+
+    pub use async_trait::async_trait;
+    pub use illuminate_macros::{Injectable, Model};
+    pub use serde::{Deserialize, Serialize};
+
+    pub use illuminate_container::{Container, Injectable as InjectableContract, ServiceProvider};
+    pub use illuminate_filesystem::UploadedFileExt;
+    pub use illuminate_foundation::{Application, ApplicationBuilder, ConfigFile, Inspiring};
+    pub use illuminate_http::{
+        HttpException, IntoResponse, Json, Middleware, Next, Request, Response, StatusCode,
+        UploadedFile,
+    };
+    pub use illuminate_pagination::{LengthAwarePaginator, Paginator};
+    pub use illuminate_routing::{
+        FromRequest, Inject, Input, Path, Query, ResourceController, UrlRoutable,
+    };
+    pub use illuminate_session::RequestSessionExt;
+    pub use illuminate_support::error::Context as _;
+    pub use illuminate_support::{
+        Arr, Carbon, CarbonInterval, Collection, Conditionable, Error, HtmlString,
+        Map, MessageBag, Number, Result, Str, Stringable, Tappable, Value, ValueExt, cast, json,
+        to_value,
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Application conventions
+// ---------------------------------------------------------------------------
+
+/// The base path of your application (the directory holding `Cargo.toml`).
+#[macro_export]
+macro_rules! base_path {
+    () => {
+        env!("CARGO_MANIFEST_DIR")
+    };
+}
+
+/// Include the migrations discovered in `database/migrations` by
+/// `laravel_build::discover()`.
+#[macro_export]
+macro_rules! discover_migrations {
+    () => {
+        include!(concat!(env!("OUT_DIR"), "/laravel/migrations.rs"));
+    };
+}
+
+/// Include the seeders discovered in `database/seeders`.
+#[macro_export]
+macro_rules! discover_seeders {
+    () => {
+        include!(concat!(env!("OUT_DIR"), "/laravel/seeders.rs"));
+    };
+}
+
+/// Include the Artisan commands discovered in `app/console/commands`.
+#[macro_export]
+macro_rules! discover_commands {
+    () => {
+        include!(concat!(env!("OUT_DIR"), "/laravel/commands.rs"));
+    };
+}
+
+/// List the application's configuration files: `config_files![app, database]`
+/// expects modules exposing `pub fn config() -> Value`.
+#[macro_export]
+macro_rules! config_files {
+    ($($name:ident),* $(,)?) => {
+        $(pub mod $name;)*
+
+        /// Every configuration file in `config/`.
+        pub fn all() -> ::std::vec::Vec<$crate::ConfigFile> {
+            ::std::vec![$($crate::ConfigFile::new(stringify!($name), $name::config)),*]
+        }
+    };
+}
+
+/// Re-exports used by the framework's macros. Not part of the public API.
+#[doc(hidden)]
+pub mod __private {
+    pub use inventory;
+    pub use serde;
+    pub use serde_json;
+}

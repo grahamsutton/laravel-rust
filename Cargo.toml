@@ -119,23 +119,18 @@ illuminate-http.workspace = true
 illuminate-routing.workspace = true
 illuminate-cookie.workspace = true
 illuminate-session.workspace = true
-illuminate-view.workspace = true
-illuminate-validation.workspace = true
-illuminate-database.workspace = true
 illuminate-macros.workspace = true
 illuminate-pagination.workspace = true
 illuminate-cache.workspace = true
-illuminate-auth.workspace = true
-illuminate-console.workspace = true
-illuminate-queue.workspace = true
-illuminate-mail.workspace = true
-illuminate-notifications.workspace = true
 illuminate-foundation.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 inventory.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [profile.dev]
 # Keep debug builds snappy while still giving dependencies a little speed.
