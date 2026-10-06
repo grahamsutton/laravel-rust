@@ -380,7 +380,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
             #[#root::async_trait]
             impl #impl_generics #root::routing::FromRequest for #ident #ty_generics #where_clause {
                 async fn from_request(request: &#root::http::Request) -> #root::support::Result<Self> {
-                    #eloquent::resolve_route_binding::<Self>(request).await
+                    #root::__private::resolve_route_binding::<Self>(request).await
                 }
             }
 

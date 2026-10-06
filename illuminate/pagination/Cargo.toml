@@ -9,3 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+illuminate-support.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
