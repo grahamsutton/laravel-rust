@@ -20,10 +20,12 @@ use indexmap::IndexMap;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct InvalidInputException {
+    /// The error message.
     pub message: String,
 }
 
 impl InvalidInputException {
+    /// Create a new exception with the given message.
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -35,10 +37,12 @@ impl InvalidInputException {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct InvalidDefinitionException {
+    /// The error message.
     pub message: String,
 }
 
 impl InvalidDefinitionException {
+    /// Create a new exception with the given message.
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),

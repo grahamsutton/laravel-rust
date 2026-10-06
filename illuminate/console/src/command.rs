@@ -105,10 +105,12 @@ pub trait Command: Send + Sync + 'static {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct ManuallyFailedException {
+    /// The failure message.
     pub message: String,
 }
 
 impl ManuallyFailedException {
+    /// Create a new exception with the given message.
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
@@ -120,6 +122,7 @@ impl ManuallyFailedException {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("The command exited with status code [{code}].")]
 pub struct CommandExit {
+    /// The exit code.
     pub code: i32,
 }
 
@@ -127,11 +130,14 @@ pub struct CommandExit {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct CommandNotFoundException {
+    /// The full message, including any suggestions.
     pub message: String,
+    /// The commands (or namespaces) the user may have meant.
     pub alternatives: Vec<String>,
 }
 
 impl CommandNotFoundException {
+    /// Create a new exception with the given message and alternatives.
     pub fn new(message: impl Into<String>, alternatives: Vec<String>) -> Self {
         Self {
             message: message.into(),
@@ -145,11 +151,13 @@ impl CommandNotFoundException {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{message}")]
 pub struct PromptValidationException {
+    /// The validation message.
     pub message: String,
     pub(crate) rendered: bool,
 }
 
 impl PromptValidationException {
+    /// Create a new exception with the given validation message.
     pub fn new(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),

@@ -60,12 +60,19 @@ impl Default for Schedule {
 }
 
 impl Schedule {
+    /// Sunday, for use with `days(...)`.
     pub const SUNDAY: u32 = 0;
+    /// Monday, for use with `days(...)`.
     pub const MONDAY: u32 = 1;
+    /// Tuesday, for use with `days(...)`.
     pub const TUESDAY: u32 = 2;
+    /// Wednesday, for use with `days(...)`.
     pub const WEDNESDAY: u32 = 3;
+    /// Thursday, for use with `days(...)`.
     pub const THURSDAY: u32 = 4;
+    /// Friday, for use with `days(...)`.
     pub const FRIDAY: u32 = 5;
+    /// Saturday, for use with `days(...)`.
     pub const SATURDAY: u32 = 6;
 
     /// Create a new schedule. Mutexes bound in the current container

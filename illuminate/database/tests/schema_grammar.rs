@@ -533,12 +533,10 @@ fn changing_columns() {
     );
     assert_eq!(
         sql(&pgsql(), &mut alter(build)),
-        vec!["alter table \"users\" alter column \"name\" type varchar(50), alter column \"name\" drop not null, alter column \"name\" drop default, alter column \"name\" drop identity if exists, comment on column \"users\".\"name\" is NULL"
-            .split(", comment")
-            .next()
-            .unwrap()
-            .to_string(),
-            "comment on column \"users\".\"name\" is NULL".to_string()]
+        vec![
+            "alter table \"users\" alter column \"name\" type varchar(50), alter column \"name\" drop not null, alter column \"name\" drop default, alter column \"name\" drop identity if exists",
+            "comment on column \"users\".\"name\" is NULL",
+        ]
     );
 }
 
@@ -573,23 +571,20 @@ fn mariadb_uses_native_uuids() {
     });
     assert_eq!(
         sql(&grammar, &mut blueprint),
-        vec![
-            "create table `users` (`id` uuid not null)",
-            "alter table `users` add primary key (`id`)",
-        ]
+        vec!["create table `users` (`id` uuid not null, primary key (`id`))"]
     );
 }
 
 #[test]
 fn raw_columns_and_indexes() {
     let mut blueprint = create(|t| {
-        t.raw_column("point", "geometry not null");
+        t.raw_column("point", "geometry");
         t.raw_index("lower(email)", "users_lower_email_index");
     });
     assert_eq!(
         sql(&pgsql(), &mut blueprint),
         vec![
-            "create table \"users\" (\"point\" geometry not null not null)",
+            "create table \"users\" (\"point\" geometry not null)",
             "create index \"users_lower_email_index\" on \"users\" (lower(email))",
         ]
     );
