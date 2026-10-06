@@ -30,6 +30,7 @@ pub fn take_pending(app: &Application) -> Vec<Box<dyn ServiceProvider>> {
 pub fn default_providers() -> Vec<Box<dyn ServiceProvider>> {
     vec![
         Box::new(illuminate_events::EventServiceProvider),
+        Box::new(illuminate_database::DatabaseServiceProvider),
         Box::new(illuminate_log::LogServiceProvider),
         Box::new(illuminate_routing::RoutingServiceProvider),
         Box::new(illuminate_cache::CacheServiceProvider),

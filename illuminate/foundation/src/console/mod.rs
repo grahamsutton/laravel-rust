@@ -50,6 +50,17 @@ pub fn register_framework_commands() {
     Artisan::register(StorageLinkCommand);
     Artisan::register(UpCommand);
 
+    Artisan::register(MigrateCommand::default());
+    Artisan::register(MigrateFreshCommand::default());
+    Artisan::register(MigrateInstallCommand);
+    Artisan::register(MigrateRefreshCommand::default());
+    Artisan::register(MigrateResetCommand::default());
+    Artisan::register(MigrateRollbackCommand::default());
+    Artisan::register(MigrateStatusCommand);
+    Artisan::register(SeedCommand);
+    Artisan::register(WipeCommand);
+
+    Artisan::register(generators::migration::MakeMigrationCommand);
     for generator in generators::commands::all() {
         Artisan::register(generator);
     }

@@ -7,6 +7,7 @@
 //! is ready to use.
 
 pub mod commands;
+pub mod migration;
 pub mod stubs;
 
 use std::path::{Path, PathBuf};

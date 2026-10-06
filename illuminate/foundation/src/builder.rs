@@ -127,6 +127,34 @@ impl ApplicationBuilder {
         })
     }
 
+    /// Register the application's migrations (`database/migrations`).
+    ///
+    /// ```ignore
+    /// .with_migrations(database::migrations::all())
+    /// ```
+    pub fn with_migrations(
+        self,
+        migrations: impl IntoIterator<Item = (String, Box<dyn illuminate_database::Migration>)>,
+    ) -> Self {
+        let migrations: Vec<_> = migrations.into_iter().collect();
+        self.tap(move |app| {
+            app.singleton_if::<illuminate_database::MigrationRegistry>(|_| Arc::new(Default::default()));
+            app.make::<illuminate_database::MigrationRegistry>().extend(migrations);
+        })
+    }
+
+    /// Register the application's seeders (`database/seeders`).
+    ///
+    /// ```ignore
+    /// .with_seeders(database::seeders::register)
+    /// ```
+    pub fn with_seeders(self, register: impl FnOnce(&illuminate_database::SeederRegistry) + Send + 'static) -> Self {
+        self.tap(move |app| {
+            app.singleton_if::<illuminate_database::SeederRegistry>(|_| Arc::new(Default::default()));
+            register(&app.make::<illuminate_database::SeederRegistry>());
+        })
+    }
+
     /// Run a callback against the application once it is created (used by
     /// framework extensions such as console commands and migrations).
     pub fn tap(mut self, callback: impl FnOnce(&Arc<Application>) + Send + 'static) -> Self {

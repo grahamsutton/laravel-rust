@@ -27,6 +27,7 @@ illuminate-translation.workspace = true
 illuminate-pipeline.workspace = true
 illuminate-console.workspace = true
 illuminate-validation.workspace = true
+illuminate-database.workspace = true
 indexmap.workspace = true
 tokio.workspace = true
 serde.workspace = true

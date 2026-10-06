@@ -323,3 +323,81 @@ pub const TRAIT: &str = r#"pub trait {{ class }} {
     //
 }
 "#;
+
+pub const MIGRATION: &str = r#"use laravel::prelude::*;
+
+pub struct {{ class }};
+
+#[async_trait]
+impl Migration for {{ class }} {
+    /// Run the migrations.
+    async fn up(&self) -> Result<()> {
+        Ok(())
+    }
+
+    /// Reverse the migrations.
+    async fn down(&self) -> Result<()> {
+        Ok(())
+    }
+}
+"#;
+
+pub const MIGRATION_CREATE: &str = r#"use laravel::prelude::*;
+
+pub struct {{ class }};
+
+#[async_trait]
+impl Migration for {{ class }} {
+    /// Run the migrations.
+    async fn up(&self) -> Result<()> {
+        Schema::create("{{ table }}", |table| {
+            table.id();
+            table.timestamps();
+        })
+        .await
+    }
+
+    /// Reverse the migrations.
+    async fn down(&self) -> Result<()> {
+        Schema::drop_if_exists("{{ table }}").await
+    }
+}
+"#;
+
+pub const MIGRATION_UPDATE: &str = r#"use laravel::prelude::*;
+
+pub struct {{ class }};
+
+#[async_trait]
+impl Migration for {{ class }} {
+    /// Run the migrations.
+    async fn up(&self) -> Result<()> {
+        Schema::table("{{ table }}", |table| {
+            let _ = table;
+        })
+        .await
+    }
+
+    /// Reverse the migrations.
+    async fn down(&self) -> Result<()> {
+        Schema::table("{{ table }}", |table| {
+            let _ = table;
+        })
+        .await
+    }
+}
+"#;
+
+pub const SEEDER: &str = r#"use laravel::prelude::*;
+
+#[derive(Default)]
+pub struct {{ class }};
+
+#[async_trait]
+impl Seeder for {{ class }} {
+    /// Run the database seeds.
+    async fn run(&self) -> Result<()> {
+        Ok(())
+    }
+}
+"#;

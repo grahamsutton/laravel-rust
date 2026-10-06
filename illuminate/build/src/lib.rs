@@ -82,12 +82,12 @@ impl Discovery {
         }
         let _ = writeln!(
             out,
-            "\n/// Every migration in `database/migrations`, ordered by name.\npub fn all() -> ::std::vec::Vec<(&'static str, ::std::boxed::Box<dyn {krate}::database::migrations::Migration>)> {{\n    ::std::vec!["
+            "\n/// Every migration in `database/migrations`, ordered by name.\npub fn all() -> ::std::vec::Vec<(::std::string::String, ::std::boxed::Box<dyn {krate}::database::Migration>)> {{\n    ::std::vec!["
         );
         for (stem, _) in &files {
             let _ = writeln!(
                 out,
-                "        ({stem:?}, ::std::boxed::Box::new({}::{})),",
+                "        (::std::string::String::from({stem:?}), ::std::boxed::Box::new({}::{})),",
                 module_name("m", stem),
                 studly(strip_date_prefix(stem))
             );
@@ -111,13 +111,12 @@ impl Discovery {
         }
         let _ = writeln!(
             out,
-            "\n/// Every seeder in `database/seeders`, keyed by name.\npub fn all() -> ::std::vec::Vec<(&'static str, ::std::boxed::Box<dyn {krate}::database::seeder::Seeder>)> {{\n    ::std::vec!["
+            "\n/// Register every seeder in `database/seeders`.\npub fn register(registry: &{krate}::database::SeederRegistry) {{"
         );
         for (stem, _) in &files {
-            let name = studly(stem);
-            let _ = writeln!(out, "        ({name:?}, ::std::boxed::Box::new({name})),");
+            let _ = writeln!(out, "    registry.register::<{}>();", studly(stem));
         }
-        out.push_str("    ]\n}\n");
+        out.push_str("}\n");
         out
     }
 
@@ -238,7 +237,7 @@ mod tests {
         let generated = Discovery::new(&dir, &dir).migrations(&migrations);
         assert!(generated.contains("mod m0001_01_01_000000_create_users_table;"));
         assert!(generated.contains(
-            "(\"0001_01_01_000000_create_users_table\", ::std::boxed::Box::new(m0001_01_01_000000_create_users_table::CreateUsersTable))"
+            "(::std::string::String::from(\"0001_01_01_000000_create_users_table\"), ::std::boxed::Box::new(m0001_01_01_000000_create_users_table::CreateUsersTable))"
         ));
         assert!(!generated.contains("mod mmod"));
         std::fs::remove_dir_all(&dir).ok();

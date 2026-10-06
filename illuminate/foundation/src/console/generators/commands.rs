@@ -167,6 +167,14 @@ pub fn all() -> Vec<MakeCommand> {
              {--r|resource : Generate a resource controller class}",
         ),
         MakeCommand::new(
+            "make:seeder",
+            "Seeder",
+            "Create a new seeder class",
+            "database/seeders",
+            Registration::Discovered,
+            |_, name| populate(stubs::SEEDER, &[("class", &class(name))]),
+        ),
+        MakeCommand::new(
             "make:middleware",
             "Middleware",
             "Create a new HTTP middleware class",

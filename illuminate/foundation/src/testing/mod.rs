@@ -1,6 +1,7 @@
 //! Testing helpers: make requests to your application and assert on the
 //! responses, just like Laravel's `TestCase`.
 
+mod database;
 pub mod json;
 mod test_app;
 pub mod test_response;

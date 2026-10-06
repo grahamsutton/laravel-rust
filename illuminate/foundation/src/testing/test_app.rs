@@ -49,6 +49,8 @@ impl TestApp {
 
         // The equivalent of Laravel's phpunit.xml environment.
         app.override_config("app.env", "testing");
+        app.override_config("database.default", "sqlite");
+        app.override_config("database.connections.sqlite.database", ":memory:");
         app.override_config("session.driver", "array");
         app.override_config("cache.default", "array");
         app.override_config("queue.default", "sync");

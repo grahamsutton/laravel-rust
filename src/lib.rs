@@ -30,6 +30,7 @@ pub use illuminate_config as config;
 pub use illuminate_console as console;
 pub use illuminate_container as container;
 pub use illuminate_cookie as cookie;
+pub use illuminate_database as database;
 pub use illuminate_encryption as encryption;
 pub use illuminate_events as events;
 pub use illuminate_filesystem as filesystem;
@@ -67,6 +68,7 @@ pub mod facades {
     pub use illuminate_config::Config;
     pub use illuminate_console::{Artisan, Schedule};
     pub use illuminate_cookie::facades::Cookie;
+    pub use illuminate_database::{DB, Schema};
     pub use illuminate_encryption::Crypt;
     pub use illuminate_events::Event;
     pub use illuminate_filesystem::facades::{File, Storage};
@@ -132,6 +134,7 @@ pub mod prelude {
         FromRequest, Inject, Input, Path, Query, ResourceController, UrlRoutable,
     };
     pub use illuminate_console::{Command, Console};
+    pub use illuminate_database::{Blueprint, Migration, Seeder};
     pub use illuminate_session::RequestSessionExt;
     pub use illuminate_support::error::Context as _;
     pub use illuminate_validation::{
