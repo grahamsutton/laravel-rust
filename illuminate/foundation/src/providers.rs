@@ -40,8 +40,15 @@ pub fn default_providers() -> Vec<Box<dyn ServiceProvider>> {
         Box::new(illuminate_pipeline::PipelineServiceProvider),
         Box::new(illuminate_session::SessionServiceProvider),
         Box::new(illuminate_translation::TranslationServiceProvider),
+        Box::new(illuminate_validation::ValidationServiceProvider),
+        Box::new(illuminate_console::ConsoleServiceProvider),
         Box::new(FoundationServiceProvider),
     ]
+}
+
+/// Artisan commands contributed by framework components.
+pub fn extra_framework_commands() -> Vec<Arc<dyn illuminate_console::Command>> {
+    Vec::new()
 }
 
 /// Middleware aliases contributed by framework components.

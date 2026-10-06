@@ -1,7 +1,7 @@
 //! The glue between framework components: hooks that let independent
 //! crates cooperate without depending on each other.
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, RwLock};
 
 use illuminate_container::try_app;
 use illuminate_http::{ExceptionHandler, current_request};
@@ -9,6 +9,21 @@ use illuminate_log::{Level, Log};
 use illuminate_support::{Error, Map, Value, ValueExt};
 
 use crate::exceptions::{Handler, Prepared};
+
+type ViewRenderer = Arc<dyn Fn(&str, Value) -> Option<String> + Send + Sync>;
+
+static VIEW_RENDERER: LazyLock<RwLock<Option<ViewRenderer>>> = LazyLock::new(|| RwLock::new(None));
+
+/// Set the function used to render views outside of a request (error pages,
+/// maintenance templates).
+pub fn set_view_renderer(renderer: impl Fn(&str, Value) -> Option<String> + Send + Sync + 'static) {
+    *VIEW_RENDERER.write().unwrap() = Some(Arc::new(renderer));
+}
+
+/// The view renderer, if the view layer has been wired up.
+pub fn view_renderer() -> Option<ViewRenderer> {
+    VIEW_RENDERER.read().unwrap().clone()
+}
 
 /// Wire every component together. Runs when the foundation provider boots.
 pub fn boot() {
@@ -37,6 +52,17 @@ fn wire_exception_handler() {
     });
 
     handler.configure(|exceptions| {
+        exceptions.prepare_using(|error| {
+            error
+                .downcast_ref::<illuminate_validation::ValidationException>()
+                .map(|e| Prepared::Validation {
+                    message: e.to_string(),
+                    errors: e.errors.clone(),
+                    status: e.status,
+                    error_bag: e.error_bag.clone(),
+                    redirect_to: e.redirect_to.clone(),
+                })
+        });
         exceptions.prepare_using(|error| {
             error
                 .downcast_ref::<illuminate_session::TokenMismatchException>()

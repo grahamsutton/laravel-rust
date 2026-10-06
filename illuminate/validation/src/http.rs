@@ -334,3 +334,18 @@ pub async fn validate_form_request_with<T: FormRequest>(
         files,
     })
 }
+
+/// Form requests validate themselves when a route handler asks for them:
+///
+/// ```ignore
+/// Route::post("/posts", |request: Validated<StorePostRequest>| async move {
+///     let post = Post::create(request.validated()).await?;
+///     Ok(to_route("posts.show", &post))
+/// });
+/// ```
+#[async_trait::async_trait]
+impl<T: FormRequest + Default> illuminate_routing::FromRequest for Validated<T> {
+    async fn from_request(request: &Request) -> illuminate_support::Result<Self> {
+        validate_form_request::<T>(request).await
+    }
+}

@@ -105,6 +105,28 @@ impl ApplicationBuilder {
         self
     }
 
+    /// Register additional Artisan commands.
+    pub fn with_commands(self, commands: Vec<Box<dyn illuminate_console::Command>>) -> Self {
+        let commands: Vec<Arc<dyn illuminate_console::Command>> =
+            commands.into_iter().map(Arc::from).collect();
+        self.tap(move |app| {
+            app.singleton_if::<crate::console::ConsoleConfiguration>(|_| Arc::new(Default::default()));
+            app.make::<crate::console::ConsoleConfiguration>().add_commands(commands);
+        })
+    }
+
+    /// Define the application's command schedule.
+    pub fn with_schedule(
+        self,
+        callback: impl Fn(&illuminate_console::scheduling::Schedule) + Send + Sync + 'static,
+    ) -> Self {
+        let callback = Arc::new(callback);
+        self.tap(move |app| {
+            app.singleton_if::<crate::console::ConsoleConfiguration>(|_| Arc::new(Default::default()));
+            app.make::<crate::console::ConsoleConfiguration>().add_schedule(callback);
+        })
+    }
+
     /// Run a callback against the application once it is created (used by
     /// framework extensions such as console commands and migrations).
     pub fn tap(mut self, callback: impl FnOnce(&Arc<Application>) + Send + 'static) -> Self {

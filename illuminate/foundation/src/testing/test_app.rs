@@ -83,6 +83,12 @@ impl TestApp {
         &self.app
     }
 
+    /// Run an Artisan command: `app.artisan("migrate").assert_successful().await;`
+    pub fn artisan(&self, command: &str) -> illuminate_console::PendingCommand {
+        self.app.bootstrap_console();
+        illuminate_console::testing::artisan(command)
+    }
+
     // ------------------------------------------------------------------
     // Request configuration
     // ------------------------------------------------------------------

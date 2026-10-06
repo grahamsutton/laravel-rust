@@ -7,13 +7,14 @@ pub mod application;
 pub mod bootstrap;
 pub mod builder;
 pub mod configuration;
+pub mod console;
 pub mod defaults;
 pub mod exceptions;
 pub mod facade;
 pub mod helpers;
 pub mod http;
 pub mod inspiring;
-mod integration;
+pub mod integration;
 pub mod providers;
 pub mod testing;
 
