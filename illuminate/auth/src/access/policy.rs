@@ -17,8 +17,9 @@ use crate::user::{AuthUser, AuthUserRef};
 /// any other ability goes to [`ability`](Policy::ability).
 ///
 /// A `None` answer falls back to a gate defined with the same name, and is
-/// otherwise a denial. Guests (and users of another type) are always
-/// denied by policies.
+/// otherwise a denial. Users of another type are never handled by a
+/// policy, and guests only reach [`guest`](Policy::guest) — Laravel's
+/// optional `?User` type-hint.
 ///
 /// ```
 /// use illuminate_auth::{AuthResponse, Authenticatable, Policy};
@@ -107,7 +108,18 @@ pub trait Policy<M: 'static>: Send + Sync + 'static {
 
     /// Any other ability. `model` is `None` when the check was made against
     /// the model type (`GateArgument::class::<Post>()`).
-    fn ability(&self, _ability: &str, _user: &Self::User, _model: Option<&M>) -> Option<AuthResponse> {
+    fn ability(
+        &self,
+        _ability: &str,
+        _user: &Self::User,
+        _model: Option<&M>,
+    ) -> Option<AuthResponse> {
+        None
+    }
+
+    /// Authorize a guest (no authenticated user). By default guests are
+    /// not handled, and so denied.
+    fn guest(&self, _ability: &str, _model: Option<&M>) -> Option<AuthResponse> {
         None
     }
 }
@@ -120,8 +132,11 @@ pub(crate) enum PolicyOutcome {
     Unhandled,
 }
 
-type PolicyInvoker =
-    Arc<dyn Fn(Option<&AuthUser>, &str, Option<&(dyn Any + Send + Sync)>) -> PolicyOutcome + Send + Sync>;
+type PolicyInvoker = Arc<
+    dyn Fn(Option<&AuthUser>, &str, Option<&(dyn Any + Send + Sync)>) -> PolicyOutcome
+        + Send
+        + Sync,
+>;
 
 /// A registered policy, erased.
 #[derive(Clone)]
@@ -141,13 +156,19 @@ impl PolicyEntry {
             model_name: type_name::<M>(),
             instance: policy,
             invoke: Arc::new(move |user, ability, model| {
-                let Some(user) = user.and_then(P::User::from_auth_user_ref) else {
+                let model = model.and_then(|model| model.downcast_ref::<M>());
+                let Some(user) = user else {
+                    return match invoker.guest(ability, model) {
+                        Some(result) => PolicyOutcome::Handled(Some(result)),
+                        None => PolicyOutcome::Unhandled,
+                    };
+                };
+                let Some(user) = P::User::from_auth_user_ref(user) else {
                     return PolicyOutcome::Unhandled;
                 };
                 if let Some(result) = invoker.before(user, ability) {
                     return PolicyOutcome::Handled(Some(AuthResponse::from(result)));
                 }
-                let model = model.and_then(|model| model.downcast_ref::<M>());
                 let result = dispatch(invoker.as_ref(), user, ability, model);
                 match result {
                     Some(result) => PolicyOutcome::Handled(Some(result)),

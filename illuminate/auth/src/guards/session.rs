@@ -5,8 +5,8 @@ use std::any::Any;
 use std::sync::Arc;
 
 use illuminate_config::Repository;
-use illuminate_cookie::facades::Cookie;
 use illuminate_cookie::CookieQueue;
+use illuminate_cookie::facades::Cookie;
 use illuminate_hashing::Hash;
 use illuminate_http::{HttpException, async_trait};
 use illuminate_support::error::InvalidArgumentException;
@@ -102,9 +102,9 @@ impl SessionGuard {
     ///
     /// ```
     /// use std::sync::Arc;
-    /// use illuminate_auth::{ArrayUserProvider, SessionGuard};
+    /// use illuminate_auth::{ArrayUserProvider, GenericUser, SessionGuard};
     ///
-    /// let guard = SessionGuard::new("web", Arc::new(ArrayUserProvider::default()));
+    /// let guard = SessionGuard::new("web", Arc::new(ArrayUserProvider::<GenericUser>::default()));
     ///
     /// assert_eq!(guard.get_name(), "login_web_59ba36addc2b2f9401580f014c7f58ea4e30989d");
     /// assert_eq!(guard.get_recaller_name(), "remember_web_59ba36addc2b2f9401580f014c7f58ea4e30989d");
@@ -151,18 +151,26 @@ impl SessionGuard {
             .map(Recaller::new)
     }
 
-    async fn user_from_recaller(&self, context: &Context, recaller: &Recaller) -> Result<Option<AuthUser>> {
+    async fn user_from_recaller(
+        &self,
+        context: &Context,
+        recaller: &Recaller,
+    ) -> Result<Option<AuthUser>> {
         if !recaller.valid() || context.guard(&self.name).recall_attempted {
             return Ok(None);
         }
-        context.state.update(&self.name, |state| state.recall_attempted = true);
+        context
+            .state
+            .update(&self.name, |state| state.recall_attempted = true);
 
         let user = self
             .provider
             .retrieve_by_token(&Value::String(recaller.id()), &recaller.token())
             .await?;
         let via_remember = user.is_some();
-        context.state.update(&self.name, |state| state.via_remember = via_remember);
+        context
+            .state
+            .update(&self.name, |state| state.via_remember = via_remember);
 
         let Some(user) = user else {
             return Ok(None);
@@ -193,7 +201,10 @@ impl SessionGuard {
             return;
         }
         if let Some(session) = context.session() {
-            session.put(&self.password_hash_key(), self.hash_password_for_cookie(&password));
+            session.put(
+                &self.password_hash_key(),
+                self.hash_password_for_cookie(&password),
+            );
         }
     }
 
@@ -240,7 +251,11 @@ impl SessionGuard {
         }
     }
 
-    async fn rehash_password_if_required(&self, user: AuthUser, credentials: &Value) -> Result<AuthUser> {
+    async fn rehash_password_if_required(
+        &self,
+        user: AuthUser,
+        credentials: &Value,
+    ) -> Result<AuthUser> {
         if !self.rehash_on_login {
             return Ok(user);
         }
@@ -253,13 +268,24 @@ impl SessionGuard {
 
     /// Retrieve the user matching the credentials and check their password,
     /// remembering them as the last attempted user.
-    async fn retrieve_and_validate(&self, context: &Context, credentials: &Value) -> Result<Option<AuthUser>> {
+    async fn retrieve_and_validate(
+        &self,
+        context: &Context,
+        credentials: &Value,
+    ) -> Result<Option<AuthUser>> {
         let user = self.provider.retrieve_by_credentials(credentials).await?;
         context
             .state
             .update(&self.name, |state| state.last_attempted = user.clone());
         match user {
-            Some(user) if self.provider.validate_credentials(&user, credentials).await? => Ok(Some(user)),
+            Some(user)
+                if self
+                    .provider
+                    .validate_credentials(&user, credentials)
+                    .await? =>
+            {
+                Ok(Some(user))
+            }
             _ => Ok(None),
         }
     }
@@ -274,7 +300,12 @@ impl SessionGuard {
             .into()
     }
 
-    fn basic_credentials_for(&self, context: &Context, field: &str, extra: &Value) -> Option<Value> {
+    fn basic_credentials_for(
+        &self,
+        context: &Context,
+        field: &str,
+        extra: &Value,
+    ) -> Option<Value> {
         let request = context.request.as_ref()?;
         let (user, password) = basic_credentials(request)?;
         let mut credentials = json!({ field: user, "password": password });
@@ -291,10 +322,8 @@ impl SessionGuard {
         let context = self.shared.context();
         self.clear_user_data_from_storage(&context);
 
-        if cycle_token {
-            if let Some(user) = user.filter(|user| user.remember_token().is_some()) {
-                self.cycle_remember_token(user).await?;
-            }
+        if cycle_token && let Some(user) = user.filter(|user| user.remember_token().is_some()) {
+            self.cycle_remember_token(user).await?;
         }
 
         context.state.update(&self.name, |state| {
@@ -332,16 +361,17 @@ impl Guard for SessionGuard {
             }
         }
 
-        if user.is_none() {
-            if let Some(recaller) = self.recaller_for(&context) {
-                user = self.user_from_recaller(&context, &recaller).await?;
-                if let Some(user) = &user {
-                    self.update_session(&context, &user.id()).await?;
-                }
+        if user.is_none()
+            && let Some(recaller) = self.recaller_for(&context)
+        {
+            user = self.user_from_recaller(&context, &recaller).await?;
+            if let Some(user) = &user {
+                self.update_session(&context, &user.id()).await?;
             }
         }
 
-        self.shared.remember_user(&context, &self.name, user.clone());
+        self.shared
+            .remember_user(&context, &self.name, user.clone());
         Ok(user)
     }
 
@@ -361,7 +391,10 @@ impl Guard for SessionGuard {
 
     async fn validate(&self, credentials: &Value) -> Result<bool> {
         let context = self.shared.context();
-        Ok(self.retrieve_and_validate(&context, credentials).await?.is_some())
+        Ok(self
+            .retrieve_and_validate(&context, credentials)
+            .await?
+            .is_some())
     }
 
     fn set_user(&self, user: AuthUser) {
@@ -558,7 +591,7 @@ impl Recaller {
 
     /// The signed password hash.
     pub fn hash(&self) -> String {
-        self.value.splitn(4, '|').nth(2).unwrap_or_default().to_string()
+        self.value.split('|').nth(2).unwrap_or_default().to_string()
     }
 
     /// Determine if the value has every segment.

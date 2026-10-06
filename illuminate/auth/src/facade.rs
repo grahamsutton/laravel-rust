@@ -229,12 +229,18 @@ impl Auth {
 
     /// Attempt to authenticate a user, letting the callback inspect the
     /// user before they're logged in.
-    pub async fn attempt_when<U, F>(credentials: &Value, callback: F, remember: bool) -> Result<bool>
+    pub async fn attempt_when<U, F>(
+        credentials: &Value,
+        callback: F,
+        remember: bool,
+    ) -> Result<bool>
     where
         U: AuthUserRef,
         F: Fn(&U) -> bool + Send + Sync + 'static,
     {
-        manager().attempt_when(credentials, callback, remember).await
+        manager()
+            .attempt_when(credentials, callback, remember)
+            .await
     }
 
     /// Log a user in for this request only (no session or cookies).

@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
 use illuminate_config::Repository;
+use illuminate_container::Container;
 use illuminate_http::{Request, async_trait, current_request};
 use illuminate_session::{RequestSessionExt, Store};
-use illuminate_container::Container;
 use illuminate_support::error::{InvalidArgumentException, RuntimeException};
 use illuminate_support::{Result, Value, ValueExt};
 
@@ -21,8 +21,8 @@ use crate::providers::UserProvider;
 use crate::state::{AuthState, GuardState};
 use crate::user::AuthUser;
 
-pub use request::{IntoUserResult, RequestGuard, RequestGuardCallback};
 pub(crate) use request::request_callback as request_callback_for;
+pub use request::{IntoUserResult, RequestGuard, RequestGuardCallback};
 pub use session::{Recaller, SessionGuard};
 pub use token::TokenGuard;
 
@@ -187,7 +187,10 @@ impl dyn Guard {
 }
 
 fn unsupported(guard: &str, method: &str) -> illuminate_support::Error {
-    RuntimeException::new(format!("Method [{method}] is not supported by the [{guard}] guard.")).into()
+    RuntimeException::new(format!(
+        "Method [{method}] is not supported by the [{guard}] guard."
+    ))
+    .into()
 }
 
 /// What the auth manager shares with the guards it creates: configuration,
@@ -212,7 +215,10 @@ impl Shared {
     }
 
     pub(crate) fn register_provider(&self, driver: String, factory: ProviderFactory) {
-        self.provider_creators.write().unwrap().insert(driver, factory);
+        self.provider_creators
+            .write()
+            .unwrap()
+            .insert(driver, factory);
     }
 
     pub(crate) fn has_provider(&self, driver: &str) -> bool {
@@ -228,7 +234,10 @@ impl Shared {
     }
 
     /// Create the user provider configured under `auth.providers.<name>`.
-    pub(crate) fn create_user_provider(&self, name: Option<&str>) -> Result<Option<Arc<dyn UserProvider>>> {
+    pub(crate) fn create_user_provider(
+        &self,
+        name: Option<&str>,
+    ) -> Result<Option<Arc<dyn UserProvider>>> {
         let name = match name {
             Some(name) if !name.is_empty() => name.to_string(),
             _ => match self.default_user_provider() {
@@ -379,7 +388,9 @@ pub(crate) struct Context {
 
 impl Context {
     pub(crate) fn session(&self) -> Option<Arc<Store>> {
-        self.request.as_ref().and_then(|request| request.try_session())
+        self.request
+            .as_ref()
+            .and_then(|request| request.try_session())
     }
 
     pub(crate) fn guard(&self, guard: &str) -> GuardState {

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use illuminate_container::{Container, try_app};
 
 use super::arguments::{IntoAbilities, IntoGateArguments};
-use super::callbacks::{AfterCallback, Ability, BeforeCallback};
+use super::callbacks::{Ability, AfterCallback, BeforeCallback};
 use super::gate::{AccessGate, UserGate};
 use super::policy::Policy;
 use super::response::{AuthResponse, AuthorizationException, IntoMessage};
@@ -51,7 +51,7 @@ pub fn gate() -> Arc<AccessGate> {
 ///     }
 /// });
 ///
-/// Auth::acting_as(GenericUser::new(json!({"id": 1, "admin": false})), None);
+/// Auth::acting_as(&GenericUser::new(json!({"id": 1, "admin": false})), None);
 ///
 /// assert!(Gate::allows("update-post", &Post { user_id: 1 }).await);
 /// assert!(Gate::denies("update-post", &Post { user_id: 2 }).await);
@@ -132,13 +132,19 @@ impl Gate {
     }
 
     /// Determine if the ability should be granted for the current user.
-    pub fn allows<'a>(ability: &'a str, arguments: impl IntoGateArguments<'a>) -> impl Future<Output = bool> + Send + 'a {
+    pub fn allows<'a>(
+        ability: &'a str,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> impl Future<Output = bool> + Send + 'a {
         let arguments = arguments.into_gate_arguments();
         async move { gate().for_current_user().await.allows(ability, arguments) }
     }
 
     /// Determine if the ability should be denied for the current user.
-    pub fn denies<'a>(ability: &'a str, arguments: impl IntoGateArguments<'a>) -> impl Future<Output = bool> + Send + 'a {
+    pub fn denies<'a>(
+        ability: &'a str,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> impl Future<Output = bool> + Send + 'a {
         let arguments = arguments.into_gate_arguments();
         async move { gate().for_current_user().await.denies(ability, arguments) }
     }
@@ -201,12 +207,18 @@ impl Gate {
     }
 
     /// Authorize inline: allowed when the condition is true.
-    pub fn allow_if(condition: bool, message: impl IntoMessage) -> Result<AuthResponse, AuthorizationException> {
+    pub fn allow_if(
+        condition: bool,
+        message: impl IntoMessage,
+    ) -> Result<AuthResponse, AuthorizationException> {
         gate().allow_if(condition, message)
     }
 
     /// Authorize inline: denied when the condition is true.
-    pub fn deny_if(condition: bool, message: impl IntoMessage) -> Result<AuthResponse, AuthorizationException> {
+    pub fn deny_if(
+        condition: bool,
+        message: impl IntoMessage,
+    ) -> Result<AuthResponse, AuthorizationException> {
         gate().deny_if(condition, message)
     }
 }
@@ -226,7 +238,12 @@ pub fn authorize<'a>(
     arguments: impl IntoGateArguments<'a>,
 ) -> impl Future<Output = Result<AuthResponse, AuthorizationException>> + Send + 'a {
     let arguments = arguments.into_gate_arguments();
-    async move { gate().for_current_user().await.authorize(ability, arguments) }
+    async move {
+        gate()
+            .for_current_user()
+            .await
+            .authorize(ability, arguments)
+    }
 }
 
 /// Authorization checks right on the user: `user.can("update", &post)`.
@@ -254,22 +271,42 @@ pub trait Authorizable {
     fn as_auth_user(&self) -> AuthUser;
 
     /// Determine if the user has all of the given abilities.
-    fn can<'a>(&self, abilities: impl IntoAbilities, arguments: impl IntoGateArguments<'a>) -> bool {
-        gate().for_user(self.as_auth_user()).check(abilities, arguments)
+    fn can<'a>(
+        &self,
+        abilities: impl IntoAbilities,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> bool {
+        gate()
+            .for_user(self.as_auth_user())
+            .check(abilities, arguments)
     }
 
     /// Determine if the user has any of the given abilities.
-    fn can_any<'a>(&self, abilities: impl IntoAbilities, arguments: impl IntoGateArguments<'a>) -> bool {
-        gate().for_user(self.as_auth_user()).any(abilities, arguments)
+    fn can_any<'a>(
+        &self,
+        abilities: impl IntoAbilities,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> bool {
+        gate()
+            .for_user(self.as_auth_user())
+            .any(abilities, arguments)
     }
 
     /// Determine if the user lacks the given abilities.
-    fn cannot<'a>(&self, abilities: impl IntoAbilities, arguments: impl IntoGateArguments<'a>) -> bool {
+    fn cannot<'a>(
+        &self,
+        abilities: impl IntoAbilities,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> bool {
         !self.can(abilities, arguments)
     }
 
     /// Alias of [`cannot`](Authorizable::cannot).
-    fn cant<'a>(&self, abilities: impl IntoAbilities, arguments: impl IntoGateArguments<'a>) -> bool {
+    fn cant<'a>(
+        &self,
+        abilities: impl IntoAbilities,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> bool {
         self.cannot(abilities, arguments)
     }
 }

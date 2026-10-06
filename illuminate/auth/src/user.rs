@@ -323,7 +323,9 @@ impl AuthUser {
 
     /// The user's "remember me" token.
     pub fn remember_token(&self) -> Option<String> {
-        self.inner.dyn_remember_token().filter(|token| !token.is_empty())
+        self.inner
+            .dyn_remember_token()
+            .filter(|token| !token.is_empty())
     }
 
     /// A copy of the user with the given "remember me" token.
@@ -407,12 +409,6 @@ impl fmt::Debug for AuthUser {
 impl Serialize for AuthUser {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.to_value().serialize(serializer)
-    }
-}
-
-impl<U: Authenticatable> From<U> for AuthUser {
-    fn from(user: U) -> Self {
-        AuthUser::new(user)
     }
 }
 
@@ -510,7 +506,9 @@ impl GenericUser {
 
     /// Determine if an attribute is set (and not null).
     pub fn has(&self, key: &str) -> bool {
-        self.attributes.get(key).is_some_and(|value| !value.is_null())
+        self.attributes
+            .get(key)
+            .is_some_and(|value| !value.is_null())
     }
 
     /// Remove an attribute.
@@ -590,7 +588,9 @@ mod tests {
 
     #[test]
     fn users_are_erased_and_recovered() {
-        let user = AuthUser::new(GenericUser::new(json!({"id": 7, "email": "taylor@laravel.com"})));
+        let user = AuthUser::new(GenericUser::new(
+            json!({"id": 7, "email": "taylor@laravel.com"}),
+        ));
         assert_eq!(user.id(), json!(7));
         assert_eq!(user.auth_identifier_name(), "id");
         assert_eq!(user.auth_password_name(), "password");
@@ -599,7 +599,10 @@ mod tests {
         assert!(user.downcast_ref::<Admin>().is_none());
         assert!(user.downcast::<GenericUser>().is_some());
         assert!(user.type_name().ends_with("GenericUser"));
-        assert_eq!(serde_json::to_value(&user).unwrap()["email"], json!("taylor@laravel.com"));
+        assert_eq!(
+            serde_json::to_value(&user).unwrap()["email"],
+            json!("taylor@laravel.com")
+        );
 
         let remembered = user.with_remember_token("abc");
         assert_eq!(remembered.remember_token().as_deref(), Some("abc"));
@@ -612,11 +615,17 @@ mod tests {
 
     #[test]
     fn users_may_need_to_verify_their_email() {
-        let unverified = AuthUser::new(Admin { id: 1, email_verified_at: None });
+        let unverified = AuthUser::new(Admin {
+            id: 1,
+            email_verified_at: None,
+        });
         assert!(unverified.must_verify_email());
         assert!(!unverified.has_verified_email());
 
-        let verified = AuthUser::new(Admin { id: 1, email_verified_at: Some("2024-01-01".into()) });
+        let verified = AuthUser::new(Admin {
+            id: 1,
+            email_verified_at: Some("2024-01-01".into()),
+        });
         assert!(verified.has_verified_email());
 
         let generic = AuthUser::new(GenericUser::new(json!({"id": 1})));

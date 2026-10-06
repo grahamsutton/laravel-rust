@@ -101,7 +101,11 @@ pub fn validate_password(user: &AuthUser, credentials: &Value) -> bool {
 
 /// Determine if the user's password needs rehashing (or `force` is set),
 /// returning the new hash of the `password` credential if so.
-pub fn rehashed_password(user: &AuthUser, credentials: &Value, force: bool) -> Result<Option<String>> {
+pub fn rehashed_password(
+    user: &AuthUser,
+    credentials: &Value,
+    force: bool,
+) -> Result<Option<String>> {
     let hashed = user.auth_password();
     if !force && !Hash::needs_rehash(&hashed) {
         return Ok(None);
@@ -287,7 +291,9 @@ impl<P: UserProvider + ?Sized> UserProvider for Arc<P> {
         credentials: &Value,
         force: bool,
     ) -> Result<Option<AuthUser>> {
-        (**self).rehash_password_if_required(user, credentials, force).await
+        (**self)
+            .rehash_password_if_required(user, credentials, force)
+            .await
     }
 }
 
@@ -302,7 +308,10 @@ mod tests {
     async fn the_array_provider_finds_users() {
         let container = hashing_container();
         let _guard = Container::set_local_instance(container);
-        let provider = ArrayUserProvider::new(vec![user(1, "taylor@laravel.com", "secret"), user(2, "abigail@laravel.com", "secret")]);
+        let provider = ArrayUserProvider::new(vec![
+            user(1, "taylor@laravel.com", "secret"),
+            user(2, "abigail@laravel.com", "secret"),
+        ]);
 
         let found = provider.retrieve_by_id(&json!(2)).await.unwrap().unwrap();
         assert_eq!(found.to_value()["email"], json!("abigail@laravel.com"));
@@ -316,7 +325,9 @@ mod tests {
         assert_eq!(by_credentials.id(), json!(1));
 
         let by_list = provider
-            .retrieve_by_credentials(&json!({"email": ["nobody@laravel.com", "abigail@laravel.com"]}))
+            .retrieve_by_credentials(
+                &json!({"email": ["nobody@laravel.com", "abigail@laravel.com"]}),
+            )
             .await
             .unwrap()
             .unwrap();
@@ -330,9 +341,24 @@ mod tests {
                 .is_none()
         );
 
-        assert!(provider.validate_credentials(&found, &json!({"password": "secret"})).await.unwrap());
-        assert!(!provider.validate_credentials(&found, &json!({"password": "nope"})).await.unwrap());
-        assert!(!provider.validate_credentials(&found, &json!({})).await.unwrap());
+        assert!(
+            provider
+                .validate_credentials(&found, &json!({"password": "secret"}))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !provider
+                .validate_credentials(&found, &json!({"password": "nope"}))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !provider
+                .validate_credentials(&found, &json!({}))
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -342,10 +368,31 @@ mod tests {
         let provider = ArrayUserProvider::new(vec![user(1, "taylor@laravel.com", "secret")]);
         let taylor = provider.retrieve_by_id(&json!(1)).await.unwrap().unwrap();
 
-        assert!(provider.retrieve_by_token(&json!(1), "token").await.unwrap().is_none());
-        provider.update_remember_token(&taylor, "token").await.unwrap();
-        assert!(provider.retrieve_by_token(&json!("1"), "token").await.unwrap().is_some());
-        assert!(provider.retrieve_by_token(&json!(1), "other").await.unwrap().is_none());
+        assert!(
+            provider
+                .retrieve_by_token(&json!(1), "token")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        provider
+            .update_remember_token(&taylor, "token")
+            .await
+            .unwrap();
+        assert!(
+            provider
+                .retrieve_by_token(&json!("1"), "token")
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            provider
+                .retrieve_by_token(&json!(1), "other")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -368,7 +415,10 @@ mod tests {
             .unwrap();
         assert_ne!(rehashed.auth_password(), taylor.auth_password());
         assert!(Hash::check("secret", &rehashed.auth_password()));
-        assert_eq!(provider.users()[0].auth_password(), rehashed.auth_password());
+        assert_eq!(
+            provider.users()[0].auth_password(),
+            rehashed.auth_password()
+        );
     }
 
     #[test]

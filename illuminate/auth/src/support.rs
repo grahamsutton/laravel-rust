@@ -64,7 +64,8 @@ pub(crate) fn loosely_equal(a: &Value, b: &Value) -> bool {
         (Value::Null, Value::Null) => true,
         (Value::Null, _) | (_, Value::Null) => false,
         (Value::Bool(x), other) | (other, Value::Bool(x)) => *x == other.truthy(),
-        (Value::Number(_), _) | (_, Value::Number(_)) => match (a.to_f64_lossy(), b.to_f64_lossy()) {
+        (Value::Number(_), _) | (_, Value::Number(_)) => match (a.to_f64_lossy(), b.to_f64_lossy())
+        {
             (Some(x), Some(y)) => x == y,
             _ => a.to_string_lossy() == b.to_string_lossy(),
         },
@@ -117,7 +118,10 @@ mod tests {
     #[test]
     fn values_compare_loosely() {
         assert!(loosely_equal(&json!(1), &json!("1")));
-        assert!(loosely_equal(&json!("taylor@laravel.com"), &json!("taylor@laravel.com")));
+        assert!(loosely_equal(
+            &json!("taylor@laravel.com"),
+            &json!("taylor@laravel.com")
+        ));
         assert!(!loosely_equal(&json!("1"), &json!(2)));
         assert!(loosely_equal(&json!(true), &json!(1)));
         assert!(!loosely_equal(&json!(null), &json!("")));
@@ -134,7 +138,10 @@ mod tests {
     #[test]
     fn basic_credentials_are_decoded() {
         let request = Request::create("/", "GET");
-        request.set_header("authorization", "Basic dGF5bG9yQGxhcmF2ZWwuY29tOnNlY3JldA==");
+        request.set_header(
+            "authorization",
+            "Basic dGF5bG9yQGxhcmF2ZWwuY29tOnNlY3JldA==",
+        );
         assert_eq!(
             basic_credentials(&request),
             Some(("taylor@laravel.com".to_string(), "secret".to_string()))

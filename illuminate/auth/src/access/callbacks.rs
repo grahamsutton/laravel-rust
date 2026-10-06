@@ -147,7 +147,12 @@ where
     fn into_ability(self) -> AbilityFn {
         Arc::new(move |user, arguments| {
             let user = U::from_auth_user_ref(user?)?;
-            self(user, argument::<A>(arguments, 0)?, argument::<B>(arguments, 1)?).into_gate_result()
+            self(
+                user,
+                argument::<A>(arguments, 0)?,
+                argument::<B>(arguments, 1)?,
+            )
+            .into_gate_result()
         })
     }
 }
@@ -163,7 +168,12 @@ where
     fn into_ability(self) -> AbilityFn {
         Arc::new(move |user, arguments| {
             let user = optional_user::<U>(user)?;
-            self(user, argument::<A>(arguments, 0)?, argument::<B>(arguments, 1)?).into_gate_result()
+            self(
+                user,
+                argument::<A>(arguments, 0)?,
+                argument::<B>(arguments, 1)?,
+            )
+            .into_gate_result()
         })
     }
 }
@@ -183,7 +193,9 @@ where
     R: IntoGateResult,
 {
     fn into_before(self) -> BeforeFn {
-        Arc::new(move |user, ability| self(U::from_auth_user_ref(user?)?, ability).into_gate_result())
+        Arc::new(move |user, ability| {
+            self(U::from_auth_user_ref(user?)?, ability).into_gate_result()
+        })
     }
 }
 

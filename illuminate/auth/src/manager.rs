@@ -20,13 +20,15 @@ use crate::state::AuthState;
 use crate::user::{AuthUser, AuthUserRef, FromAuthUser};
 
 /// Builds a custom guard: `(app, name, config)`.
-pub type GuardFactory = Arc<dyn Fn(&Container, &str, &Value) -> Result<Arc<dyn Guard>> + Send + Sync>;
+pub type GuardFactory =
+    Arc<dyn Fn(&Container, &str, &Value) -> Result<Arc<dyn Guard>> + Send + Sync>;
 
 /// Builds a custom user provider: `(app, config)`.
 pub type ProviderFactory = Arc<dyn Fn(&Container, &Value) -> Arc<dyn UserProvider> + Send + Sync>;
 
 /// Resolves "the current user" for gates and other services: `(guard)`.
-pub type UserResolver = Arc<dyn Fn(Option<String>) -> BoxFuture<'static, Option<AuthUser>> + Send + Sync>;
+pub type UserResolver =
+    Arc<dyn Fn(Option<String>) -> BoxFuture<'static, Option<AuthUser>> + Send + Sync>;
 
 type GuestRedirect = Arc<dyn Fn(&Request) -> Option<String> + Send + Sync>;
 type UserRedirect = Arc<dyn Fn(&Request) -> String + Send + Sync>;
@@ -46,7 +48,10 @@ pub struct AuthHooks {
 impl AuthHooks {
     /// Set where unauthenticated users are redirected (`None` responds
     /// with a plain `401`).
-    pub fn set_guest_redirect(&self, callback: impl Fn(&Request) -> Option<String> + Send + Sync + 'static) {
+    pub fn set_guest_redirect(
+        &self,
+        callback: impl Fn(&Request) -> Option<String> + Send + Sync + 'static,
+    ) {
         *self.guest_redirect.write().unwrap() = Some(Arc::new(callback));
     }
 
@@ -56,7 +61,10 @@ impl AuthHooks {
     }
 
     /// Teach the auth middleware how to turn a route name into a URL.
-    pub fn set_route_url_resolver(&self, callback: impl Fn(&str) -> Option<String> + Send + Sync + 'static) {
+    pub fn set_route_url_resolver(
+        &self,
+        callback: impl Fn(&str) -> Option<String> + Send + Sync + 'static,
+    ) {
         *self.route_url.write().unwrap() = Some(Arc::new(callback));
     }
 
@@ -104,7 +112,11 @@ impl AuthHooks {
     }
 
     /// Resolve a `can` middleware parameter into a gate argument.
-    pub fn resolve_argument(&self, request: &Request, parameter: &str) -> Option<GateArgument<'static>> {
+    pub fn resolve_argument(
+        &self,
+        request: &Request,
+        parameter: &str,
+    ) -> Option<GateArgument<'static>> {
         let resolver = self.argument_resolver.read().unwrap().clone();
         resolver.and_then(|resolver| resolver(request, parameter))
     }
@@ -135,7 +147,9 @@ impl AuthManager {
             hooks: AuthHooks::default(),
         };
         manager.provider("array", |_app, config| {
-            Arc::new(ArrayUserProvider::from_value(config.get("users").unwrap_or(&Value::Null)))
+            Arc::new(ArrayUserProvider::from_value(
+                config.get("users").unwrap_or(&Value::Null),
+            ))
         });
         manager
     }
@@ -181,7 +195,10 @@ impl AuthManager {
     fn resolve(&self, name: &str) -> Result<Arc<dyn Guard>> {
         let config = self.shared.config.get(&format!("auth.guards.{name}"));
         if config.is_null() {
-            return Err(InvalidArgumentException::new(format!("Auth guard [{name}] is not defined.")).into());
+            return Err(InvalidArgumentException::new(format!(
+                "Auth guard [{name}] is not defined."
+            ))
+            .into());
         }
         let driver = option(&config, "driver").unwrap_or_default();
 
@@ -212,9 +229,13 @@ impl AuthManager {
 
     fn required_provider(&self, guard: &str, config: &Value) -> Result<Arc<dyn UserProvider>> {
         let provider = option(config, "provider");
-        self.create_user_provider(provider.as_deref())?.ok_or_else(|| {
-            InvalidArgumentException::new(format!("Auth guard [{guard}] requires a user provider.")).into()
-        })
+        self.create_user_provider(provider.as_deref())?
+            .ok_or_else(|| {
+                InvalidArgumentException::new(format!(
+                    "Auth guard [{guard}] requires a user provider."
+                ))
+                .into()
+            })
     }
 
     /// The default guard's name: the current request's choice, the
@@ -295,7 +316,8 @@ impl AuthManager {
         driver: impl Into<String>,
         factory: impl Fn(&Container, &Value) -> Arc<dyn UserProvider> + Send + Sync + 'static,
     ) -> &Self {
-        self.shared.register_provider(driver.into(), Arc::new(factory));
+        self.shared
+            .register_provider(driver.into(), Arc::new(factory));
         self.forget_guards();
         self
     }
@@ -308,7 +330,10 @@ impl AuthManager {
     /// Create the user provider configured under `auth.providers.<name>`
     /// (`None` for `auth.defaults.provider`). Returns `Ok(None)` when no
     /// such provider is configured.
-    pub fn create_user_provider(&self, name: Option<&str>) -> Result<Option<Arc<dyn UserProvider>>> {
+    pub fn create_user_provider(
+        &self,
+        name: Option<&str>,
+    ) -> Result<Option<Arc<dyn UserProvider>>> {
         self.shared.create_user_provider(name)
     }
 
@@ -338,7 +363,8 @@ impl AuthManager {
         F: Fn(Option<String>) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Option<AuthUser>> + Send + 'static,
     {
-        *self.user_resolver.write().unwrap() = Some(Arc::new(move |guard| Box::pin(resolver(guard))));
+        *self.user_resolver.write().unwrap() =
+            Some(Arc::new(move |guard| Box::pin(resolver(guard))));
         self
     }
 
@@ -348,11 +374,15 @@ impl AuthManager {
     }
 
     /// Resolve the current user through the user resolver (by default, the
-    /// given guard's user).
+    /// given guard's user). When the guard can't be built, the user already
+    /// known to the request (or set with `acting_as`) is used.
     pub async fn resolve_user(&self, guard: Option<&str>) -> Option<AuthUser> {
-        match self.user_resolver() {
-            Some(resolver) => resolver(guard.map(str::to_string)).await,
-            None => self.guard(guard).ok()?.user().await,
+        if let Some(resolver) = self.user_resolver() {
+            return resolver(guard.map(str::to_string)).await;
+        }
+        match self.guard(guard) {
+            Ok(guard) => guard.user().await,
+            Err(_) => self.resolved_user(&AuthState::current(), guard),
         }
     }
 
@@ -408,7 +438,9 @@ impl AuthManager {
 
     /// The currently authenticated user, as a concrete type (or `AuthUser`).
     pub async fn user<U: FromAuthUser>(&self) -> Option<U> {
-        self.auth_user().await.and_then(|user| U::from_auth_user(&user))
+        self.auth_user()
+            .await
+            .and_then(|user| U::from_auth_user(&user))
     }
 
     /// The currently authenticated user.
@@ -443,13 +475,18 @@ impl AuthManager {
 
     /// Attempt to authenticate a user, running the callback to decide
     /// whether a user with valid credentials may log in.
-    pub async fn attempt_when<U, F>(&self, credentials: &Value, callback: F, remember: bool) -> Result<bool>
+    pub async fn attempt_when<U, F>(
+        &self,
+        credentials: &Value,
+        callback: F,
+        remember: bool,
+    ) -> Result<bool>
     where
         U: AuthUserRef,
         F: Fn(&U) -> bool + Send + Sync + 'static,
     {
         let callback: AttemptCallback =
-            Arc::new(move |user: &AuthUser| U::from_auth_user_ref(user).is_some_and(|user| callback(user)));
+            Arc::new(move |user: &AuthUser| U::from_auth_user_ref(user).is_some_and(&callback));
         self.guard(None)?
             .attempt_when(credentials, &[callback], remember)
             .await
@@ -471,7 +508,11 @@ impl AuthManager {
     }
 
     /// Log the given user ID into the application.
-    pub async fn login_using_id(&self, id: impl Into<Value>, remember: bool) -> Result<Option<AuthUser>> {
+    pub async fn login_using_id(
+        &self,
+        id: impl Into<Value>,
+        remember: bool,
+    ) -> Result<Option<AuthUser>> {
         self.guard(None)?.login_using_id(&id.into(), remember).await
     }
 
@@ -528,7 +569,10 @@ impl std::fmt::Debug for AuthManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AuthManager")
             .field("default", &self.shared.app_default_guard())
-            .field("guards", &self.guards.read().unwrap().keys().collect::<Vec<_>>())
+            .field(
+                "guards",
+                &self.guards.read().unwrap().keys().collect::<Vec<_>>(),
+            )
             .finish()
     }
 }

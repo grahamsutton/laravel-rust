@@ -85,9 +85,13 @@ pub(crate) fn route_url(name: Option<&str>, default_name: &str, default_path: &s
     let hooks = crate::facade::manager();
     let hooks = hooks.hooks();
     match name {
-        Some(name) => hooks
-            .route_url(name)
-            .unwrap_or_else(|| if name.starts_with('/') { name.to_string() } else { default_path.to_string() }),
+        Some(name) => hooks.route_url(name).unwrap_or_else(|| {
+            if name.starts_with('/') {
+                name.to_string()
+            } else {
+                default_path.to_string()
+            }
+        }),
         None => hooks.route_url_or(default_name, default_path),
     }
 }

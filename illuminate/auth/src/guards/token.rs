@@ -83,7 +83,11 @@ impl TokenGuard {
         filled(request.query(&self.input_key))
             .or_else(|| filled(request.input(&self.input_key)))
             .or_else(|| request.bearer_token())
-            .or_else(|| basic_credentials(request).map(|(_, password)| password).filter(|p| !p.is_empty()))
+            .or_else(|| {
+                basic_credentials(request)
+                    .map(|(_, password)| password)
+                    .filter(|p| !p.is_empty())
+            })
     }
 
     async fn resolve(&self, context: &Context) -> Result<Option<AuthUser>> {
@@ -114,7 +118,8 @@ impl Guard for TokenGuard {
             Known::Unknown => {}
         }
         let user = self.resolve(&context).await?;
-        self.shared.remember_user(&context, &self.name, user.clone());
+        self.shared
+            .remember_user(&context, &self.name, user.clone());
         Ok(user)
     }
 
@@ -125,11 +130,16 @@ impl Guard for TokenGuard {
         };
         let mut lookup = json!({});
         lookup[&self.storage_key] = Value::String(token);
-        Ok(self.provider.retrieve_by_credentials(&lookup).await?.is_some())
+        Ok(self
+            .provider
+            .retrieve_by_credentials(&lookup)
+            .await?
+            .is_some())
     }
 
     fn set_user(&self, user: AuthUser) {
-        self.shared.remember_user(&self.shared.context(), &self.name, Some(user));
+        self.shared
+            .remember_user(&self.shared.context(), &self.name, Some(user));
     }
 
     fn forget_user(&self) {

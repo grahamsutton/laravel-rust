@@ -113,7 +113,8 @@ impl Guard for RequestGuard {
             Some(request) => (self.callback)(request.clone()).await?,
             None => None,
         };
-        self.shared.remember_user(&context, &self.name, user.clone());
+        self.shared
+            .remember_user(&context, &self.name, user.clone());
         Ok(user)
     }
 
@@ -127,7 +128,8 @@ impl Guard for RequestGuard {
     }
 
     fn set_user(&self, user: AuthUser) {
-        self.shared.remember_user(&self.shared.context(), &self.name, Some(user));
+        self.shared
+            .remember_user(&self.shared.context(), &self.name, Some(user));
     }
 
     fn forget_user(&self) {

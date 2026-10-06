@@ -17,6 +17,7 @@ use crate::user::{AuthUser, FromAuthUser};
 /// ```
 /// use std::sync::Arc;
 /// use illuminate_auth::{Auth, GenericUser, RequestAuthExt};
+/// use illuminate_config::Repository;
 /// use illuminate_container::Container;
 /// use illuminate_http::{Request, with_request};
 /// use illuminate_support::json;
@@ -24,12 +25,16 @@ use crate::user::{AuthUser, FromAuthUser};
 /// # let runtime = tokio::runtime::Builder::new_current_thread().build().unwrap();
 /// # runtime.block_on(async {
 /// let container = Arc::new(Container::new());
-/// let _guard = Container::set_local_instance(container);
+/// let _guard = Container::set_local_instance(container.clone());
+/// container.instance(Repository::new(json!({"auth": {
+///     "guards": {"web": {"driver": "session", "provider": "users"}},
+///     "providers": {"users": {"driver": "array", "users": [{"id": 1, "name": "Taylor"}]}},
+/// }})));
 ///
 /// let request = Request::create("/profile", "GET");
 ///
 /// with_request(request.clone(), async {
-///     Auth::set_user(GenericUser::new(json!({"id": 1, "name": "Taylor"})));
+///     Auth::login_using_id(1, false).await.unwrap();
 /// }).await;
 ///
 /// let user: GenericUser = request.user().unwrap();

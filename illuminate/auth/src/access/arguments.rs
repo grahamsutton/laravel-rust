@@ -159,8 +159,12 @@ impl fmt::Debug for GateArgument<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             GateArgument::Ref { type_name, .. } => f.debug_tuple("Ref").field(type_name).finish(),
-            GateArgument::Shared { type_name, .. } => f.debug_tuple("Shared").field(type_name).finish(),
-            GateArgument::Class { type_name, .. } => f.debug_tuple("Class").field(type_name).finish(),
+            GateArgument::Shared { type_name, .. } => {
+                f.debug_tuple("Shared").field(type_name).finish()
+            }
+            GateArgument::Class { type_name, .. } => {
+                f.debug_tuple("Class").field(type_name).finish()
+            }
             GateArgument::Value(value) => f.debug_tuple("Value").field(value).finish(),
         }
     }

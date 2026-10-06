@@ -7,7 +7,7 @@ use std::sync::{Arc, RwLock};
 use indexmap::IndexMap;
 
 use super::arguments::{GateArgument, GateArguments, IntoAbilities, IntoGateArguments};
-use super::callbacks::{AbilityFn, AfterCallback, AfterFn, Ability, BeforeCallback, BeforeFn};
+use super::callbacks::{Ability, AbilityFn, AfterCallback, AfterFn, BeforeCallback, BeforeFn};
 use super::policy::{Policy, PolicyEntry, PolicyOutcome};
 use super::response::{AuthResponse, AuthorizationException, IntoMessage};
 use crate::user::AuthUser;
@@ -29,15 +29,21 @@ impl Registry {
             return self.policies.iter().find(|policy| policy.model == type_id);
         }
         match argument {
-            GateArgument::Value(illuminate_support::Value::String(name)) => {
-                self.policies.iter().find(|policy| policy.matches_name(name))
-            }
+            GateArgument::Value(illuminate_support::Value::String(name)) => self
+                .policies
+                .iter()
+                .find(|policy| policy.matches_name(name)),
             _ => None,
         }
     }
 
     /// Run the check: "before" hooks, the policy or gate, then "after" hooks.
-    fn raw(&self, user: Option<&AuthUser>, ability: &str, arguments: &[GateArgument<'_>]) -> Option<AuthResponse> {
+    fn raw(
+        &self,
+        user: Option<&AuthUser>,
+        ability: &str,
+        arguments: &[GateArgument<'_>],
+    ) -> Option<AuthResponse> {
         let mut result = self.before.iter().find_map(|before| before(user, ability));
 
         if result.is_none() {
@@ -45,7 +51,12 @@ impl Registry {
         }
 
         for after in &self.after {
-            let after_result = after(user, ability, result.as_ref().map(AuthResponse::allowed), arguments);
+            let after_result = after(
+                user,
+                ability,
+                result.as_ref().map(AuthResponse::allowed),
+                arguments,
+            );
             if result.is_none() {
                 result = after_result;
             }
@@ -60,20 +71,23 @@ impl Registry {
         ability: &str,
         arguments: &[GateArgument<'_>],
     ) -> Option<AuthResponse> {
-        if let Some(first) = arguments.first() {
-            if let Some(policy) = self.policy_for(first) {
-                match policy.invoke(user, ability, first.as_any()) {
-                    PolicyOutcome::Handled(result) => return result,
-                    PolicyOutcome::Unhandled => {}
-                }
-            }
+        if let Some(first) = arguments.first()
+            && let Some(policy) = self.policy_for(first)
+            && let PolicyOutcome::Handled(result) = policy.invoke(user, ability, first.as_any())
+        {
+            return result;
         }
         self.abilities
             .get(ability)
             .and_then(|callback| callback(user, arguments))
     }
 
-    fn inspect(&self, user: Option<&AuthUser>, ability: &str, arguments: &[GateArgument<'_>]) -> AuthResponse {
+    fn inspect(
+        &self,
+        user: Option<&AuthUser>,
+        ability: &str,
+        arguments: &[GateArgument<'_>],
+    ) -> AuthResponse {
         match self.raw(user, ability, arguments) {
             Some(response) if response.is_plain_denial() => {
                 self.default_denial.clone().unwrap_or(response)
@@ -153,7 +167,9 @@ impl AccessGate {
     pub fn policy<M: Any + Send + Sync, P: Policy<M>>(&self, policy: P) -> &Self {
         let entry = PolicyEntry::new::<M, P>(policy);
         self.change(|registry| {
-            registry.policies.retain(|existing| existing.model != entry.model);
+            registry
+                .policies
+                .retain(|existing| existing.model != entry.model);
             registry.policies.push(entry);
         });
         self
@@ -343,12 +359,20 @@ impl AccessGate {
     }
 
     /// Authorize inline: allowed when the condition is true.
-    pub fn allow_if(&self, condition: bool, message: impl IntoMessage) -> Result<AuthResponse, AuthorizationException> {
+    pub fn allow_if(
+        &self,
+        condition: bool,
+        message: impl IntoMessage,
+    ) -> Result<AuthResponse, AuthorizationException> {
         AuthResponse::new(condition, message).authorize()
     }
 
     /// Authorize inline: denied when the condition is true.
-    pub fn deny_if(&self, condition: bool, message: impl IntoMessage) -> Result<AuthResponse, AuthorizationException> {
+    pub fn deny_if(
+        &self,
+        condition: bool,
+        message: impl IntoMessage,
+    ) -> Result<AuthResponse, AuthorizationException> {
         AuthResponse::new(!condition, message).authorize()
     }
 }
@@ -368,15 +392,29 @@ impl UserGate {
     }
 
     /// The raw result of a check (`None` when nothing had an opinion).
-    pub fn raw<'a>(&self, ability: &str, arguments: impl IntoGateArguments<'a>) -> Option<AuthResponse> {
-        self.registry
-            .raw(self.user.as_ref(), ability, &arguments.into_gate_arguments())
+    pub fn raw<'a>(
+        &self,
+        ability: &str,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> Option<AuthResponse> {
+        self.registry.raw(
+            self.user.as_ref(),
+            ability,
+            &arguments.into_gate_arguments(),
+        )
     }
 
     /// Inspect the full response of a check.
-    pub fn inspect<'a>(&self, ability: &str, arguments: impl IntoGateArguments<'a>) -> AuthResponse {
-        self.registry
-            .inspect(self.user.as_ref(), ability, &arguments.into_gate_arguments())
+    pub fn inspect<'a>(
+        &self,
+        ability: &str,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> AuthResponse {
+        self.registry.inspect(
+            self.user.as_ref(),
+            ability,
+            &arguments.into_gate_arguments(),
+        )
     }
 
     /// Determine if the ability should be granted.
@@ -390,25 +428,39 @@ impl UserGate {
     }
 
     /// Determine if all of the abilities should be granted.
-    pub fn check<'a>(&self, abilities: impl IntoAbilities, arguments: impl IntoGateArguments<'a>) -> bool {
+    pub fn check<'a>(
+        &self,
+        abilities: impl IntoAbilities,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> bool {
         let arguments: GateArguments<'a> = arguments.into_gate_arguments();
-        abilities
-            .into_abilities()
-            .iter()
-            .all(|ability| self.registry.inspect(self.user.as_ref(), ability, &arguments).allowed())
+        abilities.into_abilities().iter().all(|ability| {
+            self.registry
+                .inspect(self.user.as_ref(), ability, &arguments)
+                .allowed()
+        })
     }
 
     /// Determine if any one of the abilities should be granted.
-    pub fn any<'a>(&self, abilities: impl IntoAbilities, arguments: impl IntoGateArguments<'a>) -> bool {
+    pub fn any<'a>(
+        &self,
+        abilities: impl IntoAbilities,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> bool {
         let arguments: GateArguments<'a> = arguments.into_gate_arguments();
-        abilities
-            .into_abilities()
-            .iter()
-            .any(|ability| self.registry.inspect(self.user.as_ref(), ability, &arguments).allowed())
+        abilities.into_abilities().iter().any(|ability| {
+            self.registry
+                .inspect(self.user.as_ref(), ability, &arguments)
+                .allowed()
+        })
     }
 
     /// Determine if none of the abilities should be granted.
-    pub fn none<'a>(&self, abilities: impl IntoAbilities, arguments: impl IntoGateArguments<'a>) -> bool {
+    pub fn none<'a>(
+        &self,
+        abilities: impl IntoAbilities,
+        arguments: impl IntoGateArguments<'a>,
+    ) -> bool {
         !self.any(abilities, arguments)
     }
 

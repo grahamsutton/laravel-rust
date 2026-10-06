@@ -297,7 +297,9 @@ impl AuthorizationException {
     pub fn to_http_exception(&self) -> HttpException {
         match self.status {
             Some(status) => match self.response.as_ref().and_then(|r| r.message()) {
-                Some(message) if !message.is_empty() => HttpException::with_message(status, message),
+                Some(message) if !message.is_empty() => {
+                    HttpException::with_message(status, message)
+                }
                 _ => HttpException::new(status),
             },
             None => HttpException::with_message(403, self.message.clone()),

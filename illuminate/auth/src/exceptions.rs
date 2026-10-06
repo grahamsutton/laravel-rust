@@ -72,10 +72,10 @@ impl AuthenticationException {
 
     /// Specify where unauthenticated users should be redirected (shared
     /// with the `auth` middleware and `Authenticate::redirect_using`).
-    pub fn redirect_using(
-        callback: impl Fn(&Request) -> Option<String> + Send + Sync + 'static,
-    ) {
-        crate::facade::manager().hooks().set_guest_redirect(callback);
+    pub fn redirect_using(callback: impl Fn(&Request) -> Option<String> + Send + Sync + 'static) {
+        crate::facade::manager()
+            .hooks()
+            .set_guest_redirect(callback);
     }
 
     /// Render the exception the way Laravel's exception handler does:
@@ -99,9 +99,11 @@ pub(crate) fn redirect_guest(request: &Request, to: &str) -> Response {
     let intended = if request.is_method("GET") && !request.expects_json() {
         Some(request.full_url())
     } else {
-        request
-            .header("referer")
-            .or_else(|| request.try_session().and_then(|session| session.previous_url()))
+        request.header("referer").or_else(|| {
+            request
+                .try_session()
+                .and_then(|session| session.previous_url())
+        })
     };
     if let (Some(intended), Some(session)) = (intended, request.try_session()) {
         session.put("url.intended", intended);
