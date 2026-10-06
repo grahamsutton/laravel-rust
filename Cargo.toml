@@ -55,6 +55,7 @@ illuminate-mail = { path = "illuminate/mail", version = "0.1.0" }
 illuminate-notifications = { path = "illuminate/notifications", version = "0.1.0" }
 illuminate-foundation = { path = "illuminate/foundation", version = "0.1.0" }
 laravel = { path = ".", version = "0.1.0" }
+laravel-build = { path = "illuminate/build", version = "0.1.0" }
 
 # Third-party dependencies (shared feature sets keep builds unified)...
 tokio = { version = "1", features = ["full"] }
