@@ -50,7 +50,12 @@ pub struct FileStore {
 impl FileStore {
     /// Create a new file cache store in the given directory.
     pub fn new(directory: impl Into<PathBuf>) -> Self {
-        Self { files: Filesystem::new(), directory: directory.into(), lock_directory: None, file_permission: None }
+        Self {
+            files: Filesystem::new(),
+            directory: directory.into(),
+            lock_directory: None,
+            file_permission: None,
+        }
     }
 
     /// Store locks in a separate directory (the `lock_path` option).
@@ -82,13 +87,18 @@ impl FileStore {
 
     /// Determine if the lock store is separate from the cache store.
     pub fn has_separate_lock_store(&self) -> bool {
-        self.lock_directory.as_ref().is_some_and(|locks| *locks != self.directory)
+        self.lock_directory
+            .as_ref()
+            .is_some_and(|locks| *locks != self.directory)
     }
 
     /// The full path for the given cache key.
     pub fn path(&self, key: &str) -> PathBuf {
         let hash = hex::encode(Sha1::digest(key.as_bytes()));
-        self.directory.join(&hash[0..2]).join(&hash[2..4]).join(&hash)
+        self.directory
+            .join(&hash[0..2])
+            .join(&hash[2..4])
+            .join(&hash)
     }
 
     /// Refresh a lock's expiration if it is still owned by the given owner.
@@ -107,7 +117,11 @@ impl FileStore {
 
     fn expiration(seconds: u64) -> i64 {
         let time = Self::current_time().saturating_add(i64::try_from(seconds).unwrap_or(i64::MAX));
-        if seconds == 0 || time > FOREVER { FOREVER } else { time }
+        if seconds == 0 || time > FOREVER {
+            FOREVER
+        } else {
+            time
+        }
     }
 
     fn payload(value: &Value, seconds: u64) -> String {
@@ -115,7 +129,9 @@ impl FileStore {
     }
 
     fn ensure_cache_directory_exists(&self, path: &Path) -> Result<()> {
-        let Some(directory) = path.parent() else { return Ok(()) };
+        let Some(directory) = path.parent() else {
+            return Ok(());
+        };
         if !directory.exists() {
             self.files.make_directory_sync(directory, 0o777, true)?;
             // Two levels of directories were created (e.g. 7e/24), so fix both.
@@ -135,7 +151,12 @@ impl FileStore {
 
     fn open_for_update(&self, path: &Path) -> Result<fs::File> {
         self.ensure_cache_directory_exists(path)?;
-        Ok(fs::OpenOptions::new().read(true).write(true).create(true).truncate(false).open(path)?)
+        Ok(fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(path)?)
     }
 
     fn rewrite(file: &mut fs::File, contents: &str) -> std::io::Result<()> {
@@ -171,7 +192,8 @@ impl FileStore {
     fn put_sync(&self, key: &str, value: &Value, seconds: u64) -> Result<bool> {
         let path = self.path(key);
         self.ensure_cache_directory_exists(&path)?;
-        self.files.put_locked_sync(&path, Self::payload(value, seconds))?;
+        self.files
+            .put_locked_sync(&path, Self::payload(value, seconds))?;
         self.ensure_permissions_are_correct(&path);
         Ok(true)
     }
@@ -188,8 +210,15 @@ impl FileStore {
         let read = (&mut file).take(10).read_to_string(&mut expire);
         let expired = read.is_err()
             || expire.is_empty()
-            || expire.parse::<i64>().map(|expire| Self::current_time() >= expire).unwrap_or(true);
-        let result = if expired { Self::rewrite(&mut file, &Self::payload(value, seconds)).map(|_| true) } else { Ok(false) };
+            || expire
+                .parse::<i64>()
+                .map(|expire| Self::current_time() >= expire)
+                .unwrap_or(true);
+        let result = if expired {
+            Self::rewrite(&mut file, &Self::payload(value, seconds)).map(|_| true)
+        } else {
+            Ok(false)
+        };
         file.unlock()?;
         let added = result?;
         if added {
@@ -208,7 +237,9 @@ impl FileStore {
             let now = Self::current_time();
             let (current, remaining) = match Self::parse(&contents) {
                 Some((expire, data)) if now < expire => {
-                    let current = serde_json::from_str::<Value>(data).map(|v| int_value(&v)).unwrap_or(0);
+                    let current = serde_json::from_str::<Value>(data)
+                        .map(|v| int_value(&v))
+                        .unwrap_or(0);
                     (current, (expire - now) as u64)
                 }
                 _ => (0, 0),
@@ -260,9 +291,13 @@ impl FileStore {
         let result = (|| -> Result<bool> {
             let mut contents = String::new();
             let _ = file.read_to_string(&mut contents);
-            let Some((expire, data)) = Self::parse(&contents) else { return Ok(false) };
+            let Some((expire, data)) = Self::parse(&contents) else {
+                return Ok(false);
+            };
             let current_owner = serde_json::from_str::<Value>(data).ok();
-            if current_owner.as_ref().and_then(Value::as_str) != Some(owner) || Self::current_time() >= expire {
+            if current_owner.as_ref().and_then(Value::as_str) != Some(owner)
+                || Self::current_time() >= expire
+            {
                 return Ok(false);
             }
             Self::rewrite(&mut file, &Self::payload(&json!(owner), seconds))?;
@@ -335,7 +370,12 @@ impl LockProvider for FileStore {
     fn lock(&self, name: &str, seconds: u64, owner: Option<String>) -> Lock {
         let mut store = FileStore::new(self.get_lock_directory());
         store.file_permission = self.file_permission;
-        Lock::new(Arc::new(FileLock::new(store)), format!("file-store-lock:{name}"), seconds, owner)
+        Lock::new(
+            Arc::new(FileLock::new(store)),
+            format!("file-store-lock:{name}"),
+            seconds,
+            owner,
+        )
     }
 }
 
@@ -349,14 +389,19 @@ impl FileLock {
     /// Create a lock driver keeping its locks in the given store.
     pub fn new(store: FileStore) -> Self {
         let store = Arc::new(store);
-        Self { cache_lock: CacheLock::new(store.clone()), store }
+        Self {
+            cache_lock: CacheLock::new(store.clone()),
+            store,
+        }
     }
 }
 
 #[async_trait]
 impl LockDriver for FileLock {
     async fn acquire(&self, lock: &LockInfo) -> Result<bool> {
-        self.store.add(&lock.name, json!(lock.owner), lock.seconds).await
+        self.store
+            .add(&lock.name, json!(lock.owner), lock.seconds)
+            .await
     }
 
     async fn release(&self, lock: &LockInfo) -> Result<bool> {
@@ -372,7 +417,9 @@ impl LockDriver for FileLock {
     }
 
     async fn refresh(&self, lock: &LockInfo, seconds: u64) -> Result<bool> {
-        self.store.refresh_if_owned(&lock.name, &lock.owner, seconds).await
+        self.store
+            .refresh_if_owned(&lock.name, &lock.owner, seconds)
+            .await
     }
 }
 
@@ -396,10 +443,16 @@ mod tests {
         // sha1("foo") = 0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33
         let path = store.path("foo");
         assert!(path.ends_with("0b/ee/0beec7b5ea3f0fdbc95d0dd47f3c5bc275da8a33"));
-        assert_eq!(fs::read_to_string(&path).unwrap(), r#"1700000060{"bar":"baz"}"#);
+        assert_eq!(
+            fs::read_to_string(&path).unwrap(),
+            r#"1700000060{"bar":"baz"}"#
+        );
 
         store.forever("forever", json!(1)).await.unwrap();
-        assert_eq!(fs::read_to_string(store.path("forever")).unwrap(), "99999999991");
+        assert_eq!(
+            fs::read_to_string(store.path("forever")).unwrap(),
+            "99999999991"
+        );
     }
 
     #[tokio::test]
@@ -438,7 +491,11 @@ mod tests {
         assert_eq!(store.increment("count", 1).await.unwrap(), 1);
         assert_eq!(store.increment("count", 5).await.unwrap(), 6);
         assert_eq!(store.decrement("count", 2).await.unwrap(), 4);
-        assert!(fs::read_to_string(store.path("count")).unwrap().starts_with("9999999999"));
+        assert!(
+            fs::read_to_string(store.path("count"))
+                .unwrap()
+                .starts_with("9999999999")
+        );
 
         // Incrementing keeps the remaining lifetime.
         store.put("limited", json!(1), 30).await.unwrap();
@@ -461,9 +518,15 @@ mod tests {
         let mut handles = Vec::new();
         for i in 0..10 {
             let store = store.clone();
-            handles.push(std::thread::spawn(move || store.add_sync("race", &json!(i), 60).unwrap()));
+            handles.push(std::thread::spawn(move || {
+                store.add_sync("race", &json!(i), 60).unwrap()
+            }));
         }
-        let winners = handles.into_iter().map(|h| h.join().unwrap()).filter(|won| *won).count();
+        let winners = handles
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .filter(|won| *won)
+            .count();
         assert_eq!(winners, 1);
     }
 
@@ -474,9 +537,16 @@ mod tests {
         assert!(!store.flush().await.unwrap());
 
         store.put("a", json!(1), 10).await.unwrap();
-        store.put(&format!("{FLEXIBLE_CREATED_KEY_PREFIX}a"), json!(1), 10).await.unwrap();
+        store
+            .put(&format!("{FLEXIBLE_CREATED_KEY_PREFIX}a"), json!(1), 10)
+            .await
+            .unwrap();
         assert!(store.forget("a").await.unwrap());
-        assert!(!store.path(&format!("{FLEXIBLE_CREATED_KEY_PREFIX}a")).exists());
+        assert!(
+            !store
+                .path(&format!("{FLEXIBLE_CREATED_KEY_PREFIX}a"))
+                .exists()
+        );
         assert!(!store.forget("a").await.unwrap());
 
         store.put("b", json!(2), 10).await.unwrap();
@@ -489,7 +559,8 @@ mod tests {
     async fn locks_live_in_the_lock_directory() {
         let time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let directory = tempfile::tempdir().unwrap();
-        let store = FileStore::new(directory.path().join("data")).with_lock_directory(directory.path().join("locks"));
+        let store = FileStore::new(directory.path().join("data"))
+            .with_lock_directory(directory.path().join("locks"));
         assert!(store.has_separate_lock_store());
 
         let lock = store.lock("report", 10, None);
@@ -522,6 +593,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let store = FileStore::new(directory.path()).with_file_permission(0o775);
         store.put("secret", json!(1), 10).await.unwrap();
-        assert_eq!(Filesystem::new().permissions(store.path("secret")).unwrap(), "0775");
+        assert_eq!(
+            Filesystem::new().permissions(store.path("secret")).unwrap(),
+            "0775"
+        );
     }
 }

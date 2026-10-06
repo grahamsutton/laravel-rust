@@ -46,7 +46,11 @@ pub struct CacheManager {
 impl CacheManager {
     /// Create a new cache manager reading the given configuration.
     pub fn new(config: Arc<Config>) -> Self {
-        Self { config, stores: RwLock::new(HashMap::new()), custom_creators: RwLock::new(HashMap::new()) }
+        Self {
+            config,
+            stores: RwLock::new(HashMap::new()),
+            custom_creators: RwLock::new(HashMap::new()),
+        }
     }
 
     /// Get a cache store instance by name.
@@ -55,7 +59,13 @@ impl CacheManager {
             return Ok(store.clone());
         }
         let store = self.resolve(name)?;
-        Ok(self.stores.write().unwrap().entry(name.to_string()).or_insert(store).clone())
+        Ok(self
+            .stores
+            .write()
+            .unwrap()
+            .entry(name.to_string())
+            .or_insert(store)
+            .clone())
     }
 
     /// Get the default cache store (`cache.default`).
@@ -75,7 +85,10 @@ impl CacheManager {
     pub fn resolve(&self, name: &str) -> Result<Repository> {
         let mut config = self.get_config(name);
         if !config.is_object() {
-            return Err(InvalidArgumentException::new(format!("Cache store [{name}] is not defined.")).into());
+            return Err(InvalidArgumentException::new(format!(
+                "Cache store [{name}] is not defined."
+            ))
+            .into());
         }
         if config.get("store").is_none() {
             config["store"] = json!(name);
@@ -86,25 +99,45 @@ impl CacheManager {
     /// Build a cache repository with the given configuration.
     pub fn build(&self, mut config: Value) -> Result<Repository> {
         if !config.is_object() {
-            return Err(InvalidArgumentException::new("Cache store configuration must be an object.").into());
+            return Err(InvalidArgumentException::new(
+                "Cache store configuration must be an object.",
+            )
+            .into());
         }
         if config.get("store").is_none() {
-            let name = config.get("name").cloned().unwrap_or_else(|| json!("ondemand"));
+            let name = config
+                .get("name")
+                .cloned()
+                .unwrap_or_else(|| json!("ondemand"));
             config["store"] = name;
         }
-        let driver = config.get("driver").and_then(Value::as_str).unwrap_or_default().to_string();
+        let driver = config
+            .get("driver")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
 
         let creator = self.custom_creators.read().unwrap().get(&driver).cloned();
         if let Some(creator) = creator {
             return creator(&Container::get_instance(), &config);
         }
 
-        let name = config.get("store").map(|s| s.to_string_lossy()).unwrap_or_default();
+        let name = config
+            .get("store")
+            .map(|s| s.to_string_lossy())
+            .unwrap_or_default();
         let store: Arc<dyn Store> = match driver.as_str() {
-            "array" => Arc::new(ArrayStore::with_serialization(config.get("serialize").is_some_and(ValueExt::truthy))),
+            "array" => Arc::new(ArrayStore::with_serialization(
+                config.get("serialize").is_some_and(ValueExt::truthy),
+            )),
             "file" => Arc::new(self.create_file_store(&config)?),
             "null" => Arc::new(NullStore),
-            other => return Err(InvalidArgumentException::new(format!("Driver [{other}] is not supported.")).into()),
+            other => {
+                return Err(InvalidArgumentException::new(format!(
+                    "Driver [{other}] is not supported."
+                ))
+                .into());
+            }
         };
         Ok(Repository::from_arc(store).with_name(name))
     }
@@ -114,7 +147,9 @@ impl CacheManager {
             .get("path")
             .and_then(Value::as_str)
             .filter(|path| !path.is_empty())
-            .ok_or_else(|| InvalidArgumentException::new("The file cache driver requires a [path]."))?;
+            .ok_or_else(|| {
+                InvalidArgumentException::new("The file cache driver requires a [path].")
+            })?;
         let mut store = FileStore::new(PathBuf::from(path));
         if let Some(lock_path) = config.get("lock_path").and_then(Value::as_str) {
             store = store.with_lock_directory(lock_path);
@@ -123,6 +158,14 @@ impl CacheManager {
             store = store.with_file_permission(permission as u32);
         }
         Ok(store)
+    }
+
+    /// The store the rate limiter uses: `cache.limiter`, or the default store.
+    pub fn limiter_store(&self) -> Result<Repository> {
+        match self.config.get("cache.limiter") {
+            Value::String(name) if !name.is_empty() => self.store(&name),
+            _ => self.default_store(),
+        }
     }
 
     /// Wrap a store in a repository (handy inside `extend` callbacks).
@@ -139,7 +182,10 @@ impl CacheManager {
             return prefix.to_string();
         }
         match self.config.get("cache.prefix") {
-            Value::Null => format!("{}-cache-", Str::slug(&self.config.string_or("app.name", "laravel"))),
+            Value::Null => format!(
+                "{}-cache-",
+                Str::slug(&self.config.string_or("app.name", "laravel"))
+            ),
             prefix => prefix.to_string_lossy(),
         }
     }
@@ -172,7 +218,9 @@ impl CacheManager {
 
     /// Disconnect the given store (the default store when `None`).
     pub fn purge(&self, name: Option<&str>) {
-        let name = name.map(str::to_string).unwrap_or_else(|| self.get_default_driver());
+        let name = name
+            .map(str::to_string)
+            .unwrap_or_else(|| self.get_default_driver());
         self.stores.write().unwrap().remove(&name);
     }
 
@@ -197,7 +245,10 @@ impl CacheManager {
         driver: &str,
         creator: impl Fn(&Container, &Value) -> Result<Repository> + Send + Sync + 'static,
     ) -> &Self {
-        self.custom_creators.write().unwrap().insert(driver.to_string(), Arc::new(creator));
+        self.custom_creators
+            .write()
+            .unwrap()
+            .insert(driver.to_string(), Arc::new(creator));
         self
     }
 }
@@ -236,24 +287,48 @@ mod tests {
 
         let array = manager.store("array").unwrap();
         array.put("a", 1, 60).await.unwrap();
-        assert!(Arc::ptr_eq(&array.get_store(), &manager.store("array").unwrap().get_store()));
-        assert_eq!(manager.store("array").unwrap().integer("a").await.unwrap(), 1);
+        assert!(Arc::ptr_eq(
+            &array.get_store(),
+            &manager.store("array").unwrap().get_store()
+        ));
+        assert_eq!(
+            manager.store("array").unwrap().integer("a").await.unwrap(),
+            1
+        );
 
         let null = manager.store("null").unwrap();
         assert_eq!(null.get_name(), Some("null"));
 
-        assert_eq!(manager.store("missing").unwrap_err().to_string(), "Cache store [missing] is not defined.");
-        assert_eq!(manager.store("broken").unwrap_err().to_string(), "Driver [redis] is not supported.");
+        assert_eq!(
+            manager.store("missing").unwrap_err().to_string(),
+            "Cache store [missing] is not defined."
+        );
+        assert_eq!(
+            manager.store("broken").unwrap_err().to_string(),
+            "Driver [redis] is not supported."
+        );
     }
 
     #[tokio::test]
     async fn stores_can_be_forgotten_and_purged() {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
-        let manager = manager(json!({"cache": {"default": "array", "stores": {"array": {"driver": "array"}}}}));
-        manager.default_store().unwrap().put("a", 1, 60).await.unwrap();
+        let manager = manager(
+            json!({"cache": {"default": "array", "stores": {"array": {"driver": "array"}}}}),
+        );
+        manager
+            .default_store()
+            .unwrap()
+            .put("a", 1, 60)
+            .await
+            .unwrap();
         manager.purge(None);
         assert!(manager.default_store().unwrap().missing("a").await.unwrap());
-        manager.store("array").unwrap().put("a", 1, 60).await.unwrap();
+        manager
+            .store("array")
+            .unwrap()
+            .put("a", 1, 60)
+            .await
+            .unwrap();
         manager.forget_driver(&["array"]);
         assert!(manager.store("array").unwrap().missing("a").await.unwrap());
 
@@ -263,10 +338,13 @@ mod tests {
 
     #[test]
     fn on_demand_stores_and_custom_drivers() {
-        let manager = manager(json!({"cache": {"stores": {"custom": {"driver": "custom", "answer": 42}}}}));
+        let manager =
+            manager(json!({"cache": {"stores": {"custom": {"driver": "custom", "answer": 42}}}}));
         let repository = manager.build(json!({"driver": "array"})).unwrap();
         assert_eq!(repository.get_name(), Some("ondemand"));
-        let repository = manager.build(json!({"driver": "array", "name": "adhoc"})).unwrap();
+        let repository = manager
+            .build(json!({"driver": "array", "name": "adhoc"}))
+            .unwrap();
         assert_eq!(repository.get_name(), Some("adhoc"));
 
         manager.extend("custom", |_app, config| {

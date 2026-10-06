@@ -102,9 +102,18 @@ mod tests {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         assert_eq!(Ttl::from(-5).to_seconds(), Some(0));
         assert_eq!(Ttl::from(0u64).to_seconds(), Some(0));
-        assert_eq!(Ttl::from(std::time::Duration::from_millis(1500)).to_seconds(), Some(2));
-        assert_eq!(Ttl::from(Carbon::from_timestamp(1_700_000_060)).to_seconds(), Some(60));
-        assert_eq!(Ttl::from(Carbon::from_timestamp(1_600_000_000)).to_seconds(), Some(0));
+        assert_eq!(
+            Ttl::from(std::time::Duration::from_millis(1500)).to_seconds(),
+            Some(2)
+        );
+        assert_eq!(
+            Ttl::from(Carbon::from_timestamp(1_700_000_060)).to_seconds(),
+            Some(60)
+        );
+        assert_eq!(
+            Ttl::from(Carbon::from_timestamp(1_600_000_000)).to_seconds(),
+            Some(0)
+        );
         assert_eq!(Ttl::from(CarbonInterval::hours(2)).to_seconds(), Some(7200));
         assert_eq!(Ttl::from(Some(30)).to_seconds(), Some(30));
         assert_eq!(Ttl::Forever.to_seconds(), None);

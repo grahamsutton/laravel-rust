@@ -119,7 +119,11 @@ fn is_expired(item: &Item, now: i64) -> bool {
 
 /// The expiration timestamp (in milliseconds) for the given number of seconds.
 fn expiration(seconds: u64) -> i64 {
-    if seconds == 0 { 0 } else { now_millis().saturating_add((seconds as i64).saturating_mul(1000)) }
+    if seconds == 0 {
+        0
+    } else {
+        now_millis().saturating_add((seconds as i64).saturating_mul(1000))
+    }
 }
 
 #[async_trait]
@@ -130,7 +134,10 @@ impl Store for ArrayStore {
     }
 
     async fn put(&self, key: &str, value: Value, seconds: u64) -> Result<bool> {
-        let item = Item { value: self.pack(value), expires_at: expiration(seconds) };
+        let item = Item {
+            value: self.pack(value),
+            expires_at: expiration(seconds),
+        };
         self.storage.lock().unwrap().insert(key.to_string(), item);
         Ok(true)
     }
@@ -140,7 +147,13 @@ impl Store for ArrayStore {
         if Self::live(&mut storage, key).is_some() {
             return Ok(false);
         }
-        storage.insert(key.to_string(), Item { value: self.pack(value), expires_at: expiration(seconds) });
+        storage.insert(
+            key.to_string(),
+            Item {
+                value: self.pack(value),
+                expires_at: expiration(seconds),
+            },
+        );
         Ok(true)
     }
 
@@ -151,7 +164,13 @@ impl Store for ArrayStore {
             item.value = self.pack(Value::from(incremented));
             return Ok(incremented);
         }
-        storage.insert(key.to_string(), Item { value: self.pack(Value::from(value)), expires_at: 0 });
+        storage.insert(
+            key.to_string(),
+            Item {
+                value: self.pack(Value::from(value)),
+                expires_at: 0,
+            },
+        );
         Ok(value)
     }
 
@@ -195,7 +214,12 @@ impl Store for ArrayStore {
 
 impl LockProvider for ArrayStore {
     fn lock(&self, name: &str, seconds: u64, owner: Option<String>) -> Lock {
-        Lock::new(Arc::new(ArrayLock::new(self.locks.clone())), name, seconds, owner)
+        Lock::new(
+            Arc::new(ArrayLock::new(self.locks.clone())),
+            name,
+            seconds,
+            owner,
+        )
     }
 }
 
@@ -229,7 +253,9 @@ mod tests {
         let mut handles = Vec::new();
         for i in 0..20 {
             let store = store.clone();
-            handles.push(tokio::spawn(async move { store.add("winner", json!(i), 10).await.unwrap() }));
+            handles.push(tokio::spawn(async move {
+                store.add("winner", json!(i), 10).await.unwrap()
+            }));
         }
         let mut winners = 0;
         for handle in handles {
@@ -279,9 +305,18 @@ mod tests {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let store = ArrayStore::with_serialization(true);
         assert!(store.serializes_values());
-        store.put("user", json!({"name": "Taylor", "roles": ["admin"]}), 10).await.unwrap();
-        assert_eq!(store.get("user").await.unwrap().unwrap()["roles"][0], "admin");
+        store
+            .put("user", json!({"name": "Taylor", "roles": ["admin"]}), 10)
+            .await
+            .unwrap();
+        assert_eq!(
+            store.get("user").await.unwrap().unwrap()["roles"][0],
+            "admin"
+        );
         assert_eq!(store.increment("n", 5).await.unwrap(), 5);
-        assert_eq!(store.many(&["user".into(), "nope".into()]).await.unwrap()[1], ("nope".into(), None));
+        assert_eq!(
+            store.many(&["user".into(), "nope".into()]).await.unwrap()[1],
+            ("nope".into(), None)
+        );
     }
 }

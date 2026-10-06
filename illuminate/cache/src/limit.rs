@@ -142,15 +142,25 @@ impl Limit {
     /// });
     /// assert!(limit.response_callback.is_some());
     /// ```
-    pub fn response(mut self, callback: impl Fn(&Request, &HeaderMap) -> Response + Send + Sync + 'static) -> Self {
+    pub fn response(
+        mut self,
+        callback: impl Fn(&Request, &HeaderMap) -> Response + Send + Sync + 'static,
+    ) -> Self {
         self.response_callback = Some(Arc::new(callback));
         self
     }
 
     /// A unique key for the limit, used when several limits share a key.
     pub fn fallback_key(&self) -> String {
-        let prefix = if self.key.is_empty() { String::new() } else { format!("{}:", self.key) };
-        format!("{prefix}attempts:{}:decay:{}", self.max_attempts, self.decay_seconds)
+        let prefix = if self.key.is_empty() {
+            String::new()
+        } else {
+            format!("{}:", self.key)
+        };
+        format!(
+            "{prefix}attempts:{}:decay:{}",
+            self.max_attempts, self.decay_seconds
+        )
     }
 }
 
@@ -160,7 +170,7 @@ pub enum LimiterResponse {
     /// The limits to apply.
     Limits(Vec<Limit>),
     /// A response to return immediately.
-    Response(Response),
+    Response(Box<Response>),
 }
 
 impl From<Limit> for LimiterResponse {
@@ -183,7 +193,7 @@ impl<const N: usize> From<[Limit; N]> for LimiterResponse {
 
 impl From<Response> for LimiterResponse {
     fn from(response: Response) -> Self {
-        LimiterResponse::Response(response)
+        LimiterResponse::Response(Box::new(response))
     }
 }
 
@@ -207,17 +217,25 @@ mod tests {
     #[test]
     fn fallback_keys_include_the_window() {
         assert_eq!(Limit::per_minute(3).fallback_key(), "attempts:3:decay:60");
-        assert_eq!(Limit::per_day(10).by("user:1").fallback_key(), "user:1:attempts:10:decay:86400");
+        assert_eq!(
+            Limit::per_day(10).by("user:1").fallback_key(),
+            "user:1:attempts:10:decay:86400"
+        );
     }
 
     #[test]
     fn limiter_responses_convert() {
-        assert!(matches!(LimiterResponse::from(Limit::per_minute(1)), LimiterResponse::Limits(l) if l.len() == 1));
+        assert!(
+            matches!(LimiterResponse::from(Limit::per_minute(1)), LimiterResponse::Limits(l) if l.len() == 1)
+        );
         assert!(matches!(
             LimiterResponse::from([Limit::per_minute(1), Limit::per_day(5)]),
             LimiterResponse::Limits(l) if l.len() == 2
         ));
-        assert!(matches!(LimiterResponse::from(Response::new("no")), LimiterResponse::Response(_)));
+        assert!(matches!(
+            LimiterResponse::from(Response::new("no")),
+            LimiterResponse::Response(_)
+        ));
         let limit = Limit::per_minute(1).after(|response| response.status_code() == 404);
         assert!((limit.after_callback.unwrap())(&Response::make("", 404)));
     }

@@ -112,7 +112,9 @@ impl Cache {
         Self::default_store()?.get_or(key, default).await
     }
 
-    pub async fn many<K: AsRef<str>>(keys: impl IntoIterator<Item = K>) -> Result<IndexMap<String, Option<Value>>> {
+    pub async fn many<K: AsRef<str>>(
+        keys: impl IntoIterator<Item = K>,
+    ) -> Result<IndexMap<String, Option<Value>>> {
         Self::default_store()?.many(keys).await
     }
 
@@ -194,7 +196,11 @@ impl Cache {
         Self::default_store()?.sear(key, callback).await
     }
 
-    pub async fn flexible<T, F, Fut>(key: &str, ttl: (impl Into<Ttl>, impl Into<Ttl>), callback: F) -> Result<T>
+    pub async fn flexible<T, F, Fut>(
+        key: &str,
+        ttl: (impl Into<Ttl>, impl Into<Ttl>),
+        callback: F,
+    ) -> Result<T>
     where
         T: Serialize + DeserializeOwned + Send + 'static,
         F: Fn() -> Fut + Send + Sync + 'static,
@@ -229,12 +235,19 @@ impl Cache {
         Ok(Self::default_store()?.restore_lock(name, owner))
     }
 
-    pub async fn without_overlapping<T, F, Fut>(key: &str, callback: F, lock_for: u64, wait_for: u64) -> Result<T>
+    pub async fn without_overlapping<T, F, Fut>(
+        key: &str,
+        callback: F,
+        lock_for: u64,
+        wait_for: u64,
+    ) -> Result<T>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = T>,
     {
-        Self::default_store()?.without_overlapping(key, callback, lock_for, wait_for).await
+        Self::default_store()?
+            .without_overlapping(key, callback, lock_for, wait_for)
+            .await
     }
 
     /// Begin a tagged cache operation on the default store.
@@ -264,8 +277,8 @@ impl Cache {
 ///     "cache": {"default": "array", "stores": {"array": {"driver": "array"}}},
 /// })));
 ///
-/// let users = cache().remember("users", 60, || async { Ok(vec!["Taylor"]) }).await.unwrap();
-/// assert_eq!(users, vec!["Taylor"]);
+/// let count: u64 = cache().remember("users.count", 60, || async { Ok(42) }).await.unwrap();
+/// assert_eq!(count, 42);
 /// # });
 /// ```
 pub fn cache() -> Repository {

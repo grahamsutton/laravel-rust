@@ -16,7 +16,9 @@ use crate::manager::FilesystemManager;
 pub struct FilesystemServiceProvider;
 
 pub(crate) fn make_manager(container: &Container) -> Arc<FilesystemManager> {
-    let config = container.try_make::<Config>().unwrap_or_else(|_| Arc::new(Config::empty()));
+    let config = container
+        .try_make::<Config>()
+        .unwrap_or_else(|_| Arc::new(Config::empty()));
     Arc::new(FilesystemManager::new(config))
 }
 
@@ -40,8 +42,14 @@ mod tests {
 
         assert!(container.bound::<Filesystem>());
         let manager = container.make::<FilesystemManager>();
-        assert!(Arc::ptr_eq(&manager, &container.make::<FilesystemManager>()));
+        assert!(Arc::ptr_eq(
+            &manager,
+            &container.make::<FilesystemManager>()
+        ));
         assert_eq!(manager.default_disk().unwrap().name(), "local");
-        assert_eq!(FilesystemServiceProvider.name(), "FilesystemServiceProvider");
+        assert_eq!(
+            FilesystemServiceProvider.name(),
+            "FilesystemServiceProvider"
+        );
     }
 }

@@ -40,7 +40,10 @@ pub struct RateLimiter {
 impl RateLimiter {
     /// Create a new rate limiter using the given cache.
     pub fn new(cache: Repository) -> Self {
-        Self { cache, limiters: RwLock::new(HashMap::new()) }
+        Self {
+            cache,
+            limiters: RwLock::new(HashMap::new()),
+        }
     }
 
     /// The cache the limiter keeps its counters in.
@@ -67,7 +70,10 @@ impl RateLimiter {
         R: Into<LimiterResponse>,
     {
         let callback: LimiterCallback = Arc::new(move |request| callback(request).into());
-        self.limiters.write().unwrap().insert(name.to_string(), callback);
+        self.limiters
+            .write()
+            .unwrap()
+            .insert(name.to_string(), callback);
         self
     }
 
@@ -80,8 +86,11 @@ impl RateLimiter {
         Some(Arc::new(move |request: &Request| match limiter(request) {
             LimiterResponse::Limits(mut limits) => {
                 let mut seen = HashSet::new();
-                let duplicates: HashSet<String> =
-                    limits.iter().filter(|limit| !seen.insert(limit.key.clone())).map(|l| l.key.clone()).collect();
+                let duplicates: HashSet<String> = limits
+                    .iter()
+                    .filter(|limit| !seen.insert(limit.key.clone()))
+                    .map(|l| l.key.clone())
+                    .collect();
                 for limit in &mut limits {
                     if duplicates.contains(&limit.key) {
                         limit.key = limit.fallback_key();
@@ -95,7 +104,13 @@ impl RateLimiter {
 
     /// Attempt to execute a callback if it's not limited. Returns `None`
     /// when there are no attempts left.
-    pub async fn attempt<T, F, Fut>(&self, key: &str, max_attempts: i64, callback: F, decay_seconds: u64) -> Result<Option<T>>
+    pub async fn attempt<T, F, Fut>(
+        &self,
+        key: &str,
+        max_attempts: i64,
+        callback: F,
+        decay_seconds: u64,
+    ) -> Result<Option<T>>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = T>,
@@ -111,7 +126,11 @@ impl RateLimiter {
     /// Determine if the given key has been "accessed" too many times.
     pub async fn too_many_attempts(&self, key: &str, max_attempts: i64) -> Result<bool> {
         if self.attempts(key).await? >= max_attempts {
-            if self.cache.has(&format!("{}:timer", Self::clean_rate_limiter_key(key))).await? {
+            if self
+                .cache
+                .has(&format!("{}:timer", Self::clean_rate_limiter_key(key)))
+                .await?
+            {
                 return Ok(true);
             }
             self.reset_attempts(key).await?;
@@ -129,7 +148,11 @@ impl RateLimiter {
         let key = Self::clean_rate_limiter_key(key);
 
         self.cache
-            .add(&format!("{key}:timer"), Self::available_at(decay_seconds), decay_seconds)
+            .add(
+                &format!("{key}:timer"),
+                Self::available_at(decay_seconds),
+                decay_seconds,
+            )
             .await?;
         let added = self.cache.add(&key, 0, decay_seconds).await?;
         let hits = self.cache.increment_by(&key, amount).await?;
@@ -149,7 +172,12 @@ impl RateLimiter {
     /// Get the number of attempts for the given key.
     pub async fn attempts(&self, key: &str) -> Result<i64> {
         let key = Self::clean_rate_limiter_key(key);
-        Ok(self.cache.get(&key).await?.and_then(|v| v.to_i64_lossy()).unwrap_or(0))
+        Ok(self
+            .cache
+            .get(&key)
+            .await?
+            .and_then(|v| v.to_i64_lossy())
+            .unwrap_or(0))
     }
 
     /// Reset the number of attempts for the given key.
@@ -180,7 +208,12 @@ impl RateLimiter {
     /// Get the number of seconds until the key is accessible again.
     pub async fn available_in(&self, key: &str) -> Result<i64> {
         let key = Self::clean_rate_limiter_key(key);
-        let timer = self.cache.get(&format!("{key}:timer")).await?.and_then(|v| v.to_i64_lossy()).unwrap_or(0);
+        let timer = self
+            .cache
+            .get(&format!("{key}:timer"))
+            .await?
+            .and_then(|v| v.to_i64_lossy())
+            .unwrap_or(0);
         Ok((timer - Carbon::now().timestamp()).max(0))
     }
 
@@ -204,7 +237,9 @@ impl RateLimiter {
         for c in key.chars() {
             match html_entity(c) {
                 Some(entity) => match entity.chars().next() {
-                    Some(first) if entity.chars().all(|c| c.is_ascii_alphabetic()) => cleaned.push(first),
+                    Some(first) if entity.chars().all(|c| c.is_ascii_alphabetic()) => {
+                        cleaned.push(first)
+                    }
                     _ => {
                         cleaned.push('&');
                         cleaned.push_str(entity);
@@ -222,15 +257,16 @@ impl RateLimiter {
 /// The HTML 4 named entity for a character, as `htmlentities()` encodes it.
 fn html_entity(c: char) -> Option<&'static str> {
     const LATIN1: [&str; 96] = [
-        "nbsp", "iexcl", "cent", "pound", "curren", "yen", "brvbar", "sect", "uml", "copy", "ordf", "laquo",
-        "not", "shy", "reg", "macr", "deg", "plusmn", "sup2", "sup3", "acute", "micro", "para", "middot",
-        "cedil", "sup1", "ordm", "raquo", "frac14", "frac12", "frac34", "iquest", "Agrave", "Aacute", "Acirc",
-        "Atilde", "Auml", "Aring", "AElig", "Ccedil", "Egrave", "Eacute", "Ecirc", "Euml", "Igrave", "Iacute",
-        "Icirc", "Iuml", "ETH", "Ntilde", "Ograve", "Oacute", "Ocirc", "Otilde", "Ouml", "times", "Oslash",
-        "Ugrave", "Uacute", "Ucirc", "Uuml", "Yacute", "THORN", "szlig", "agrave", "aacute", "acirc", "atilde",
-        "auml", "aring", "aelig", "ccedil", "egrave", "eacute", "ecirc", "euml", "igrave", "iacute", "icirc",
-        "iuml", "eth", "ntilde", "ograve", "oacute", "ocirc", "otilde", "ouml", "divide", "oslash", "ugrave",
-        "uacute", "ucirc", "uuml", "yacute", "thorn", "yuml",
+        "nbsp", "iexcl", "cent", "pound", "curren", "yen", "brvbar", "sect", "uml", "copy", "ordf",
+        "laquo", "not", "shy", "reg", "macr", "deg", "plusmn", "sup2", "sup3", "acute", "micro",
+        "para", "middot", "cedil", "sup1", "ordm", "raquo", "frac14", "frac12", "frac34", "iquest",
+        "Agrave", "Aacute", "Acirc", "Atilde", "Auml", "Aring", "AElig", "Ccedil", "Egrave",
+        "Eacute", "Ecirc", "Euml", "Igrave", "Iacute", "Icirc", "Iuml", "ETH", "Ntilde", "Ograve",
+        "Oacute", "Ocirc", "Otilde", "Ouml", "times", "Oslash", "Ugrave", "Uacute", "Ucirc",
+        "Uuml", "Yacute", "THORN", "szlig", "agrave", "aacute", "acirc", "atilde", "auml", "aring",
+        "aelig", "ccedil", "egrave", "eacute", "ecirc", "euml", "igrave", "iacute", "icirc",
+        "iuml", "eth", "ntilde", "ograve", "oacute", "ocirc", "otilde", "ouml", "divide", "oslash",
+        "ugrave", "uacute", "ucirc", "uuml", "yacute", "thorn", "yuml",
     ];
     match c {
         '&' => Some("amp"),
@@ -300,9 +336,21 @@ mod tests {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let limiter = limiter();
         for attempt in 1..=3 {
-            assert_eq!(limiter.attempt("send", 3, || async move { attempt }, 60).await.unwrap(), Some(attempt));
+            assert_eq!(
+                limiter
+                    .attempt("send", 3, || async move { attempt }, 60)
+                    .await
+                    .unwrap(),
+                Some(attempt)
+            );
         }
-        assert_eq!(limiter.attempt("send", 3, || async { 4 }, 60).await.unwrap(), None);
+        assert_eq!(
+            limiter
+                .attempt("send", 3, || async { 4 }, 60)
+                .await
+                .unwrap(),
+            None
+        );
         assert_eq!(limiter.attempts("send").await.unwrap(), 3);
     }
 
@@ -336,9 +384,16 @@ mod tests {
     #[test]
     fn named_limiters_get_unique_keys() {
         let limiter = limiter();
-        limiter.for_("uploads", |_| vec![Limit::per_minute(10).by("user:1"), Limit::per_day(1000).by("user:1")]);
+        limiter.for_("uploads", |_| {
+            vec![
+                Limit::per_minute(10).by("user:1"),
+                Limit::per_day(1000).by("user:1"),
+            ]
+        });
         let callback = limiter.limiter("uploads").unwrap();
-        let LimiterResponse::Limits(limits) = callback(&Request::default()) else { panic!("expected limits") };
+        let LimiterResponse::Limits(limits) = callback(&Request::default()) else {
+            panic!("expected limits")
+        };
         assert_eq!(limits[0].key, "user:1:attempts:10:decay:60");
         assert_eq!(limits[1].key, "user:1:attempts:1000:decay:86400");
         assert!(limiter.limiter("missing").is_none());
@@ -350,6 +405,9 @@ mod tests {
         assert_eq!(RateLimiter::clean_rate_limiter_key("<tag>"), "ltagg");
         assert_eq!(RateLimiter::clean_rate_limiter_key("x²"), "x&sup2;");
         assert_eq!(RateLimiter::clean_rate_limiter_key("it's"), "it&#039;s");
-        assert_eq!(RateLimiter::clean_rate_limiter_key("192.168.0.1|login"), "192.168.0.1|login");
+        assert_eq!(
+            RateLimiter::clean_rate_limiter_key("192.168.0.1|login"),
+            "192.168.0.1|login"
+        );
     }
 }

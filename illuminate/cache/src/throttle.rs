@@ -18,7 +18,10 @@ use async_trait::async_trait;
 use md5::{Digest as _, Md5};
 use sha1::Sha1;
 
-use illuminate_http::{HeaderMap, HeaderName, HeaderValue, HttpException, HttpResponseException, Middleware, Next, Request, Response};
+use illuminate_http::{
+    HeaderMap, HeaderName, HeaderValue, HttpException, HttpResponseException, Middleware, Next,
+    Request, Response,
+};
 use illuminate_support::{Carbon, Error, Result, Value, ValueExt};
 
 use crate::limit::{AfterCallback, LimiterResponse, ResponseCallback};
@@ -35,10 +38,16 @@ pub struct MissingRateLimiterException {
 
 /// Build Laravel's `ThrottleRequestsException`: a `429 Too Many Requests`
 /// [`HttpException`] carrying the rate limit headers.
-pub fn throttle_requests_exception(message: impl Into<String>, headers: &HeaderMap) -> HttpException {
+pub fn throttle_requests_exception(
+    message: impl Into<String>,
+    headers: &HeaderMap,
+) -> HttpException {
     let mut exception = HttpException::with_message(429, message);
     for (name, value) in headers {
-        exception = exception.header(header_case(name.as_str()), value.to_str().unwrap_or_default());
+        exception = exception.header(
+            header_case(name.as_str()),
+            value.to_str().unwrap_or_default(),
+        );
     }
     exception
 }
@@ -73,17 +82,27 @@ impl ThrottleRequests {
     /// Throttle with the given middleware parameters (`["60", "1"]`,
     /// `["api"]`, `["60", "1", "prefix"]`).
     pub fn new(parameters: &[String]) -> Self {
-        Self { parameters: parameters.to_vec() }
+        Self {
+            parameters: parameters.to_vec(),
+        }
     }
 
     /// Throttle using a named rate limiter.
     pub fn using(name: &str) -> Self {
-        Self { parameters: vec![name.to_string()] }
+        Self {
+            parameters: vec![name.to_string()],
+        }
     }
 
     /// Throttle to `max_attempts` per `decay_minutes`, with an optional key prefix.
     pub fn with(max_attempts: i64, decay_minutes: u64, prefix: &str) -> Self {
-        Self { parameters: vec![max_attempts.to_string(), decay_minutes.to_string(), prefix.to_string()] }
+        Self {
+            parameters: vec![
+                max_attempts.to_string(),
+                decay_minutes.to_string(),
+                prefix.to_string(),
+            ],
+        }
     }
 
     /// Specify whether rate limiter keys should be hashed (the default).
@@ -107,7 +126,10 @@ impl ThrottleRequests {
         limits: Vec<ResolvedLimit>,
     ) -> Result<Response> {
         for limit in &limits {
-            if limiter.too_many_attempts(&limit.key, limit.max_attempts).await? {
+            if limiter
+                .too_many_attempts(&limit.key, limit.max_attempts)
+                .await?
+            {
                 return Err(Self::build_exception(limiter, &request, limit).await?);
             }
         }
@@ -141,13 +163,21 @@ impl ThrottleRequests {
             let domain = request.attribute("_route_domain").to_string_lossy();
             format!("{domain}|{}", request.ip().unwrap_or_default())
         };
-        if Self::hashes_keys() { hex::encode(Sha1::digest(identifier.as_bytes())) } else { identifier }
+        if Self::hashes_keys() {
+            hex::encode(Sha1::digest(identifier.as_bytes()))
+        } else {
+            identifier
+        }
     }
 
     fn resolve_max_attempts(request: &Request, max_attempts: &str) -> Result<i64> {
         let max_attempts = match max_attempts.split_once('|') {
             Some((guest, user)) => {
-                if request.attribute("_auth_id").is_null() { guest } else { user }
+                if request.attribute("_auth_id").is_null() {
+                    guest
+                } else {
+                    user
+                }
             }
             None => max_attempts,
         };
@@ -155,10 +185,19 @@ impl ThrottleRequests {
             .trim()
             .parse::<f64>()
             .map(|n| n as i64)
-            .map_err(|_| MissingRateLimiterException { limiter: max_attempts.to_string() }.into())
+            .map_err(|_| {
+                MissingRateLimiterException {
+                    limiter: max_attempts.to_string(),
+                }
+                .into()
+            })
     }
 
-    async fn build_exception(limiter: &RateLimiter, request: &Request, limit: &ResolvedLimit) -> Result<Error> {
+    async fn build_exception(
+        limiter: &RateLimiter,
+        request: &Request,
+        limit: &ResolvedLimit,
+    ) -> Result<Error> {
         let retry_after = limiter.available_in(&limit.key).await?;
         let headers = get_headers(limit.max_attempts, 0, Some(retry_after));
         Ok(match &limit.response_callback {
@@ -178,7 +217,7 @@ impl Middleware for ThrottleRequests {
             && let Some(named) = limiter.limiter(name)
         {
             let limits = match named(&request) {
-                LimiterResponse::Response(response) => return Ok(response),
+                LimiterResponse::Response(response) => return Ok(*response),
                 LimiterResponse::Limits(limits) => limits,
             };
             if limits.len() == 1 && limits[0].is_unlimited() {
@@ -202,7 +241,11 @@ impl Middleware for ThrottleRequests {
         }
 
         let parameter = |index: usize, default: &str| -> String {
-            self.parameters.get(index).filter(|p| !p.is_empty()).cloned().unwrap_or_else(|| default.to_string())
+            self.parameters
+                .get(index)
+                .filter(|p| !p.is_empty())
+                .cloned()
+                .unwrap_or_else(|| default.to_string())
         };
         let max_attempts = Self::resolve_max_attempts(&request, &parameter(0, "60"))?;
         let decay_minutes: f64 = parameter(1, "1").trim().parse().unwrap_or(1.0);
@@ -215,7 +258,8 @@ impl Middleware for ThrottleRequests {
             after_callback: None,
             response_callback: None,
         };
-        self.handle_request(&limiter, request, next, vec![limit]).await
+        self.handle_request(&limiter, request, next, vec![limit])
+            .await
     }
 }
 
@@ -239,7 +283,9 @@ fn get_headers(max_attempts: i64, remaining_attempts: i64, retry_after: Option<i
 /// Add the limit headers to the response, keeping the most restrictive
 /// limit when several apply.
 fn add_headers(response: &mut Response, max_attempts: i64, remaining_attempts: i64) {
-    let existing = response.header("x-ratelimit-remaining").map(|v| Value::from(v).to_i64_lossy().unwrap_or(0));
+    let existing = response
+        .header("x-ratelimit-remaining")
+        .map(|v| Value::from(v).to_i64_lossy().unwrap_or(0));
     if existing.is_some_and(|existing| existing <= remaining_attempts) {
         return;
     }
@@ -308,10 +354,18 @@ mod tests {
         assert_eq!(response.header("x-ratelimit-limit").unwrap(), "2");
         assert_eq!(response.header("x-ratelimit-remaining").unwrap(), "0");
         assert_eq!(response.header("retry-after").unwrap(), "45");
-        assert_eq!(response.header("x-ratelimit-reset").unwrap(), (1_700_000_015 + 45).to_string());
+        assert_eq!(
+            response.header("x-ratelimit-reset").unwrap(),
+            (1_700_000_015 + 45).to_string()
+        );
 
         time.travel_seconds(45);
-        assert_eq!(send(&throttle, Request::create("/", "GET")).await.status_code(), 200);
+        assert_eq!(
+            send(&throttle, Request::create("/", "GET"))
+                .await
+                .status_code(),
+            200
+        );
     }
 
     #[tokio::test]
@@ -321,13 +375,31 @@ mod tests {
         let throttle = ThrottleRequests::with(1, 1, "");
         let next = || Next::new(ok());
 
-        throttle.handle(Request::create("/", "GET"), next()).await.unwrap();
-        let error = throttle.handle(Request::create("/", "GET"), next()).await.unwrap_err();
+        throttle
+            .handle(Request::create("/", "GET"), next())
+            .await
+            .unwrap();
+        let error = throttle
+            .handle(Request::create("/", "GET"), next())
+            .await
+            .unwrap_err();
         let exception = error.downcast_ref::<HttpException>().unwrap();
         assert_eq!(exception.status, 429);
         assert_eq!(exception.message(), "Too Many Attempts.");
-        let names: Vec<&str> = exception.headers.iter().map(|(name, _)| name.as_str()).collect();
-        assert_eq!(names, ["X-RateLimit-Limit", "X-RateLimit-Remaining", "Retry-After", "X-RateLimit-Reset"]);
+        let names: Vec<&str> = exception
+            .headers
+            .iter()
+            .map(|(name, _)| name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "X-RateLimit-Limit",
+                "X-RateLimit-Remaining",
+                "Retry-After",
+                "X-RateLimit-Reset"
+            ]
+        );
     }
 
     #[tokio::test]
@@ -336,8 +408,18 @@ mod tests {
         let (_app, _guard) = app();
         let throttle = throttle_middleware(&params(&["1", "1"]));
 
-        assert_eq!(send(&throttle, Request::create("/", "GET")).await.status_code(), 200);
-        assert_eq!(send(&throttle, Request::create("/", "GET")).await.status_code(), 429);
+        assert_eq!(
+            send(&throttle, Request::create("/", "GET"))
+                .await
+                .status_code(),
+            200
+        );
+        assert_eq!(
+            send(&throttle, Request::create("/", "GET"))
+                .await
+                .status_code(),
+            429
+        );
 
         let user = Request::create("/", "GET");
         user.set_attribute("_auth_id", 1);
@@ -375,23 +457,44 @@ mod tests {
         let (_app, _guard) = app();
         let a = throttle_middleware(&params(&["1", "1", "a"]));
         let b = throttle_middleware(&params(&["1", "1", "b"]));
-        assert_eq!(send(&a, Request::create("/", "GET")).await.status_code(), 200);
-        assert_eq!(send(&b, Request::create("/", "GET")).await.status_code(), 200);
-        assert_eq!(send(&a, Request::create("/", "GET")).await.status_code(), 429);
+        assert_eq!(
+            send(&a, Request::create("/", "GET")).await.status_code(),
+            200
+        );
+        assert_eq!(
+            send(&b, Request::create("/", "GET")).await.status_code(),
+            200
+        );
+        assert_eq!(
+            send(&a, Request::create("/", "GET")).await.status_code(),
+            429
+        );
     }
 
     #[tokio::test]
     async fn named_limiters_are_used() {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let (_app, _guard) = app();
-        facades::RateLimiter::for_("api", |request| Limit::per_minute(2).by(request.ip().unwrap_or_default()))
-            .unwrap();
+        facades::RateLimiter::for_("api", |request| {
+            Limit::per_minute(2).by(request.ip().unwrap_or_default())
+        })
+        .unwrap();
         let throttle = throttle_middleware(&params(&["api"]));
 
-        assert_eq!(send(&throttle, Request::create("/", "GET")).await.status_code(), 200);
+        assert_eq!(
+            send(&throttle, Request::create("/", "GET"))
+                .await
+                .status_code(),
+            200
+        );
         let response = send(&throttle, Request::create("/", "GET")).await;
         assert_eq!(response.header("x-ratelimit-remaining").unwrap(), "0");
-        assert_eq!(send(&throttle, Request::create("/", "GET")).await.status_code(), 429);
+        assert_eq!(
+            send(&throttle, Request::create("/", "GET"))
+                .await
+                .status_code(),
+            429
+        );
 
         let key = hex::encode(Md5::digest(b"api127.0.0.1"));
         assert_eq!(facades::RateLimiter::attempts(&key).await.unwrap(), 2);
@@ -402,7 +505,8 @@ mod tests {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let (_app, _guard) = app();
         facades::RateLimiter::for_("vip", |_| Limit::none()).unwrap();
-        facades::RateLimiter::for_("closed", |_| Response::make("Closed for maintenance", 503)).unwrap();
+        facades::RateLimiter::for_("closed", |_| Response::make("Closed for maintenance", 503))
+            .unwrap();
         facades::RateLimiter::for_("custom", |_| {
             Limit::per_minute(1).response(|_request, headers| {
                 let mut response = Response::make("Slow down!", 429);
@@ -419,8 +523,15 @@ mod tests {
             assert!(response.header("x-ratelimit-limit").is_none());
         }
 
-        let closed = send(&throttle_middleware(&params(&["closed"])), Request::create("/", "GET")).await;
-        assert_eq!((closed.status_code(), closed.content_string()), (503, "Closed for maintenance".to_string()));
+        let closed = send(
+            &throttle_middleware(&params(&["closed"])),
+            Request::create("/", "GET"),
+        )
+        .await;
+        assert_eq!(
+            (closed.status_code(), closed.content_string()),
+            (503, "Closed for maintenance".to_string())
+        );
 
         let custom = throttle_middleware(&params(&["custom"]));
         send(&custom, Request::create("/", "GET")).await;
@@ -434,7 +545,10 @@ mod tests {
     async fn multiple_limits_report_the_most_restrictive() {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let (_app, _guard) = app();
-        facades::RateLimiter::for_("login", |_| [Limit::per_minute(500), Limit::per_minute(3).by("email")]).unwrap();
+        facades::RateLimiter::for_("login", |_| {
+            [Limit::per_minute(500), Limit::per_minute(3).by("email")]
+        })
+        .unwrap();
         let throttle = throttle_middleware(&params(&["login"]));
         let response = send(&throttle, Request::create("/", "GET")).await;
         assert_eq!(response.header("x-ratelimit-limit").unwrap(), "3");
@@ -446,18 +560,32 @@ mod tests {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let (_app, _guard) = app();
         facades::RateLimiter::for_("not-found", |_| {
-            Limit::per_minute(1).by("enumeration").after(|response| response.status_code() == 404)
+            Limit::per_minute(1)
+                .by("enumeration")
+                .after(|response| response.status_code() == 404)
         })
         .unwrap();
         let throttle = throttle_middleware(&params(&["not-found"]));
 
         for _ in 0..3 {
-            assert_eq!(send(&throttle, Request::create("/", "GET")).await.status_code(), 200);
+            assert_eq!(
+                send(&throttle, Request::create("/", "GET"))
+                    .await
+                    .status_code(),
+                200
+            );
         }
-        let missing: Destination = Arc::new(|_request| Box::pin(async { Response::make("Missing", 404) }));
-        let response = run_middleware(Request::create("/", "GET"), vec![throttle.clone()], missing).await;
+        let missing: Destination =
+            Arc::new(|_request| Box::pin(async { Response::make("Missing", 404) }));
+        let response =
+            run_middleware(Request::create("/", "GET"), vec![throttle.clone()], missing).await;
         assert_eq!(response.status_code(), 404);
-        assert_eq!(send(&throttle, Request::create("/", "GET")).await.status_code(), 429);
+        assert_eq!(
+            send(&throttle, Request::create("/", "GET"))
+                .await
+                .status_code(),
+            429
+        );
     }
 
     #[tokio::test]
@@ -465,8 +593,18 @@ mod tests {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let (_app, _guard) = app();
         let throttle = ThrottleRequests::using("undefined");
-        let error = throttle.handle(Request::create("/", "GET"), Next::new(ok())).await.unwrap_err();
-        assert_eq!(error.to_string(), "Rate limiter [undefined] is not defined.");
-        assert!(error.downcast_ref::<MissingRateLimiterException>().is_some());
+        let error = throttle
+            .handle(Request::create("/", "GET"), Next::new(ok()))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "Rate limiter [undefined] is not defined."
+        );
+        assert!(
+            error
+                .downcast_ref::<MissingRateLimiterException>()
+                .is_some()
+        );
     }
 }

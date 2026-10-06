@@ -93,9 +93,18 @@ impl std::fmt::Debug for Lock {
 
 impl Lock {
     /// Create a lock. Without an owner, a random owner token is generated.
-    pub fn new(driver: Arc<dyn LockDriver>, name: impl Into<String>, seconds: u64, owner: Option<String>) -> Self {
+    pub fn new(
+        driver: Arc<dyn LockDriver>,
+        name: impl Into<String>,
+        seconds: u64,
+        owner: Option<String>,
+    ) -> Self {
         Self {
-            info: LockInfo { name: name.into(), owner: owner.unwrap_or_else(|| Str::random(16)), seconds },
+            info: LockInfo {
+                name: name.into(),
+                owner: owner.unwrap_or_else(|| Str::random(16)),
+                seconds,
+            },
             sleep_milliseconds: 250,
             driver,
         }
@@ -169,7 +178,10 @@ impl Lock {
         let sleep = Duration::from_millis(self.sleep_milliseconds);
         while !self.acquire().await? {
             if started.elapsed() + sleep >= timeout {
-                return Err(LockTimeoutException { name: self.info.name.clone() }.into());
+                return Err(LockTimeoutException {
+                    name: self.info.name.clone(),
+                }
+                .into());
             }
             tokio::time::sleep(sleep).await;
         }
@@ -212,7 +224,9 @@ impl Lock {
 
     /// Extend the lock by the given number of seconds (or its original duration).
     pub async fn refresh(&self, seconds: Option<u64>) -> Result<bool> {
-        self.driver.refresh(&self.info, seconds.unwrap_or(self.info.seconds)).await
+        self.driver
+            .refresh(&self.info, seconds.unwrap_or(self.info.seconds))
+            .await
     }
 
     /// Determine if the lock is currently held by anyone.
@@ -260,13 +274,21 @@ impl LockDriver for ArrayLock {
     async fn acquire(&self, lock: &LockInfo) -> Result<bool> {
         let mut locks = self.locks.lock().unwrap();
         if let Some(existing) = locks.get(&lock.name) {
-            let expiration = existing.expires_at.unwrap_or_else(|| Carbon::now().add_second());
+            let expiration = existing
+                .expires_at
+                .unwrap_or_else(|| Carbon::now().add_second());
             if expiration.is_future() {
                 return Ok(false);
             }
         }
         let expires_at = (lock.seconds > 0).then(|| Carbon::now().add_seconds(lock.seconds as i64));
-        locks.insert(lock.name.clone(), ArrayLockEntry { owner: lock.owner.clone(), expires_at });
+        locks.insert(
+            lock.name.clone(),
+            ArrayLockEntry {
+                owner: lock.owner.clone(),
+                expires_at,
+            },
+        );
         Ok(true)
     }
 
@@ -287,7 +309,12 @@ impl LockDriver for ArrayLock {
     }
 
     async fn current_owner(&self, lock: &LockInfo) -> Result<Option<String>> {
-        Ok(self.locks.lock().unwrap().get(&lock.name).map(|entry| entry.owner.clone()))
+        Ok(self
+            .locks
+            .lock()
+            .unwrap()
+            .get(&lock.name)
+            .map(|entry| entry.owner.clone()))
     }
 
     async fn refresh(&self, lock: &LockInfo, seconds: u64) -> Result<bool> {
@@ -322,7 +349,9 @@ impl CacheLock {
 #[async_trait]
 impl LockDriver for CacheLock {
     async fn acquire(&self, lock: &LockInfo) -> Result<bool> {
-        self.store.add(&lock.name, json!(lock.owner), lock.seconds).await
+        self.store
+            .add(&lock.name, json!(lock.owner), lock.seconds)
+            .await
     }
 
     async fn release(&self, lock: &LockInfo) -> Result<bool> {

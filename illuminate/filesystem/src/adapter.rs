@@ -141,7 +141,10 @@ impl FilesystemAdapter {
     }
 
     fn config_visibility(&self, key: &str) -> Option<Visibility> {
-        self.config.get(key).and_then(Value::as_str).and_then(|v| Visibility::parse(v).ok())
+        self.config
+            .get(key)
+            .and_then(Value::as_str)
+            .and_then(|v| Visibility::parse(v).ok())
     }
 
     fn write_options(&self, visibility: Option<Visibility>) -> WriteOptions {
@@ -165,7 +168,10 @@ impl FilesystemAdapter {
 
     /// Handle a failed write: throw, or report and return `false`.
     fn failed(&self, error: Error) -> Result<bool> {
-        if error.is::<PathTraversalDetected>() || error.is::<CorruptedPathDetected>() || self.throws_exceptions() {
+        if error.is::<PathTraversalDetected>()
+            || error.is::<CorruptedPathDetected>()
+            || self.throws_exceptions()
+        {
             return Err(error);
         }
         if self.should_report()
@@ -194,7 +200,8 @@ impl FilesystemAdapter {
     /// Determine if a file or directory exists.
     pub async fn exists(&self, path: &str) -> Result<bool> {
         let location = self.location(path)?;
-        Ok(self.driver.file_exists(&location).await? || self.driver.directory_exists(&location).await?)
+        Ok(self.driver.file_exists(&location).await?
+            || self.driver.directory_exists(&location).await?)
     }
 
     /// Determine if a file or directory is missing.
@@ -235,16 +242,28 @@ impl FilesystemAdapter {
     /// assert_eq!(disk.path("avatars/1.jpg").unwrap().to_str().unwrap(), "/var/www/storage/app/avatars/1.jpg");
     /// ```
     pub fn path(&self, path: &str) -> Result<PathBuf> {
-        let root = self.config.get("root").and_then(Value::as_str).unwrap_or_default();
+        let root = self
+            .config
+            .get("root")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let location = self.location(path)?;
-        Ok(if root.is_empty() { PathBuf::from(location) } else { PathBuf::from(root).join(location) })
+        Ok(if root.is_empty() {
+            PathBuf::from(location)
+        } else {
+            PathBuf::from(root).join(location)
+        })
     }
 
     /// Get the contents of a file as a string.
     pub async fn get(&self, path: &str) -> Result<String> {
         let bytes = self.bytes(path).await?;
         String::from_utf8(bytes.to_vec()).map_err(|_| {
-            FilesystemException::read(path, "The file is not valid UTF-8; read it with `bytes` instead.").into()
+            FilesystemException::read(
+                path,
+                "The file is not valid UTF-8; read it with `bytes` instead.",
+            )
+            .into()
         })
     }
 
@@ -282,18 +301,27 @@ impl FilesystemAdapter {
     // Writing
     // ------------------------------------------------------------------
 
-    async fn write(&self, path: &str, contents: Bytes, visibility: Option<Visibility>) -> Result<bool> {
+    async fn write(
+        &self,
+        path: &str,
+        contents: Bytes,
+        visibility: Option<Visibility>,
+    ) -> Result<bool> {
         let location = self.location(path)?;
         if self.is_read_only() {
             return self.read_only_failure(&location);
         }
-        let result = self.driver.write(&location, contents, self.write_options(visibility)).await;
+        let result = self
+            .driver
+            .write(&location, contents, self.write_options(visibility))
+            .await;
         self.outcome(result)
     }
 
     /// Write the contents of a file.
     pub async fn put(&self, path: &str, contents: impl AsRef<[u8]>) -> Result<bool> {
-        self.write(path, Bytes::copy_from_slice(contents.as_ref()), None).await
+        self.write(path, Bytes::copy_from_slice(contents.as_ref()), None)
+            .await
     }
 
     /// Write the contents of a file with the given visibility.
@@ -303,7 +331,12 @@ impl FilesystemAdapter {
         contents: impl AsRef<[u8]>,
         visibility: Visibility,
     ) -> Result<bool> {
-        self.write(path, Bytes::copy_from_slice(contents.as_ref()), Some(visibility)).await
+        self.write(
+            path,
+            Bytes::copy_from_slice(contents.as_ref()),
+            Some(visibility),
+        )
+        .await
     }
 
     /// Store an uploaded file in the given directory under a unique,
@@ -319,7 +352,8 @@ impl FilesystemAdapter {
         file: &UploadedFile,
         visibility: Visibility,
     ) -> Result<String> {
-        self.store_file(path, file, &file.hash_name(), Some(visibility)).await
+        self.store_file(path, file, &file.hash_name(), Some(visibility))
+            .await
     }
 
     /// Store an uploaded file in the given directory under the given name.
@@ -361,7 +395,12 @@ impl FilesystemAdapter {
     }
 
     /// Prepend to a file with a custom separator.
-    pub async fn prepend_with(&self, path: &str, data: impl AsRef<[u8]>, separator: &str) -> Result<bool> {
+    pub async fn prepend_with(
+        &self,
+        path: &str,
+        data: impl AsRef<[u8]>,
+        separator: &str,
+    ) -> Result<bool> {
         if self.file_exists(path).await? {
             let mut contents = data.as_ref().to_vec();
             contents.extend_from_slice(separator.as_bytes());
@@ -377,7 +416,12 @@ impl FilesystemAdapter {
     }
 
     /// Append to a file with a custom separator.
-    pub async fn append_with(&self, path: &str, data: impl AsRef<[u8]>, separator: &str) -> Result<bool> {
+    pub async fn append_with(
+        &self,
+        path: &str,
+        data: impl AsRef<[u8]>,
+        separator: &str,
+    ) -> Result<bool> {
         if self.file_exists(path).await? {
             let mut contents = self.bytes(path).await?.to_vec();
             contents.extend_from_slice(separator.as_bytes());
@@ -420,7 +464,10 @@ impl FilesystemAdapter {
         if self.is_read_only() {
             return self.read_only_failure(&to);
         }
-        let result = self.driver.move_(&from, &to, self.write_options(None)).await;
+        let result = self
+            .driver
+            .move_(&from, &to, self.write_options(None))
+            .await;
         self.outcome(result)
     }
 
@@ -429,7 +476,10 @@ impl FilesystemAdapter {
         let destination = crate::Storage::disk(disk)?;
         let to = to.unwrap_or(from);
         if std::ptr::eq(destination.as_ref(), self) && to == from {
-            return Err(InvalidArgumentException::new("Cannot copy a file to the same disk and path.").into());
+            return Err(InvalidArgumentException::new(
+                "Cannot copy a file to the same disk and path.",
+            )
+            .into());
         }
         let contents = self.bytes(from).await?;
         destination.write(to, contents, None).await
@@ -498,9 +548,15 @@ impl FilesystemAdapter {
     pub async fn make_directory(&self, path: &str) -> Result<bool> {
         let location = self.location(path)?;
         if self.is_read_only() {
-            return self.failed(FilesystemException::create_directory(&location, "This is a readonly adapter.").into());
+            return self.failed(
+                FilesystemException::create_directory(&location, "This is a readonly adapter.")
+                    .into(),
+            );
         }
-        let result = self.driver.create_directory(&location, self.write_options(None)).await;
+        let result = self
+            .driver
+            .create_directory(&location, self.write_options(None))
+            .await;
         self.outcome(result)
     }
 
@@ -508,7 +564,10 @@ impl FilesystemAdapter {
     pub async fn delete_directory(&self, directory: &str) -> Result<bool> {
         let location = self.location(directory)?;
         if self.is_read_only() {
-            return self.failed(FilesystemException::delete_directory(&location, "This is a readonly adapter.").into());
+            return self.failed(
+                FilesystemException::delete_directory(&location, "This is a readonly adapter.")
+                    .into(),
+            );
         }
         let result = self.driver.delete_directory(&location).await;
         self.outcome(result)
@@ -534,7 +593,11 @@ impl FilesystemAdapter {
     /// assert_eq!(disk.url("avatars/1.jpg").unwrap(), "/storage/avatars/1.jpg");
     /// ```
     pub fn url(&self, path: &str) -> Result<String> {
-        let path = if self.prefix.is_empty() { path.to_string() } else { concat_path_to_url(&self.prefix, path) };
+        let path = if self.prefix.is_empty() {
+            path.to_string()
+        } else {
+            concat_path_to_url(&self.prefix, path)
+        };
         if let Some(url) = self.driver.url(&path) {
             return Ok(url);
         }
@@ -580,7 +643,12 @@ impl FilesystemAdapter {
     }
 
     /// Get a temporary URL, passing driver specific options along.
-    pub fn temporary_url_with(&self, path: &str, expiration: Carbon, options: &Value) -> Result<String> {
+    pub fn temporary_url_with(
+        &self,
+        path: &str,
+        expiration: Carbon,
+        options: &Value,
+    ) -> Result<String> {
         let callback = self.temporary_url_callback.read().unwrap().clone();
         if let Some(callback) = callback {
             return callback(path, expiration, options);
@@ -588,7 +656,11 @@ impl FilesystemAdapter {
         if self.serves_signed_urls()
             && let Some(signer) = try_app::<dyn UrlSigner>()
         {
-            return signer.temporary_signed_route(&format!("storage.{}", self.disk), expiration, json!({"path": path}));
+            return signer.temporary_signed_route(
+                &format!("storage.{}", self.disk),
+                expiration,
+                json!({"path": path}),
+            );
         }
         Err(RuntimeException::new("This driver does not support creating temporary URLs.").into())
     }
@@ -615,13 +687,21 @@ impl FilesystemAdapter {
         self.build_response(path, name, "attachment").await
     }
 
-    async fn build_response(&self, path: &str, name: Option<&str>, disposition: &str) -> Result<Response> {
+    async fn build_response(
+        &self,
+        path: &str,
+        name: Option<&str>,
+        disposition: &str,
+    ) -> Result<Response> {
         let contents = self.bytes(path).await?;
         let mime = match self.mime_type(path).await {
             Ok(mime) => mime,
-            Err(_) => detect_mime_type(path, Some(&contents)).unwrap_or_else(|| "application/octet-stream".into()),
+            Err(_) => detect_mime_type(path, Some(&contents))
+                .unwrap_or_else(|| "application/octet-stream".into()),
         };
-        let filename = name.map(str::to_string).unwrap_or_else(|| pathinfo(path).basename);
+        let filename = name
+            .map(str::to_string)
+            .unwrap_or_else(|| pathinfo(path).basename);
         let disposition = make_disposition(disposition, &filename, &fallback_name(&filename))?;
         let length = contents.len().to_string();
         Ok(Response::new(contents)
@@ -674,14 +754,20 @@ impl FilesystemAdapter {
     /// Assert that the given directory contains exactly `count` files.
     pub async fn assert_count(&self, path: &str, count: usize) -> &Self {
         let actual = self.files(path).await.map(|f| f.len()).unwrap_or(0);
-        assert!(actual == count, "Expected [{count}] files at [{path}], but found [{actual}].");
+        assert!(
+            actual == count,
+            "Expected [{count}] files at [{path}], but found [{actual}]."
+        );
         self
     }
 
     /// Assert that the given directory contains exactly `count` files, recursively.
     pub async fn assert_count_recursive(&self, path: &str, count: usize) -> &Self {
         let actual = self.all_files(path).await.map(|f| f.len()).unwrap_or(0);
-        assert!(actual == count, "Expected [{count}] files at [{path}], but found [{actual}].");
+        assert!(
+            actual == count,
+            "Expected [{count}] files at [{path}], but found [{actual}]."
+        );
         self
     }
 
@@ -702,7 +788,11 @@ impl FilesystemAdapter {
 
 /// Join a base URL and a path with exactly one slash.
 fn concat_path_to_url(url: &str, path: &str) -> String {
-    format!("{}/{}", url.trim_end_matches('/'), path.trim_start_matches('/'))
+    format!(
+        "{}/{}",
+        url.trim_end_matches('/'),
+        path.trim_start_matches('/')
+    )
 }
 
 /// An ASCII-only fallback for a download file name.
@@ -712,11 +802,19 @@ fn fallback_name(name: &str) -> String {
         .filter(|c| *c != '%')
         .map(|c| if (' '..='~').contains(&c) { c } else { '_' })
         .collect();
-    if fallback.is_empty() { "_".repeat(name.chars().count()) } else { fallback }
+    if fallback.is_empty() {
+        "_".repeat(name.chars().count())
+    } else {
+        fallback
+    }
 }
 
 /// Build a `Content-Disposition` header value, like Symfony's `HeaderUtils::makeDisposition`.
-pub(crate) fn make_disposition(disposition: &str, filename: &str, fallback: &str) -> Result<String> {
+pub(crate) fn make_disposition(
+    disposition: &str,
+    filename: &str,
+    fallback: &str,
+) -> Result<String> {
     if filename.contains(['/', '\\']) || fallback.contains(['/', '\\']) {
         return Err(InvalidArgumentException::new(
             "The filename and the fallback cannot contain the \"/\" and \"\\\" characters.",
@@ -725,12 +823,13 @@ pub(crate) fn make_disposition(disposition: &str, filename: &str, fallback: &str
     }
     let mut header = format!("{disposition}; filename={}", quote_header_value(fallback));
     if filename != fallback {
-        let encoded = percent_encoding::utf8_percent_encode(filename, percent_encoding::NON_ALPHANUMERIC)
-            .to_string()
-            .replace("%2D", "-")
-            .replace("%2E", ".")
-            .replace("%5F", "_")
-            .replace("%7E", "~");
+        let encoded =
+            percent_encoding::utf8_percent_encode(filename, percent_encoding::NON_ALPHANUMERIC)
+                .to_string()
+                .replace("%2D", "-")
+                .replace("%2E", ".")
+                .replace("%5F", "_")
+                .replace("%7E", "~");
         header.push_str(&format!("; filename*=utf-8''{encoded}"));
     }
     Ok(header)
@@ -757,7 +856,10 @@ mod tests {
         let mut config = config;
         config["root"] = json!(dir.path().to_string_lossy());
         let driver = LocalDriver::from_config(&config).unwrap();
-        (dir, FilesystemAdapter::new(Arc::new(driver), config).with_name("local"))
+        (
+            dir,
+            FilesystemAdapter::new(Arc::new(driver), config).with_name("local"),
+        )
     }
 
     #[tokio::test]
@@ -771,8 +873,14 @@ mod tests {
         assert!(disk.missing("nope.txt").await.unwrap());
         assert_eq!(disk.get("docs/readme.txt").await.unwrap(), "Hello");
         assert_eq!(disk.size("docs/readme.txt").await.unwrap(), 5);
-        assert_eq!(disk.mime_type("docs/readme.txt").await.unwrap(), "text/plain");
-        assert_eq!(disk.checksum("docs/readme.txt").await.unwrap(), "8b1a9953c4611296a827abf8c47804d7");
+        assert_eq!(
+            disk.mime_type("docs/readme.txt").await.unwrap(),
+            "text/plain"
+        );
+        assert_eq!(
+            disk.checksum("docs/readme.txt").await.unwrap(),
+            "8b1a9953c4611296a827abf8c47804d7"
+        );
         assert!(disk.last_modified("docs/readme.txt").await.unwrap() > 0);
 
         disk.put("orders.json", r#"{"total": 42}"#).await.unwrap();
@@ -790,7 +898,11 @@ mod tests {
         assert_eq!(disk.get("log.txt").await.unwrap(), "zeroth\nfirst\nsecond");
 
         assert!(disk.copy("log.txt", "backup/log.txt").await.unwrap());
-        assert!(disk.move_("backup/log.txt", "archive/log.txt").await.unwrap());
+        assert!(
+            disk.move_("backup/log.txt", "archive/log.txt")
+                .await
+                .unwrap()
+        );
         assert!(disk.missing("backup/log.txt").await.unwrap());
         assert!(disk.exists("archive/log.txt").await.unwrap());
 
@@ -806,7 +918,11 @@ mod tests {
     async fn throwing_disks_return_errors() {
         let (_dir, disk) = disk_with(json!({"throw": true}));
         let error = disk.copy("missing.txt", "other.txt").await.unwrap_err();
-        assert!(error.to_string().starts_with("Unable to copy file from missing.txt to other.txt"));
+        assert!(
+            error
+                .to_string()
+                .starts_with("Unable to copy file from missing.txt to other.txt")
+        );
         assert!(matches!(
             error.downcast_ref::<FilesystemException>(),
             Some(FilesystemException::UnableToCopyFile { .. })
@@ -823,7 +939,12 @@ mod tests {
             disk.delete("../x").await.map(|_| ()),
             disk.path("../x").map(|_| ()),
         ] {
-            assert!(result.unwrap_err().downcast_ref::<PathTraversalDetected>().is_some());
+            assert!(
+                result
+                    .unwrap_err()
+                    .downcast_ref::<PathTraversalDetected>()
+                    .is_some()
+            );
         }
     }
 
@@ -837,13 +958,24 @@ mod tests {
         disk.make_directory("empty").await.unwrap();
 
         assert_eq!(disk.files("").await.unwrap(), vec!["a.txt", "b.txt"]);
-        assert_eq!(disk.files("photos").await.unwrap(), vec!["photos/cover.jpg"]);
+        assert_eq!(
+            disk.files("photos").await.unwrap(),
+            vec!["photos/cover.jpg"]
+        );
         assert_eq!(
             disk.all_files("").await.unwrap(),
-            vec!["a.txt", "b.txt", "photos/2024/beach.jpg", "photos/cover.jpg"]
+            vec![
+                "a.txt",
+                "b.txt",
+                "photos/2024/beach.jpg",
+                "photos/cover.jpg"
+            ]
         );
         assert_eq!(disk.directories("").await.unwrap(), vec!["empty", "photos"]);
-        assert_eq!(disk.all_directories("").await.unwrap(), vec!["empty", "photos", "photos/2024"]);
+        assert_eq!(
+            disk.all_directories("").await.unwrap(),
+            vec!["empty", "photos", "photos/2024"]
+        );
 
         assert!(disk.delete_directory("photos").await.unwrap());
         assert!(disk.missing("photos/cover.jpg").await.unwrap());
@@ -855,8 +987,14 @@ mod tests {
         disk.put("avatar.jpg", "x").await.unwrap();
         assert!(dir.path().join("tenant-1/avatar.jpg").exists());
         assert_eq!(disk.files("").await.unwrap(), vec!["avatar.jpg"]);
-        assert_eq!(disk.path("avatar.jpg").unwrap(), dir.path().join("tenant-1/avatar.jpg"));
-        assert_eq!(disk.url("avatar.jpg").unwrap(), "/storage/tenant-1/avatar.jpg");
+        assert_eq!(
+            disk.path("avatar.jpg").unwrap(),
+            dir.path().join("tenant-1/avatar.jpg")
+        );
+        assert_eq!(
+            disk.url("avatar.jpg").unwrap(),
+            "/storage/tenant-1/avatar.jpg"
+        );
     }
 
     #[tokio::test]
@@ -874,10 +1012,16 @@ mod tests {
             Arc::new(LocalDriver::new("/tmp")),
             json!({"driver": "local", "root": "/tmp", "url": "http://localhost/storage/"}),
         );
-        assert_eq!(disk.url("/avatars/1.jpg").unwrap(), "http://localhost/storage/avatars/1.jpg");
+        assert_eq!(
+            disk.url("/avatars/1.jpg").unwrap(),
+            "http://localhost/storage/avatars/1.jpg"
+        );
 
         let disk = FilesystemAdapter::local("/tmp");
-        assert_eq!(disk.url("public/avatars/1.jpg").unwrap(), "/storage/avatars/1.jpg");
+        assert_eq!(
+            disk.url("public/avatars/1.jpg").unwrap(),
+            "/storage/avatars/1.jpg"
+        );
     }
 
     #[test]
@@ -886,7 +1030,9 @@ mod tests {
         let expiration = Carbon::from_timestamp(1_700_000_000);
         assert!(!disk.provides_temporary_urls());
         assert_eq!(
-            disk.temporary_url("a.txt", expiration).unwrap_err().to_string(),
+            disk.temporary_url("a.txt", expiration)
+                .unwrap_err()
+                .to_string(),
             "This driver does not support creating temporary URLs."
         );
 
@@ -894,7 +1040,10 @@ mod tests {
             Ok(format!("/files/{path}?expires={}", expiration.timestamp()))
         });
         assert!(disk.provides_temporary_urls());
-        assert_eq!(disk.temporary_url("a.txt", expiration).unwrap(), "/files/a.txt?expires=1700000000");
+        assert_eq!(
+            disk.temporary_url("a.txt", expiration).unwrap(),
+            "/files/a.txt?expires=1700000000"
+        );
     }
 
     #[tokio::test]
@@ -905,13 +1054,25 @@ mod tests {
         let response = disk.download("reports/q1 report.txt", None).await.unwrap();
         assert_eq!(response.header("content-type").unwrap(), "text/plain");
         assert_eq!(response.header("content-length").unwrap(), "7");
-        assert_eq!(response.header("content-disposition").unwrap(), "attachment; filename=\"q1 report.txt\"");
+        assert_eq!(
+            response.header("content-disposition").unwrap(),
+            "attachment; filename=\"q1 report.txt\""
+        );
         assert_eq!(response.content_string(), "numbers");
 
-        let response = disk.response("reports/q1 report.txt", Some("report.txt")).await.unwrap();
-        assert_eq!(response.header("content-disposition").unwrap(), "inline; filename=report.txt");
+        let response = disk
+            .response("reports/q1 report.txt", Some("report.txt"))
+            .await
+            .unwrap();
+        assert_eq!(
+            response.header("content-disposition").unwrap(),
+            "inline; filename=report.txt"
+        );
 
-        let response = disk.download("reports/q1 report.txt", Some("résumé.txt")).await.unwrap();
+        let response = disk
+            .download("reports/q1 report.txt", Some("résumé.txt"))
+            .await
+            .unwrap();
         assert_eq!(
             response.header("content-disposition").unwrap(),
             "attachment; filename=resume.txt; filename*=utf-8''r%C3%A9sum%C3%A9.txt"
@@ -922,14 +1083,29 @@ mod tests {
     #[tokio::test]
     async fn visibility_can_be_read_and_changed() {
         let (_dir, disk) = disk_with(json!({}));
-        disk.put_with_visibility("secret.txt", "x", Visibility::Private).await.unwrap();
-        assert_eq!(disk.get_visibility("secret.txt").await.unwrap(), Visibility::Private);
-        assert!(disk.set_visibility("secret.txt", Visibility::Public).await.unwrap());
-        assert_eq!(disk.get_visibility("secret.txt").await.unwrap(), Visibility::Public);
+        disk.put_with_visibility("secret.txt", "x", Visibility::Private)
+            .await
+            .unwrap();
+        assert_eq!(
+            disk.get_visibility("secret.txt").await.unwrap(),
+            Visibility::Private
+        );
+        assert!(
+            disk.set_visibility("secret.txt", Visibility::Public)
+                .await
+                .unwrap()
+        );
+        assert_eq!(
+            disk.get_visibility("secret.txt").await.unwrap(),
+            Visibility::Public
+        );
 
         let (_dir, public) = disk_with(json!({"visibility": "public"}));
         public.put("open.txt", "x").await.unwrap();
-        assert_eq!(public.get_visibility("open.txt").await.unwrap(), Visibility::Public);
+        assert_eq!(
+            public.get_visibility("open.txt").await.unwrap(),
+            Visibility::Public
+        );
     }
 
     #[tokio::test]
@@ -963,9 +1139,15 @@ mod tests {
         disk.assert_count_recursive("", 2).await;
         disk.assert_directory_empty("wallpapers").await;
 
-        let result = tokio::spawn(async move { disk.assert_exists("missing.jpg").await; }).await;
+        let result = tokio::spawn(async move {
+            disk.assert_exists("missing.jpg").await;
+        })
+        .await;
         let panic = result.unwrap_err().into_panic();
         let message = panic.downcast_ref::<String>().cloned().unwrap_or_default();
-        assert_eq!(message, "Unable to find a file or directory at path [missing.jpg].");
+        assert_eq!(
+            message,
+            "Unable to find a file or directory at path [missing.jpg]."
+        );
     }
 }

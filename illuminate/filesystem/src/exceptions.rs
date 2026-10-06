@@ -51,15 +51,45 @@ impl CorruptedPathDetected {
 /// `UnableToWriteFile`, ...), and so do their messages.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FilesystemException {
-    UnableToReadFile { location: String, reason: String },
-    UnableToWriteFile { location: String, reason: String },
-    UnableToDeleteFile { location: String, reason: String },
-    UnableToDeleteDirectory { location: String, reason: String },
-    UnableToCreateDirectory { location: String, reason: String },
-    UnableToCopyFile { from: String, to: String, reason: String },
-    UnableToMoveFile { from: String, to: String, reason: String },
-    UnableToRetrieveMetadata { metadata: String, location: String, reason: String },
-    UnableToSetVisibility { location: String, reason: String },
+    UnableToReadFile {
+        location: String,
+        reason: String,
+    },
+    UnableToWriteFile {
+        location: String,
+        reason: String,
+    },
+    UnableToDeleteFile {
+        location: String,
+        reason: String,
+    },
+    UnableToDeleteDirectory {
+        location: String,
+        reason: String,
+    },
+    UnableToCreateDirectory {
+        location: String,
+        reason: String,
+    },
+    UnableToCopyFile {
+        from: String,
+        to: String,
+        reason: String,
+    },
+    UnableToMoveFile {
+        from: String,
+        to: String,
+        reason: String,
+    },
+    UnableToRetrieveMetadata {
+        metadata: String,
+        location: String,
+        reason: String,
+    },
+    UnableToSetVisibility {
+        location: String,
+        reason: String,
+    },
 }
 
 impl FilesystemException {
@@ -93,31 +123,54 @@ impl FilesystemException {
     }
 
     pub(crate) fn read(location: &str, reason: impl fmt::Display) -> Self {
-        Self::UnableToReadFile { location: location.into(), reason: reason.to_string() }
+        Self::UnableToReadFile {
+            location: location.into(),
+            reason: reason.to_string(),
+        }
     }
 
     pub(crate) fn write(location: &str, reason: impl fmt::Display) -> Self {
-        Self::UnableToWriteFile { location: location.into(), reason: reason.to_string() }
+        Self::UnableToWriteFile {
+            location: location.into(),
+            reason: reason.to_string(),
+        }
     }
 
     pub(crate) fn delete(location: &str, reason: impl fmt::Display) -> Self {
-        Self::UnableToDeleteFile { location: location.into(), reason: reason.to_string() }
+        Self::UnableToDeleteFile {
+            location: location.into(),
+            reason: reason.to_string(),
+        }
     }
 
     pub(crate) fn delete_directory(location: &str, reason: impl fmt::Display) -> Self {
-        Self::UnableToDeleteDirectory { location: location.into(), reason: reason.to_string() }
+        Self::UnableToDeleteDirectory {
+            location: location.into(),
+            reason: reason.to_string(),
+        }
     }
 
     pub(crate) fn create_directory(location: &str, reason: impl fmt::Display) -> Self {
-        Self::UnableToCreateDirectory { location: location.into(), reason: reason.to_string() }
+        Self::UnableToCreateDirectory {
+            location: location.into(),
+            reason: reason.to_string(),
+        }
     }
 
     pub(crate) fn copy(from: &str, to: &str, reason: impl fmt::Display) -> Self {
-        Self::UnableToCopyFile { from: from.into(), to: to.into(), reason: reason.to_string() }
+        Self::UnableToCopyFile {
+            from: from.into(),
+            to: to.into(),
+            reason: reason.to_string(),
+        }
     }
 
     pub(crate) fn move_(from: &str, to: &str, reason: impl fmt::Display) -> Self {
-        Self::UnableToMoveFile { from: from.into(), to: to.into(), reason: reason.to_string() }
+        Self::UnableToMoveFile {
+            from: from.into(),
+            to: to.into(),
+            reason: reason.to_string(),
+        }
     }
 
     pub(crate) fn metadata(metadata: &str, location: &str, reason: impl fmt::Display) -> Self {
@@ -129,7 +182,10 @@ impl FilesystemException {
     }
 
     pub(crate) fn visibility(location: &str, reason: impl fmt::Display) -> Self {
-        Self::UnableToSetVisibility { location: location.into(), reason: reason.to_string() }
+        Self::UnableToSetVisibility {
+            location: location.into(),
+            reason: reason.to_string(),
+        }
     }
 }
 
@@ -157,8 +213,14 @@ impl fmt::Display for FilesystemException {
             Self::UnableToMoveFile { from, to, reason } => {
                 format!("Unable to move file from {from} to {to}. {reason}")
             }
-            Self::UnableToRetrieveMetadata { metadata, location, reason } => {
-                format!("Unable to retrieve the {metadata} for file at location: {location}. {reason}")
+            Self::UnableToRetrieveMetadata {
+                metadata,
+                location,
+                reason,
+            } => {
+                format!(
+                    "Unable to retrieve the {metadata} for file at location: {location}. {reason}"
+                )
             }
             Self::UnableToSetVisibility { location, reason } => {
                 format!("Unable to set visibility for file {location}. {reason}")
@@ -184,7 +246,13 @@ mod tests {
             FilesystemException::copy("a", "b", "").to_string(),
             "Unable to copy file from a to b."
         );
-        assert_eq!(PathTraversalDetected::new("../x").to_string(), "Path traversal detected: ../x");
-        assert_eq!(FileNotFoundException::new("/a").to_string(), "File does not exist at path /a.");
+        assert_eq!(
+            PathTraversalDetected::new("../x").to_string(),
+            "Path traversal detected: ../x"
+        );
+        assert_eq!(
+            FileNotFoundException::new("/a").to_string(),
+            "File does not exist at path /a."
+        );
     }
 }

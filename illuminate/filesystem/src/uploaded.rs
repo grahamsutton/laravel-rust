@@ -149,19 +149,28 @@ mod tests {
         let path = file.store_on("photos", "s3").await.unwrap();
         s3.assert_exists(path.as_str()).await;
 
-        assert_eq!(file.store_as_on("photos", "a.png", "s3").await.unwrap(), "photos/a.png");
+        assert_eq!(
+            file.store_as_on("photos", "a.png", "s3").await.unwrap(),
+            "photos/a.png"
+        );
         s3.assert_exists("photos/a.png").await;
 
         let path = file.store_publicly_as("public", "b.png").await.unwrap();
         local.assert_exists(path.as_str()).await;
         #[cfg(unix)]
-        assert_eq!(local.get_visibility("public/b.png").await.unwrap(), Visibility::Public);
+        assert_eq!(
+            local.get_visibility("public/b.png").await.unwrap(),
+            Visibility::Public
+        );
 
         let path = file.store_publicly("public").await.unwrap();
         local.assert_exists(path.as_str()).await;
         let path = file.store_publicly_on("public", "s3").await.unwrap();
         s3.assert_exists(path.as_str()).await;
-        let path = file.store_publicly_as_on("public", "c.png", "s3").await.unwrap();
+        let path = file
+            .store_publicly_as_on("public", "c.png", "s3")
+            .await
+            .unwrap();
         assert_eq!(path, "public/c.png");
 
         assert!(file.store_as("../escape", "x.png").await.is_err());

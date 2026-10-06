@@ -135,17 +135,32 @@ pub(crate) struct PathInfo {
 }
 
 pub(crate) fn pathinfo(path: &str) -> PathInfo {
-    let normalized = if path.len() > 1 { path.trim_end_matches('/') } else { path };
+    let normalized = if path.len() > 1 {
+        path.trim_end_matches('/')
+    } else {
+        path
+    };
     let (dirname, basename) = match normalized.rfind('/') {
         Some(0) => ("/".to_string(), normalized[1..].to_string()),
-        Some(index) => (normalized[..index].to_string(), normalized[index + 1..].to_string()),
+        Some(index) => (
+            normalized[..index].to_string(),
+            normalized[index + 1..].to_string(),
+        ),
         None => (".".to_string(), normalized.to_string()),
     };
     let (filename, extension) = match basename.rfind('.') {
-        Some(index) => (basename[..index].to_string(), basename[index + 1..].to_string()),
+        Some(index) => (
+            basename[..index].to_string(),
+            basename[index + 1..].to_string(),
+        ),
         None => (basename.clone(), String::new()),
     };
-    PathInfo { dirname, basename, extension, filename }
+    PathInfo {
+        dirname,
+        basename,
+        extension,
+        filename,
+    }
 }
 
 // ----------------------------------------------------------------------
@@ -176,7 +191,11 @@ pub(crate) fn expand_braces(pattern: &str) -> Vec<String> {
         return vec![pattern.to_string()];
     };
 
-    let (prefix, body, suffix) = (&pattern[..open], &pattern[open + 1..close], &pattern[close + 1..]);
+    let (prefix, body, suffix) = (
+        &pattern[..open],
+        &pattern[open + 1..close],
+        &pattern[close + 1..],
+    );
     let mut alternatives = Vec::new();
     let mut depth = 0;
     let mut start = 0;
@@ -218,7 +237,9 @@ fn match_from(pattern: &[char], name: &[char]) -> bool {
         Some('[') => {
             let Some(c) = name.first() else { return false };
             match match_class(&pattern[1..], *c) {
-                Some((matched, consumed)) => matched && match_from(&pattern[1 + consumed..], &name[1..]),
+                Some((matched, consumed)) => {
+                    matched && match_from(&pattern[1 + consumed..], &name[1..])
+                }
                 None => *c == '[' && match_from(&pattern[1..], &name[1..]),
             }
         }
@@ -401,8 +422,14 @@ mod tests {
     #[test]
     fn mime_types_are_detected() {
         assert_eq!(detect_mime_type("a.txt", None).unwrap(), "text/plain");
-        assert_eq!(detect_mime_type("a", Some(b"\x89PNG\r\n\x1a\nxxxx")).unwrap(), "image/png");
-        assert_eq!(detect_mime_type("README", Some(b"hello")).unwrap(), "text/plain");
+        assert_eq!(
+            detect_mime_type("a", Some(b"\x89PNG\r\n\x1a\nxxxx")).unwrap(),
+            "image/png"
+        );
+        assert_eq!(
+            detect_mime_type("README", Some(b"hello")).unwrap(),
+            "text/plain"
+        );
         assert_eq!(extension_for_mime("image/jpeg").unwrap(), "jpg");
     }
 }

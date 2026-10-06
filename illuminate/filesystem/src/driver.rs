@@ -51,10 +51,12 @@ impl Visibility {
         match value {
             "public" => Ok(Visibility::Public),
             "private" => Ok(Visibility::Private),
-            other => Err(illuminate_support::error::InvalidArgumentException::new(format!(
-                "Unknown visibility: {other}."
-            ))
-            .into()),
+            other => Err(
+                illuminate_support::error::InvalidArgumentException::new(format!(
+                    "Unknown visibility: {other}."
+                ))
+                .into(),
+            ),
         }
     }
 }
@@ -95,13 +97,27 @@ pub struct StorageAttributes {
 
 impl StorageAttributes {
     /// Describe a file.
-    pub fn file(path: impl Into<String>, file_size: Option<u64>, last_modified: Option<i64>) -> Self {
-        Self { path: path.into(), is_file: true, file_size, last_modified }
+    pub fn file(
+        path: impl Into<String>,
+        file_size: Option<u64>,
+        last_modified: Option<i64>,
+    ) -> Self {
+        Self {
+            path: path.into(),
+            is_file: true,
+            file_size,
+            last_modified,
+        }
     }
 
     /// Describe a directory.
     pub fn directory(path: impl Into<String>, last_modified: Option<i64>) -> Self {
-        Self { path: path.into(), is_file: false, file_size: None, last_modified }
+        Self {
+            path: path.into(),
+            is_file: false,
+            file_size: None,
+            last_modified,
+        }
     }
 
     pub fn is_file(&self) -> bool {
@@ -189,7 +205,12 @@ pub struct Permissions {
 
 impl Default for Permissions {
     fn default() -> Self {
-        Self { file_public: 0o644, file_private: 0o600, dir_public: 0o755, dir_private: 0o700 }
+        Self {
+            file_public: 0o644,
+            file_private: 0o600,
+            dir_public: 0o755,
+            dir_private: 0o700,
+        }
     }
 }
 
@@ -241,7 +262,20 @@ impl LocalDriver {
     /// Create a local driver rooted at the given directory. Directories it
     /// creates are private unless configured otherwise.
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into(), permissions: Permissions::default(), directory_visibility: Visibility::Private }
+        Self {
+            root: Self::root_or_current(root.into()),
+            permissions: Permissions::default(),
+            directory_visibility: Visibility::Private,
+        }
+    }
+
+    /// An empty root means the current working directory.
+    fn root_or_current(root: PathBuf) -> PathBuf {
+        if root.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            root
+        }
     }
 
     /// Create a local driver from a disk configuration (`root`,
@@ -257,8 +291,15 @@ impl LocalDriver {
             .or(visibility("visibility")?)
             .unwrap_or(Visibility::Private);
         Ok(Self {
-            root: PathBuf::from(config.get("root").and_then(Value::as_str).unwrap_or_default()),
-            permissions: Permissions::from_config(config.get("permissions").unwrap_or(&Value::Null)),
+            root: Self::root_or_current(PathBuf::from(
+                config
+                    .get("root")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            )),
+            permissions: Permissions::from_config(
+                config.get("permissions").unwrap_or(&Value::Null),
+            ),
             directory_visibility,
         })
     }
@@ -270,7 +311,11 @@ impl LocalDriver {
 
     /// The absolute location of a (normalized) path.
     pub fn prefix_path(&self, path: &str) -> PathBuf {
-        if path.is_empty() { self.root.clone() } else { self.root.join(path) }
+        if path.is_empty() {
+            self.root.clone()
+        } else {
+            self.root.join(path)
+        }
     }
 
     fn strip_prefix(&self, location: &Path) -> String {
@@ -281,7 +326,11 @@ impl LocalDriver {
             .replace('\\', "/")
     }
 
-    fn ensure_directory_exists(&self, directory: &Path, visibility: Visibility) -> std::io::Result<()> {
+    fn ensure_directory_exists(
+        &self,
+        directory: &Path,
+        visibility: Visibility,
+    ) -> std::io::Result<()> {
         if directory.is_dir() {
             return Ok(());
         }
@@ -299,7 +348,9 @@ impl LocalDriver {
 
     fn write_sync(&self, path: &str, contents: &[u8], options: WriteOptions) -> Result<()> {
         let location = self.prefix_path(path);
-        let directory_visibility = options.directory_visibility.unwrap_or(self.directory_visibility);
+        let directory_visibility = options
+            .directory_visibility
+            .unwrap_or(self.directory_visibility);
         let parent = location.parent().unwrap_or(Path::new("."));
         self.ensure_directory_exists(parent, directory_visibility)
             .map_err(|error| FilesystemException::write(path, error))?;
@@ -321,10 +372,14 @@ impl LocalDriver {
     }
 
     fn walk(&self, directory: &Path, deep: bool, results: &mut Vec<StorageAttributes>) {
-        let Ok(entries) = fs::read_dir(directory) else { return };
+        let Ok(entries) = fs::read_dir(directory) else {
+            return;
+        };
         for entry in entries.flatten() {
             let location = entry.path();
-            let Ok(metadata) = fs::metadata(&location) else { continue };
+            let Ok(metadata) = fs::metadata(&location) else {
+                continue;
+            };
             let is_symlink = entry.file_type().map(|t| t.is_symlink()).unwrap_or(false);
             let modified = modified_timestamp(&metadata);
             let path = self.strip_prefix(&location);
@@ -334,7 +389,11 @@ impl LocalDriver {
                     self.walk(&location, deep, results);
                 }
             } else {
-                results.push(StorageAttributes::file(path, Some(metadata.len()), modified));
+                results.push(StorageAttributes::file(
+                    path,
+                    Some(metadata.len()),
+                    modified,
+                ));
             }
         }
     }
@@ -356,18 +415,28 @@ fn file_mode(metadata: &fs::Metadata) -> u32 {
     }
     #[cfg(not(unix))]
     {
-        if metadata.permissions().readonly() { 0o444 } else { 0o644 }
+        if metadata.permissions().readonly() {
+            0o444
+        } else {
+            0o644
+        }
     }
 }
 
 #[async_trait]
 impl Driver for LocalDriver {
     async fn file_exists(&self, path: &str) -> Result<bool> {
-        Ok(tokio::fs::metadata(self.prefix_path(path)).await.map(|m| m.is_file()).unwrap_or(false))
+        Ok(tokio::fs::metadata(self.prefix_path(path))
+            .await
+            .map(|m| m.is_file())
+            .unwrap_or(false))
     }
 
     async fn directory_exists(&self, path: &str) -> Result<bool> {
-        Ok(tokio::fs::metadata(self.prefix_path(path)).await.map(|m| m.is_dir()).unwrap_or(false))
+        Ok(tokio::fs::metadata(self.prefix_path(path))
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false))
     }
 
     async fn read(&self, path: &str) -> Result<Bytes> {
@@ -395,7 +464,11 @@ impl Driver for LocalDriver {
 
     async fn delete_directory(&self, path: &str) -> Result<()> {
         let location = self.prefix_path(path);
-        if !tokio::fs::metadata(&location).await.map(|m| m.is_dir()).unwrap_or(false) {
+        if !tokio::fs::metadata(&location)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false)
+        {
             return Ok(());
         }
         tokio::fs::remove_dir_all(&location)
@@ -433,7 +506,8 @@ impl Driver for LocalDriver {
         } else {
             self.permissions.for_file(visibility)
         };
-        set_mode(&location, mode).map_err(|error| FilesystemException::visibility(path, error).into())
+        set_mode(&location, mode)
+            .map_err(|error| FilesystemException::visibility(path, error).into())
     }
 
     async fn visibility(&self, path: &str) -> Result<Visibility> {
@@ -441,8 +515,16 @@ impl Driver for LocalDriver {
             .await
             .map_err(|error| FilesystemException::metadata("visibility", path, error))?;
         let mode = file_mode(&metadata);
-        let private = if metadata.is_dir() { self.permissions.dir_private } else { self.permissions.file_private };
-        Ok(if mode == private { Visibility::Private } else { Visibility::Public })
+        let private = if metadata.is_dir() {
+            self.permissions.dir_private
+        } else {
+            self.permissions.file_private
+        };
+        Ok(if mode == private {
+            Visibility::Private
+        } else {
+            Visibility::Public
+        })
     }
 
     async fn mime_type(&self, path: &str) -> Result<String> {
@@ -495,7 +577,9 @@ impl Driver for LocalDriver {
         let (from, to) = (from.to_string(), to.to_string());
         blocking(move || {
             let (source, destination) = (driver.prefix_path(&from), driver.prefix_path(&to));
-            let visibility = options.directory_visibility.unwrap_or(driver.directory_visibility);
+            let visibility = options
+                .directory_visibility
+                .unwrap_or(driver.directory_visibility);
             let parent = destination.parent().unwrap_or(Path::new("."));
             driver
                 .ensure_directory_exists(parent, visibility)
@@ -513,7 +597,9 @@ impl Driver for LocalDriver {
         let (from, to) = (from.to_string(), to.to_string());
         blocking(move || {
             let (source, destination) = (driver.prefix_path(&from), driver.prefix_path(&to));
-            let visibility = options.directory_visibility.unwrap_or(driver.directory_visibility);
+            let visibility = options
+                .directory_visibility
+                .unwrap_or(driver.directory_visibility);
             let parent = destination.parent().unwrap_or(Path::new("."));
             driver
                 .ensure_directory_exists(parent, visibility)
@@ -541,24 +627,47 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let driver = LocalDriver::new(dir.path());
 
-        driver.write("a/b/c.txt", Bytes::from_static(b"hi"), WriteOptions::default()).await.unwrap();
+        driver
+            .write(
+                "a/b/c.txt",
+                Bytes::from_static(b"hi"),
+                WriteOptions::default(),
+            )
+            .await
+            .unwrap();
         assert!(driver.file_exists("a/b/c.txt").await.unwrap());
         assert!(driver.directory_exists("a/b").await.unwrap());
         assert!(!driver.file_exists("a/b").await.unwrap());
-        assert_eq!(driver.read("a/b/c.txt").await.unwrap(), Bytes::from_static(b"hi"));
+        assert_eq!(
+            driver.read("a/b/c.txt").await.unwrap(),
+            Bytes::from_static(b"hi")
+        );
         assert_eq!(driver.file_size("a/b/c.txt").await.unwrap(), 2);
         assert_eq!(driver.mime_type("a/b/c.txt").await.unwrap(), "text/plain");
 
         let listing = driver.list_contents("", true).await.unwrap();
-        let mut paths: Vec<_> = listing.iter().map(|a| (a.path.clone(), a.is_file())).collect();
+        let mut paths: Vec<_> = listing
+            .iter()
+            .map(|a| (a.path.clone(), a.is_file()))
+            .collect();
         paths.sort();
         assert_eq!(
             paths,
-            vec![("a".into(), false), ("a/b".into(), false), ("a/b/c.txt".into(), true)]
+            vec![
+                ("a".into(), false),
+                ("a/b".into(), false),
+                ("a/b/c.txt".into(), true)
+            ]
         );
 
-        driver.copy("a/b/c.txt", "d.txt", WriteOptions::default()).await.unwrap();
-        driver.move_("d.txt", "e/f.txt", WriteOptions::default()).await.unwrap();
+        driver
+            .copy("a/b/c.txt", "d.txt", WriteOptions::default())
+            .await
+            .unwrap();
+        driver
+            .move_("d.txt", "e/f.txt", WriteOptions::default())
+            .await
+            .unwrap();
         assert!(driver.file_exists("e/f.txt").await.unwrap());
         driver.delete("e/f.txt").await.unwrap();
         driver.delete("e/f.txt").await.unwrap();
@@ -566,7 +675,11 @@ mod tests {
         assert!(!driver.directory_exists("a").await.unwrap());
 
         let error = driver.read("missing.txt").await.unwrap_err();
-        assert!(error.to_string().starts_with("Unable to read file from location: missing.txt."));
+        assert!(
+            error
+                .to_string()
+                .starts_with("Unable to read file from location: missing.txt.")
+        );
     }
 
     #[cfg(unix)]
@@ -579,12 +692,27 @@ mod tests {
         }))
         .unwrap();
 
-        let options = WriteOptions { visibility: Some(Visibility::Private), directory_visibility: None };
-        driver.write("dir/secret.txt", Bytes::from_static(b"x"), options).await.unwrap();
-        assert_eq!(driver.visibility("dir/secret.txt").await.unwrap(), Visibility::Private);
+        let options = WriteOptions {
+            visibility: Some(Visibility::Private),
+            directory_visibility: None,
+        };
+        driver
+            .write("dir/secret.txt", Bytes::from_static(b"x"), options)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.visibility("dir/secret.txt").await.unwrap(),
+            Visibility::Private
+        );
 
-        driver.set_visibility("dir/secret.txt", Visibility::Public).await.unwrap();
-        assert_eq!(driver.visibility("dir/secret.txt").await.unwrap(), Visibility::Public);
+        driver
+            .set_visibility("dir/secret.txt", Visibility::Public)
+            .await
+            .unwrap();
+        assert_eq!(
+            driver.visibility("dir/secret.txt").await.unwrap(),
+            Visibility::Public
+        );
         assert_eq!(driver.visibility("dir").await.unwrap(), Visibility::Public);
     }
 

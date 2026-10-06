@@ -115,14 +115,18 @@ pub struct BadMethodCallException {
 
 impl BadMethodCallException {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into() }
+        Self {
+            message: message.into(),
+        }
     }
 }
 
 /// The error returned when flushing locks that share the cache's storage.
 pub(crate) fn separate_lock_store_required() -> illuminate_support::Error {
-    RuntimeException::new("Flushing locks is only supported when the lock store is separate from the cache store.")
-        .into()
+    RuntimeException::new(
+        "Flushing locks is only supported when the lock store is separate from the cache store.",
+    )
+    .into()
 }
 
 /// PHP's `(int)` cast for a cached value.

@@ -21,10 +21,23 @@ use illuminate_support::error::{bail, error};
 use illuminate_support::{Collection, Result, Str, Value, collect};
 
 use crate::exceptions::FileNotFoundException;
-use crate::path::{IntoPaths, detect_mime_type, expand_braces, extension_for_mime, glob_match, has_wildcards, pathinfo};
+use crate::path::{
+    IntoPaths, detect_mime_type, expand_braces, extension_for_mime, glob_match, has_wildcards,
+    pathinfo,
+};
 
 /// Version-control directories that listings always skip.
-const VCS_DIRECTORIES: &[&str] = &[".git", ".svn", ".hg", ".bzr", "_darcs", "CVS", ".arch-params", ".monotone", "_MTN"];
+const VCS_DIRECTORIES: &[&str] = &[
+    ".git",
+    ".svn",
+    ".hg",
+    ".bzr",
+    "_darcs",
+    "CVS",
+    ".arch-params",
+    ".monotone",
+    "_MTN",
+];
 
 /// Run a blocking filesystem operation off the async runtime.
 pub(crate) async fn blocking<T, F>(operation: F) -> Result<T>
@@ -102,7 +115,8 @@ impl Filesystem {
         match fs::read_dir(directory) {
             Ok(entries) => !entries.flatten().any(|entry| {
                 let name = entry.file_name().to_string_lossy().into_owned();
-                !(VCS_DIRECTORIES.contains(&name.as_str()) || (ignore_dot_files && name.starts_with('.')))
+                !(VCS_DIRECTORIES.contains(&name.as_str())
+                    || (ignore_dot_files && name.starts_with('.')))
             }),
             Err(_) => true,
         }
@@ -173,7 +187,8 @@ impl Filesystem {
 
     /// Guess the file extension from the MIME type of a given file.
     pub fn guess_extension(&self, path: impl AsRef<Path>) -> Option<String> {
-        self.mime_type(path).and_then(|mime| extension_for_mime(&mime))
+        self.mime_type(path)
+            .and_then(|mime| extension_for_mime(&mime))
     }
 
     /// Get the MIME type of a given file, sniffing its contents when needed.
@@ -183,7 +198,9 @@ impl Filesystem {
             return None;
         }
         let mut sample = vec![0u8; 512];
-        let read = fs::File::open(path).and_then(|mut file| file.read(&mut sample)).ok()?;
+        let read = fs::File::open(path)
+            .and_then(|mut file| file.read(&mut sample))
+            .ok()?;
         sample.truncate(read);
         detect_mime_type(&path.to_string_lossy(), Some(&sample))
     }
@@ -212,7 +229,12 @@ impl Filesystem {
         }
         #[cfg(not(unix))]
         {
-            Ok(if metadata.permissions().readonly() { "0444" } else { "0666" }.to_string())
+            Ok(if metadata.permissions().readonly() {
+                "0444"
+            } else {
+                "0666"
+            }
+            .to_string())
         }
     }
 
@@ -243,7 +265,11 @@ impl Filesystem {
         for pattern in expand_braces(pattern.as_ref()) {
             let absolute = pattern.starts_with('/');
             let segments: Vec<&str> = pattern.split('/').filter(|s| !s.is_empty()).collect();
-            let start = if absolute { PathBuf::from("/") } else { PathBuf::new() };
+            let start = if absolute {
+                PathBuf::from("/")
+            } else {
+                PathBuf::new()
+            };
             glob_walk(start, &segments, &mut results);
         }
         results.into_iter().collect()
@@ -358,11 +384,9 @@ impl Filesystem {
     /// Blocking variant of [`Filesystem::lines`].
     pub fn lines_sync(&self, path: impl AsRef<Path>) -> Result<Collection<String>> {
         let contents = self.get_sync(path)?;
-        Ok(collect(
-            contents
-                .split('\n')
-                .map(|line| line.strip_suffix('\r').unwrap_or(line).to_string()),
-        ))
+        Ok(collect(contents.split('\n').map(|line| {
+            line.strip_suffix('\r').unwrap_or(line).to_string()
+        })))
     }
 
     /// Get the MD5 hash of the file at the given path.
@@ -394,7 +418,10 @@ impl Filesystem {
 
     /// Blocking variant of [`Filesystem::has_same_hash`].
     pub fn has_same_hash_sync(&self, first: impl AsRef<Path>, second: impl AsRef<Path>) -> bool {
-        match (self.hash_with_sync(first, "sha256"), self.hash_with_sync(second, "sha256")) {
+        match (
+            self.hash_with_sync(first, "sha256"),
+            self.hash_with_sync(second, "sha256"),
+        ) {
             (Ok(a), Ok(b)) => a == b,
             _ => false,
         }
@@ -419,16 +446,28 @@ impl Filesystem {
     }
 
     /// Write the contents of a file while holding an exclusive lock on it.
-    pub async fn put_locked(&self, path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<usize> {
+    pub async fn put_locked(
+        &self,
+        path: impl AsRef<Path>,
+        contents: impl AsRef<[u8]>,
+    ) -> Result<usize> {
         let path = path.as_ref().to_path_buf();
         let contents = contents.as_ref().to_vec();
         blocking(move || Filesystem.put_locked_sync(path, contents)).await
     }
 
     /// Blocking variant of [`Filesystem::put_locked`].
-    pub fn put_locked_sync(&self, path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> Result<usize> {
+    pub fn put_locked_sync(
+        &self,
+        path: impl AsRef<Path>,
+        contents: impl AsRef<[u8]>,
+    ) -> Result<usize> {
         let contents = contents.as_ref();
-        let mut file = fs::OpenOptions::new().create(true).write(true).truncate(false).open(path.as_ref())?;
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(path.as_ref())?;
         file.lock()?;
         let result = file.set_len(0).and_then(|_| file.write_all(contents));
         file.unlock()?;
@@ -449,7 +488,10 @@ impl Filesystem {
         let path = path.as_ref();
         // If the path is a symlink, replace the file it points to.
         let path = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-        let directory = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
+        let directory = path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+            .unwrap_or(Path::new("."));
         let mut temporary = tempfile::Builder::new()
             .prefix(&format!(".{}", self.basename(&path)))
             .tempfile_in(directory)?;
@@ -469,14 +511,24 @@ impl Filesystem {
     }
 
     /// Replace a given string within a file.
-    pub async fn replace_in_file(&self, search: &str, replace: &str, path: impl AsRef<Path>) -> Result<()> {
+    pub async fn replace_in_file(
+        &self,
+        search: &str,
+        replace: &str,
+        path: impl AsRef<Path>,
+    ) -> Result<()> {
         let path = path.as_ref().to_path_buf();
         let (search, replace) = (search.to_string(), replace.to_string());
         blocking(move || Filesystem.replace_in_file_sync(&search, &replace, path)).await
     }
 
     /// Blocking variant of [`Filesystem::replace_in_file`].
-    pub fn replace_in_file_sync(&self, search: &str, replace: &str, path: impl AsRef<Path>) -> Result<()> {
+    pub fn replace_in_file_sync(
+        &self,
+        search: &str,
+        replace: &str,
+        path: impl AsRef<Path>,
+    ) -> Result<()> {
         let path = path.as_ref();
         let contents = fs::read_to_string(path)?;
         fs::write(path, contents.replace(search, replace))?;
@@ -510,7 +562,10 @@ impl Filesystem {
     /// Blocking variant of [`Filesystem::append`].
     pub fn append_sync(&self, path: impl AsRef<Path>, data: impl AsRef<[u8]>) -> Result<usize> {
         let data = data.as_ref();
-        let mut file = fs::OpenOptions::new().create(true).append(true).open(path.as_ref())?;
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path.as_ref())?;
         file.write_all(data)?;
         Ok(data.len())
     }
@@ -519,7 +574,9 @@ impl Filesystem {
     /// of them could not be deleted.
     pub async fn delete(&self, paths: impl IntoPaths) -> bool {
         let paths = paths.into_paths();
-        blocking(move || Ok(Filesystem.delete_sync(paths))).await.unwrap_or(false)
+        blocking(move || Ok(Filesystem.delete_sync(paths)))
+            .await
+            .unwrap_or(false)
     }
 
     /// Blocking variant of [`Filesystem::delete`].
@@ -581,13 +638,21 @@ impl Filesystem {
     }
 
     /// Create a relative symlink to the target file or directory.
-    pub async fn relative_link(&self, target: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
+    pub async fn relative_link(
+        &self,
+        target: impl AsRef<Path>,
+        link: impl AsRef<Path>,
+    ) -> Result<()> {
         let (target, link) = (target.as_ref().to_path_buf(), link.as_ref().to_path_buf());
         blocking(move || Filesystem.relative_link_sync(target, link)).await
     }
 
     /// Blocking variant of [`Filesystem::relative_link`].
-    pub fn relative_link_sync(&self, target: impl AsRef<Path>, link: impl AsRef<Path>) -> Result<()> {
+    pub fn relative_link_sync(
+        &self,
+        target: impl AsRef<Path>,
+        link: impl AsRef<Path>,
+    ) -> Result<()> {
         let (target, link) = (target.as_ref(), link.as_ref());
         let base = link.parent().unwrap_or(Path::new("."));
         let relative = relative_path(&absolute(target)?, &absolute(base)?);
@@ -599,13 +664,23 @@ impl Filesystem {
     // ------------------------------------------------------------------
 
     /// Create a directory with the given mode, optionally creating parents.
-    pub async fn make_directory(&self, path: impl AsRef<Path>, mode: u32, recursive: bool) -> Result<()> {
+    pub async fn make_directory(
+        &self,
+        path: impl AsRef<Path>,
+        mode: u32,
+        recursive: bool,
+    ) -> Result<()> {
         let path = path.as_ref().to_path_buf();
         blocking(move || Filesystem.make_directory_sync(path, mode, recursive)).await
     }
 
     /// Blocking variant of [`Filesystem::make_directory`].
-    pub fn make_directory_sync(&self, path: impl AsRef<Path>, mode: u32, recursive: bool) -> Result<()> {
+    pub fn make_directory_sync(
+        &self,
+        path: impl AsRef<Path>,
+        mode: u32,
+        recursive: bool,
+    ) -> Result<()> {
         let mut builder = fs::DirBuilder::new();
         builder.recursive(recursive);
         #[cfg(unix)]
@@ -625,7 +700,11 @@ impl Filesystem {
     }
 
     /// Ensure a directory exists, creating it with the given mode.
-    pub async fn ensure_directory_exists_with_mode(&self, path: impl AsRef<Path>, mode: u32) -> Result<()> {
+    pub async fn ensure_directory_exists_with_mode(
+        &self,
+        path: impl AsRef<Path>,
+        mode: u32,
+    ) -> Result<()> {
         let path = path.as_ref().to_path_buf();
         blocking(move || Filesystem.ensure_directory_exists_with_mode_sync(path, mode)).await
     }
@@ -636,7 +715,11 @@ impl Filesystem {
     }
 
     /// Blocking variant of [`Filesystem::ensure_directory_exists_with_mode`].
-    pub fn ensure_directory_exists_with_mode_sync(&self, path: impl AsRef<Path>, mode: u32) -> Result<()> {
+    pub fn ensure_directory_exists_with_mode_sync(
+        &self,
+        path: impl AsRef<Path>,
+        mode: u32,
+    ) -> Result<()> {
         let path = path.as_ref();
         if !path.is_dir() {
             self.make_directory_sync(path, mode, true)?;
@@ -645,7 +728,12 @@ impl Filesystem {
     }
 
     /// Move a directory. With `overwrite`, an existing destination is removed first.
-    pub async fn move_directory(&self, from: impl AsRef<Path>, to: impl AsRef<Path>, overwrite: bool) -> bool {
+    pub async fn move_directory(
+        &self,
+        from: impl AsRef<Path>,
+        to: impl AsRef<Path>,
+        overwrite: bool,
+    ) -> bool {
         let (from, to) = (from.as_ref().to_path_buf(), to.as_ref().to_path_buf());
         blocking(move || Ok(Filesystem.move_directory_sync(from, to, overwrite)))
             .await
@@ -653,7 +741,12 @@ impl Filesystem {
     }
 
     /// Blocking variant of [`Filesystem::move_directory`].
-    pub fn move_directory_sync(&self, from: impl AsRef<Path>, to: impl AsRef<Path>, overwrite: bool) -> bool {
+    pub fn move_directory_sync(
+        &self,
+        from: impl AsRef<Path>,
+        to: impl AsRef<Path>,
+        overwrite: bool,
+    ) -> bool {
         let to = to.as_ref();
         if overwrite && to.is_dir() && !self.delete_directory_sync(to) {
             return false;
@@ -663,13 +756,24 @@ impl Filesystem {
 
     /// Copy a directory from one location to another. Returns `false` when
     /// the source is not a directory.
-    pub async fn copy_directory(&self, directory: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<bool> {
-        let (directory, destination) = (directory.as_ref().to_path_buf(), destination.as_ref().to_path_buf());
+    pub async fn copy_directory(
+        &self,
+        directory: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<bool> {
+        let (directory, destination) = (
+            directory.as_ref().to_path_buf(),
+            destination.as_ref().to_path_buf(),
+        );
         blocking(move || Filesystem.copy_directory_sync(directory, destination)).await
     }
 
     /// Blocking variant of [`Filesystem::copy_directory`].
-    pub fn copy_directory_sync(&self, directory: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<bool> {
+    pub fn copy_directory_sync(
+        &self,
+        directory: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<bool> {
         let (directory, destination) = (directory.as_ref(), destination.as_ref());
         if !directory.is_dir() {
             return Ok(false);
@@ -692,7 +796,9 @@ impl Filesystem {
     /// Recursively delete a directory. Returns `false` if it isn't a directory.
     pub async fn delete_directory(&self, directory: impl AsRef<Path>) -> bool {
         let directory = directory.as_ref().to_path_buf();
-        blocking(move || Ok(Filesystem.delete_directory_sync(directory))).await.unwrap_or(false)
+        blocking(move || Ok(Filesystem.delete_directory_sync(directory)))
+            .await
+            .unwrap_or(false)
     }
 
     /// Blocking variant of [`Filesystem::delete_directory`].
@@ -703,7 +809,9 @@ impl Filesystem {
     /// Remove all of the directories within a given directory.
     pub async fn delete_directories(&self, directory: impl AsRef<Path>) -> bool {
         let directory = directory.as_ref().to_path_buf();
-        blocking(move || Ok(Filesystem.delete_directories_sync(directory))).await.unwrap_or(false)
+        blocking(move || Ok(Filesystem.delete_directories_sync(directory)))
+            .await
+            .unwrap_or(false)
     }
 
     /// Blocking variant of [`Filesystem::delete_directories`].
@@ -721,7 +829,9 @@ impl Filesystem {
     /// Empty the given directory of all files and folders, keeping the directory.
     pub async fn clean_directory(&self, directory: impl AsRef<Path>) -> bool {
         let directory = directory.as_ref().to_path_buf();
-        blocking(move || Ok(Filesystem.clean_directory_sync(directory))).await.unwrap_or(false)
+        blocking(move || Ok(Filesystem.clean_directory_sync(directory)))
+            .await
+            .unwrap_or(false)
     }
 
     /// Blocking variant of [`Filesystem::clean_directory`].
@@ -790,7 +900,13 @@ fn list(directory: &Path, recursive: bool, hidden: bool, want_files: bool) -> Ve
     results
 }
 
-fn walk(directory: &Path, recursive: bool, hidden: bool, want_files: bool, results: &mut Vec<PathBuf>) {
+fn walk(
+    directory: &Path,
+    recursive: bool,
+    hidden: bool,
+    want_files: bool,
+    results: &mut Vec<PathBuf>,
+) {
     let Ok(entries) = fs::read_dir(directory) else {
         return;
     };
@@ -800,9 +916,15 @@ fn walk(directory: &Path, recursive: bool, hidden: bool, want_files: bool, resul
             continue;
         }
         let path = entry.path();
-        let Ok(file_type) = entry.file_type() else { continue };
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         // Follow symlinks for classification, but never recurse through them.
-        let is_dir = if file_type.is_symlink() { path.is_dir() } else { file_type.is_dir() };
+        let is_dir = if file_type.is_symlink() {
+            path.is_dir()
+        } else {
+            file_type.is_dir()
+        };
         if is_dir {
             if !want_files {
                 results.push(path.clone());
@@ -836,8 +958,14 @@ fn glob_walk(base: PathBuf, segments: &[&str], results: &mut BTreeSet<PathBuf>) 
         return;
     }
 
-    let directory = if base.as_os_str().is_empty() { PathBuf::from(".") } else { base.clone() };
-    let Ok(entries) = fs::read_dir(&directory) else { return };
+    let directory = if base.as_os_str().is_empty() {
+        PathBuf::from(".")
+    } else {
+        base.clone()
+    };
+    let Ok(entries) = fs::read_dir(&directory) else {
+        return;
+    };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
         if !glob_match(segment, &name) {
@@ -856,14 +984,22 @@ fn absolute(path: &Path) -> Result<PathBuf> {
     if let Ok(canonical) = fs::canonicalize(path) {
         return Ok(canonical);
     }
-    Ok(if path.is_absolute() { path.to_path_buf() } else { std::env::current_dir()?.join(path) })
+    Ok(if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    })
 }
 
 /// The path to `target`, relative to the `base` directory.
 fn relative_path(target: &Path, base: &Path) -> PathBuf {
     let target: Vec<_> = target.components().collect();
     let base: Vec<_> = base.components().collect();
-    let common = target.iter().zip(base.iter()).take_while(|(a, b)| a == b).count();
+    let common = target
+        .iter()
+        .zip(base.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
     let mut relative = PathBuf::new();
     for _ in common..base.len() {
         relative.push("..");
@@ -1042,7 +1178,11 @@ impl File {
         files().replace(path, contents).await
     }
 
-    pub async fn replace_in_file(search: &str, replace: &str, path: impl AsRef<Path>) -> Result<()> {
+    pub async fn replace_in_file(
+        search: &str,
+        replace: &str,
+        path: impl AsRef<Path>,
+    ) -> Result<()> {
         files().replace_in_file(search, replace, path).await
     }
 
@@ -1086,11 +1226,18 @@ impl File {
         files().ensure_directory_exists_sync(path)
     }
 
-    pub async fn move_directory(from: impl AsRef<Path>, to: impl AsRef<Path>, overwrite: bool) -> bool {
+    pub async fn move_directory(
+        from: impl AsRef<Path>,
+        to: impl AsRef<Path>,
+        overwrite: bool,
+    ) -> bool {
         files().move_directory(from, to, overwrite).await
     }
 
-    pub async fn copy_directory(directory: impl AsRef<Path>, destination: impl AsRef<Path>) -> Result<bool> {
+    pub async fn copy_directory(
+        directory: impl AsRef<Path>,
+        destination: impl AsRef<Path>,
+    ) -> Result<bool> {
         files().copy_directory(directory, destination).await
     }
 
@@ -1135,7 +1282,10 @@ mod tests {
         files.prepend(&path, ">> ").await.unwrap();
         assert_eq!(files.get(&path).await.unwrap(), ">> Hello World");
 
-        files.replace_in_file("World", "Laravel", &path).await.unwrap();
+        files
+            .replace_in_file("World", "Laravel", &path)
+            .await
+            .unwrap();
         assert_eq!(files.get(&path).await.unwrap(), ">> Hello Laravel");
 
         files.replace(&path, "Replaced").await.unwrap();
@@ -1148,7 +1298,10 @@ mod tests {
     #[tokio::test]
     async fn missing_files_throw_file_not_found() {
         let dir = temp();
-        let error = Filesystem.get(dir.path().join("nope.txt")).await.unwrap_err();
+        let error = Filesystem
+            .get(dir.path().join("nope.txt"))
+            .await
+            .unwrap_err();
         assert!(error.downcast_ref::<FileNotFoundException>().is_some());
         assert!(error.to_string().starts_with("File does not exist at path"));
         assert!(Filesystem.missing(dir.path().join("nope.txt")));
@@ -1159,16 +1312,28 @@ mod tests {
         let dir = temp();
         let files = Filesystem::new();
         let json = dir.path().join("composer.json");
-        files.put(&json, r#"{"name": "laravel/framework"}"#).await.unwrap();
-        assert_eq!(files.json(&json).await.unwrap()["name"], "laravel/framework");
+        files
+            .put(&json, r#"{"name": "laravel/framework"}"#)
+            .await
+            .unwrap();
+        assert_eq!(
+            files.json(&json).await.unwrap()["name"],
+            "laravel/framework"
+        );
 
         let lines = dir.path().join("lines.txt");
         files.put(&lines, "one\r\ntwo\nthree").await.unwrap();
-        assert_eq!(files.lines(&lines).await.unwrap().into_vec(), vec!["one", "two", "three"]);
+        assert_eq!(
+            files.lines(&lines).await.unwrap().into_vec(),
+            vec!["one", "two", "three"]
+        );
 
         let hello = dir.path().join("hello.txt");
         files.put(&hello, "hello").await.unwrap();
-        assert_eq!(files.hash(&hello).await.unwrap(), "5d41402abc4b2a76b9719d911017c592");
+        assert_eq!(
+            files.hash(&hello).await.unwrap(),
+            "5d41402abc4b2a76b9719d911017c592"
+        );
         assert_eq!(
             files.hash_with(&hello, "sha256").await.unwrap(),
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
@@ -1234,22 +1399,42 @@ mod tests {
         let dir = temp();
         let files = Filesystem::new();
         let root = dir.path();
-        files.ensure_directory_exists(root.join("nested/deeper")).await.unwrap();
+        files
+            .ensure_directory_exists(root.join("nested/deeper"))
+            .await
+            .unwrap();
         files.put(root.join("b.txt"), "").await.unwrap();
         files.put(root.join("a.txt"), "").await.unwrap();
         files.put(root.join(".hidden"), "").await.unwrap();
         files.put(root.join("nested/c.txt"), "").await.unwrap();
-        files.put(root.join("nested/deeper/d.txt"), "").await.unwrap();
+        files
+            .put(root.join("nested/deeper/d.txt"), "")
+            .await
+            .unwrap();
 
-        assert_eq!(files.files(root), vec![root.join("a.txt"), root.join("b.txt")]);
+        assert_eq!(
+            files.files(root),
+            vec![root.join("a.txt"), root.join("b.txt")]
+        );
         assert_eq!(files.files_with_hidden(root).len(), 3);
         assert_eq!(
             files.all_files(root),
-            vec![root.join("a.txt"), root.join("b.txt"), root.join("nested/c.txt"), root.join("nested/deeper/d.txt")]
+            vec![
+                root.join("a.txt"),
+                root.join("b.txt"),
+                root.join("nested/c.txt"),
+                root.join("nested/deeper/d.txt")
+            ]
         );
         assert_eq!(files.directories(root), vec![root.join("nested")]);
-        assert_eq!(files.all_directories(root), vec![root.join("nested"), root.join("nested/deeper")]);
-        assert_eq!(files.glob(format!("{}/*.txt", root.display())), vec![root.join("a.txt"), root.join("b.txt")]);
+        assert_eq!(
+            files.all_directories(root),
+            vec![root.join("nested"), root.join("nested/deeper")]
+        );
+        assert_eq!(
+            files.glob(format!("{}/*.txt", root.display())),
+            vec![root.join("a.txt"), root.join("b.txt")]
+        );
         assert_eq!(
             files.glob(format!("{}/nested/*/*.txt", root.display())),
             vec![root.join("nested/deeper/d.txt")]
@@ -1264,19 +1449,38 @@ mod tests {
         let source = root.join("source");
 
         files.make_directory(&source, 0o755, false).await.unwrap();
-        assert!(files.make_directory(root.join("x/y"), 0o755, false).await.is_err());
+        assert!(
+            files
+                .make_directory(root.join("x/y"), 0o755, false)
+                .await
+                .is_err()
+        );
         assert!(files.is_empty_directory(&source));
         files.put(source.join(".gitkeep"), "").await.unwrap();
         assert!(!files.is_empty_directory(&source));
         assert!(files.is_empty_directory_ignoring_dot_files(&source));
 
-        files.ensure_directory_exists(source.join("sub")).await.unwrap();
-        files.put(source.join("sub/file.txt"), "content").await.unwrap();
+        files
+            .ensure_directory_exists(source.join("sub"))
+            .await
+            .unwrap();
+        files
+            .put(source.join("sub/file.txt"), "content")
+            .await
+            .unwrap();
 
         let copy = root.join("copy");
         assert!(files.copy_directory(&source, &copy).await.unwrap());
-        assert_eq!(files.get(copy.join("sub/file.txt")).await.unwrap(), "content");
-        assert!(!files.copy_directory(root.join("missing"), &copy).await.unwrap());
+        assert_eq!(
+            files.get(copy.join("sub/file.txt")).await.unwrap(),
+            "content"
+        );
+        assert!(
+            !files
+                .copy_directory(root.join("missing"), &copy)
+                .await
+                .unwrap()
+        );
 
         let moved = root.join("moved");
         assert!(files.move_directory(&copy, &moved, false).await);
@@ -1303,10 +1507,16 @@ mod tests {
         assert_eq!(files.type_(&link).unwrap(), "link");
         assert_eq!(files.get(&link).await.unwrap(), "linked");
 
-        files.ensure_directory_exists(dir.path().join("public")).await.unwrap();
+        files
+            .ensure_directory_exists(dir.path().join("public"))
+            .await
+            .unwrap();
         let relative = dir.path().join("public/relative.txt");
         files.relative_link(&target, &relative).await.unwrap();
-        assert_eq!(fs::read_link(&relative).unwrap(), PathBuf::from("../target.txt"));
+        assert_eq!(
+            fs::read_link(&relative).unwrap(),
+            PathBuf::from("../target.txt")
+        );
         assert_eq!(files.get(&relative).await.unwrap(), "linked");
     }
 
@@ -1328,7 +1538,9 @@ mod tests {
     fn sync_variants_work_without_a_runtime() {
         let dir = temp();
         let path = dir.path().join("deep/file.txt");
-        Filesystem.ensure_directory_exists_sync(dir.path().join("deep")).unwrap();
+        Filesystem
+            .ensure_directory_exists_sync(dir.path().join("deep"))
+            .unwrap();
         Filesystem.put_sync(&path, "sync").unwrap();
         assert_eq!(Filesystem.get_sync(&path).unwrap(), "sync");
         assert!(Filesystem.delete_sync(&path));

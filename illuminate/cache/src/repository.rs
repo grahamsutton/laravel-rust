@@ -8,7 +8,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use illuminate_support::error::InvalidArgumentException;
-use illuminate_support::{Carbon, Result, Value, ValueExt, cast};
+use illuminate_support::{Carbon, Result, Value, cast};
 
 use crate::lock::{Lock, UnsupportedLock};
 use crate::store::{BadMethodCallException, Store};
@@ -33,8 +33,11 @@ pub const FLEXIBLE_CREATED_KEY_PREFIX: &str = "illuminate:cache:flexible:created
 /// assert_eq!(cache.get_as::<String>("name").await.unwrap().as_deref(), Some("Taylor"));
 /// assert!(cache.has("name").await.unwrap());
 ///
-/// let users = cache.remember("users", 60, || async { Ok(vec!["Taylor", "Abigail"]) }).await.unwrap();
-/// assert_eq!(users, vec!["Taylor", "Abigail"]);
+/// let users: Vec<String> = cache
+///     .remember("users", 60, || async { Ok(vec!["Taylor".to_string(), "Abigail".to_string()]) })
+///     .await
+///     .unwrap();
+/// assert_eq!(users, ["Taylor", "Abigail"]);
 /// # });
 /// ```
 #[derive(Clone)]
@@ -47,7 +50,10 @@ pub struct Repository {
 
 impl std::fmt::Debug for Repository {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Repository").field("name", &self.name).field("tags", &self.tags).finish()
+        f.debug_struct("Repository")
+            .field("name", &self.name)
+            .field("tags", &self.tags)
+            .finish()
     }
 }
 
@@ -76,7 +82,12 @@ impl Repository {
 
     /// Create a new cache repository around a shared store.
     pub fn from_arc(store: Arc<dyn Store>) -> Self {
-        Self { store, name: None, default: Arc::new(RwLock::new(Some(3600))), tags: None }
+        Self {
+            store,
+            name: None,
+            default: Arc::new(RwLock::new(Some(3600))),
+            tags: None,
+        }
     }
 
     /// Name the repository (the name of its store in the configuration).
@@ -148,12 +159,19 @@ impl Repository {
     }
 
     /// Retrieve an item from the cache, or compute a default with a closure.
-    pub async fn get_or_else<V: Into<Value>>(&self, key: &str, default: impl FnOnce() -> V) -> Result<Value> {
+    pub async fn get_or_else<V: Into<Value>>(
+        &self,
+        key: &str,
+        default: impl FnOnce() -> V,
+    ) -> Result<Value> {
         Ok(self.get(key).await?.unwrap_or_else(|| default().into()))
     }
 
     /// Retrieve multiple items from the cache by key. Missing items are `None`.
-    pub async fn many<K: AsRef<str>>(&self, keys: impl IntoIterator<Item = K>) -> Result<IndexMap<String, Option<Value>>> {
+    pub async fn many<K: AsRef<str>>(
+        &self,
+        keys: impl IntoIterator<Item = K>,
+    ) -> Result<IndexMap<String, Option<Value>>> {
         let keys: Vec<String> = keys.into_iter().map(|k| k.as_ref().to_string()).collect();
         let mut item_keys = Vec::with_capacity(keys.len());
         for key in &keys {
@@ -192,7 +210,9 @@ impl Repository {
     /// Retrieve an integer item from the cache.
     pub async fn integer(&self, key: &str) -> Result<i64> {
         match self.get(key).await?.unwrap_or(Value::Null) {
-            Value::Number(n) if n.is_i64() || n.is_u64() => n.as_i64().ok_or_else(|| type_error(key, "an integer", &Value::Number(n))),
+            Value::Number(n) if n.is_i64() || n.is_u64() => n
+                .as_i64()
+                .ok_or_else(|| type_error(key, "an integer", &Value::Number(n))),
             Value::String(s) if s.trim().parse::<i64>().is_ok() => Ok(s.trim().parse::<i64>()?),
             other => Err(type_error(key, "an integer", &other)),
         }
@@ -201,7 +221,9 @@ impl Repository {
     /// Retrieve a float item from the cache.
     pub async fn float(&self, key: &str) -> Result<f64> {
         match self.get(key).await?.unwrap_or(Value::Null) {
-            Value::Number(n) => n.as_f64().ok_or_else(|| type_error(key, "a float", &Value::Number(n))),
+            Value::Number(n) => n
+                .as_f64()
+                .ok_or_else(|| type_error(key, "a float", &Value::Number(n))),
             Value::String(s) if s.trim().parse::<f64>().is_ok() => Ok(s.trim().parse::<f64>()?),
             other => Err(type_error(key, "a float", &other)),
         }
@@ -237,7 +259,11 @@ impl Repository {
         match ttl.into().to_seconds() {
             None => self.forever_value(key, value).await,
             Some(seconds) if seconds <= 0 => self.forget(key).await,
-            Some(seconds) => self.store.put(&self.item_key(key).await?, value, seconds as u64).await,
+            Some(seconds) => {
+                self.store
+                    .put(&self.item_key(key).await?, value, seconds as u64)
+                    .await
+            }
         }
     }
 
@@ -247,7 +273,11 @@ impl Repository {
     }
 
     /// Store multiple items in the cache.
-    pub async fn put_many<K, V>(&self, values: impl IntoIterator<Item = (K, V)>, ttl: impl Into<Ttl>) -> Result<bool>
+    pub async fn put_many<K, V>(
+        &self,
+        values: impl IntoIterator<Item = (K, V)>,
+        ttl: impl Into<Ttl>,
+    ) -> Result<bool>
     where
         K: AsRef<str>,
         V: Serialize,
@@ -289,7 +319,9 @@ impl Repository {
             Some(seconds) => seconds as u64,
             None => 0,
         };
-        self.store.add(&self.item_key(key).await?, to_cache_value(&value)?, seconds).await
+        self.store
+            .add(&self.item_key(key).await?, to_cache_value(&value)?, seconds)
+            .await
     }
 
     /// Increment the value of an item in the cache by one.
@@ -299,7 +331,9 @@ impl Repository {
 
     /// Increment the value of an item in the cache by the given amount.
     pub async fn increment_by(&self, key: &str, amount: i64) -> Result<i64> {
-        self.store.increment(&self.item_key(key).await?, amount).await
+        self.store
+            .increment(&self.item_key(key).await?, amount)
+            .await
     }
 
     /// Decrement the value of an item in the cache by one.
@@ -309,7 +343,9 @@ impl Repository {
 
     /// Decrement the value of an item in the cache by the given amount.
     pub async fn decrement_by(&self, key: &str, amount: i64) -> Result<i64> {
-        self.store.decrement(&self.item_key(key).await?, amount).await
+        self.store
+            .decrement(&self.item_key(key).await?, amount)
+            .await
     }
 
     /// Store an item in the cache indefinitely.
@@ -322,7 +358,12 @@ impl Repository {
     }
 
     /// Get an item from the cache, or execute the callback and store its result.
-    pub async fn remember<T, F, Fut>(&self, key: &str, ttl: impl Into<Ttl>, callback: F) -> Result<T>
+    pub async fn remember<T, F, Fut>(
+        &self,
+        key: &str,
+        ttl: impl Into<Ttl>,
+        callback: F,
+    ) -> Result<T>
     where
         T: Serialize + DeserializeOwned,
         F: FnOnce() -> Fut,
@@ -333,7 +374,12 @@ impl Repository {
 
     /// Like [`Repository::remember`], also returning whether the value was
     /// already in the cache ("warm").
-    pub async fn remember_with_warmth<T, F, Fut>(&self, key: &str, ttl: impl Into<Ttl>, callback: F) -> Result<(T, bool)>
+    pub async fn remember_with_warmth<T, F, Fut>(
+        &self,
+        key: &str,
+        ttl: impl Into<Ttl>,
+        callback: F,
+    ) -> Result<(T, bool)>
     where
         T: Serialize + DeserializeOwned,
         F: FnOnce() -> Fut,
@@ -355,7 +401,7 @@ impl Repository {
         Fut: Future<Output = Result<T>>,
     {
         if let Some(value) = self.get(key).await? {
-            return Ok(cast(value)?);
+            return cast(value);
         }
         let value = callback().await?;
         self.forever(key, &value).await?;
@@ -386,12 +432,17 @@ impl Repository {
     /// # tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
     /// let cache = Repository::new(ArrayStore::new());
     ///
-    /// let users = cache.flexible("users", (5, 10), || async { Ok(vec!["Taylor"]) }).await.unwrap();
+    /// let count: u64 = cache.flexible("users.count", (5, 10), || async { Ok(42) }).await.unwrap();
     ///
-    /// assert_eq!(users, vec!["Taylor"]);
+    /// assert_eq!(count, 42);
     /// # });
     /// ```
-    pub async fn flexible<T, F, Fut>(&self, key: &str, ttl: (impl Into<Ttl>, impl Into<Ttl>), callback: F) -> Result<T>
+    pub async fn flexible<T, F, Fut>(
+        &self,
+        key: &str,
+        ttl: (impl Into<Ttl>, impl Into<Ttl>),
+        callback: F,
+    ) -> Result<T>
     where
         T: Serialize + DeserializeOwned + Send + 'static,
         F: Fn() -> Fut + Send + Sync + 'static,
@@ -401,32 +452,47 @@ impl Repository {
         let created_key = format!("{FLEXIBLE_CREATED_KEY_PREFIX}{key}");
         let mut values = self.many([key, created_key.as_str()]).await?;
         let value = values.shift_remove(key).flatten();
-        let created = values.shift_remove(&created_key).flatten().and_then(|c| c.as_i64());
+        let created = values
+            .shift_remove(&created_key)
+            .flatten()
+            .and_then(|c| c.as_i64());
 
         let (Some(value), Some(created)) = (value, created) else {
             let value = callback().await?;
-            let entries = [(key.to_string(), to_cache_value(&value)?), (created_key, Value::from(Carbon::now().timestamp()))];
+            let entries = [
+                (key.to_string(), to_cache_value(&value)?),
+                (created_key, Value::from(Carbon::now().timestamp())),
+            ];
             self.put_many(entries, stale).await?;
             return Ok(value);
         };
 
         let fresh_seconds = fresh.to_seconds().unwrap_or(i64::MAX);
         if created.saturating_add(fresh_seconds) > Carbon::now().timestamp() {
-            return Ok(cast(value)?);
+            return cast(value);
         }
 
         let repository = self.clone();
         let key = key.to_string();
-        let lock_name = format!("illuminate:cache:flexible:lock:{}", self.item_key(&key).await?);
+        let lock_name = format!(
+            "illuminate:cache:flexible:lock:{}",
+            self.item_key(&key).await?
+        );
         let refresh = async move {
-            let lock = repository.store.lock_provider().map(|provider| provider.lock(&lock_name, 0, None));
+            let lock = repository
+                .store
+                .lock_provider()
+                .map(|provider| provider.lock(&lock_name, 0, None));
             let refresh = async {
                 let current = repository.get(&created_key).await?.and_then(|c| c.as_i64());
                 if current != Some(created) {
                     return Ok::<(), illuminate_support::Error>(());
                 }
                 let value = callback().await?;
-                let entries = [(key.clone(), to_cache_value(&value)?), (created_key.clone(), Value::from(Carbon::now().timestamp()))];
+                let entries = [
+                    (key.clone(), to_cache_value(&value)?),
+                    (created_key.clone(), Value::from(Carbon::now().timestamp())),
+                ];
                 repository.put_many(entries, stale).await?;
                 Ok(())
             };
@@ -442,7 +508,7 @@ impl Repository {
             Err(_) => refresh.await?,
         }
 
-        Ok(cast(value)?)
+        cast(value)
     }
 
     /// Set the expiration of a cached item.
@@ -450,7 +516,11 @@ impl Repository {
         match ttl.into().to_seconds() {
             None => Ok(false),
             Some(seconds) if seconds <= 0 => self.forget(key).await,
-            Some(seconds) => self.store.touch(&self.item_key(key).await?, seconds as u64).await,
+            Some(seconds) => {
+                self.store
+                    .touch(&self.item_key(key).await?, seconds as u64)
+                    .await
+            }
         }
     }
 
@@ -520,12 +590,20 @@ impl Repository {
 
     /// Run the callback while holding a lock, waiting up to `wait_for`
     /// seconds for it, so that calls never overlap.
-    pub async fn without_overlapping<T, F, Fut>(&self, key: &str, callback: F, lock_for: u64, wait_for: u64) -> Result<T>
+    pub async fn without_overlapping<T, F, Fut>(
+        &self,
+        key: &str,
+        callback: F,
+        lock_for: u64,
+        wait_for: u64,
+    ) -> Result<T>
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = T>,
     {
-        self.lock(key, lock_for).block_with(wait_for, callback).await
+        self.lock(key, lock_for)
+            .block_with(wait_for, callback)
+            .await
     }
 
     // ------------------------------------------------------------------
@@ -556,10 +634,15 @@ impl Repository {
     /// ```
     pub fn tags<S: Into<String>>(&self, names: impl IntoIterator<Item = S>) -> Result<Repository> {
         if !self.supports_tags() {
-            return Err(BadMethodCallException::new("This cache store does not support tagging.").into());
+            return Err(
+                BadMethodCallException::new("This cache store does not support tagging.").into(),
+            );
         }
         let mut tagged = self.clone();
-        tagged.tags = Some(TagSet::new(self.store.clone(), names.into_iter().map(Into::into).collect()));
+        tagged.tags = Some(TagSet::new(
+            self.store.clone(),
+            names.into_iter().map(Into::into).collect(),
+        ));
         Ok(tagged)
     }
 
@@ -601,12 +684,24 @@ mod tests {
     async fn it_stores_and_retrieves_typed_values() {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let cache = cache();
-        let user = User { id: 1, name: "Taylor".into() };
+        let user = User {
+            id: 1,
+            name: "Taylor".into(),
+        };
 
         assert!(cache.put("user", &user, 60).await.unwrap());
-        assert_eq!(cache.get_as::<User>("user").await.unwrap(), Some(user.clone()));
-        assert_eq!(cache.get("user").await.unwrap(), Some(json!({"id": 1, "name": "Taylor"})));
-        assert_eq!(cache.get_or("missing", "default").await.unwrap(), json!("default"));
+        assert_eq!(
+            cache.get_as::<User>("user").await.unwrap(),
+            Some(user.clone())
+        );
+        assert_eq!(
+            cache.get("user").await.unwrap(),
+            Some(json!({"id": 1, "name": "Taylor"}))
+        );
+        assert_eq!(
+            cache.get_or("missing", "default").await.unwrap(),
+            json!("default")
+        );
         assert_eq!(cache.get_or_else("missing", || 5).await.unwrap(), json!(5));
         assert!(cache.missing("missing").await.unwrap());
 
@@ -625,9 +720,18 @@ mod tests {
         let cache = cache();
 
         cache.put("seconds", "x", 10).await.unwrap();
-        cache.put("duration", "x", std::time::Duration::from_secs(20)).await.unwrap();
-        cache.put("interval", "x", CarbonInterval::minutes(1)).await.unwrap();
-        cache.put("carbon", "x", Carbon::now().add_seconds(30)).await.unwrap();
+        cache
+            .put("duration", "x", std::time::Duration::from_secs(20))
+            .await
+            .unwrap();
+        cache
+            .put("interval", "x", CarbonInterval::minutes(1))
+            .await
+            .unwrap();
+        cache
+            .put("carbon", "x", Carbon::now().add_seconds(30))
+            .await
+            .unwrap();
         cache.put("forever", "x", None::<u64>).await.unwrap();
 
         time.travel_seconds(10);
@@ -653,7 +757,10 @@ mod tests {
         assert!(cache.missing("key").await.unwrap());
 
         cache.forever("key", "value").await.unwrap();
-        cache.put("key", "value", Carbon::now().sub_minutes(5)).await.unwrap();
+        cache
+            .put("key", "value", Carbon::now().sub_minutes(5))
+            .await
+            .unwrap();
         assert!(cache.missing("key").await.unwrap());
 
         assert!(!cache.add("key", "value", -1).await.unwrap());
@@ -728,18 +835,34 @@ mod tests {
         }
         assert_eq!(calls.load(Ordering::SeqCst), 1);
 
-        let (_, warm) = cache.remember_with_warmth("answer", 60, || async { Ok(0) }).await.unwrap();
+        let (_, warm) = cache
+            .remember_with_warmth("answer", 60, || async { Ok(0) })
+            .await
+            .unwrap();
         assert!(warm);
         time.travel_seconds(60);
-        let (value, warm) = cache.remember_with_warmth("answer", 60, || async { Ok(7) }).await.unwrap();
+        let (value, warm) = cache
+            .remember_with_warmth("answer", 60, || async { Ok(7) })
+            .await
+            .unwrap();
         assert_eq!((value, warm), (7, false));
 
-        let forever: String = cache.remember_forever("name", || async { Ok("Taylor".to_string()) }).await.unwrap();
+        let forever: String = cache
+            .remember_forever("name", || async { Ok("Taylor".to_string()) })
+            .await
+            .unwrap();
         assert_eq!(forever, "Taylor");
-        let seared: String = cache.sear("name", || async { Ok("Other".to_string()) }).await.unwrap();
+        let seared: String = cache
+            .sear("name", || async { Ok("Other".to_string()) })
+            .await
+            .unwrap();
         assert_eq!(seared, "Taylor");
 
-        let error = cache.remember::<u64, _, _>("failing", 60, || async { Err(illuminate_support::error::error!("boom")) }).await;
+        let error = cache
+            .remember::<u64, _, _>("failing", 60, || async {
+                Err(illuminate_support::error::error!("boom"))
+            })
+            .await;
         assert!(error.is_err());
         assert!(cache.missing("failing").await.unwrap());
     }
@@ -758,25 +881,55 @@ mod tests {
         };
 
         // A miss computes the value immediately.
-        assert_eq!(cache.flexible("value", (10, 20), callback.clone()).await.unwrap(), 1);
+        assert_eq!(
+            cache
+                .flexible("value", (10, 20), callback.clone())
+                .await
+                .unwrap(),
+            1
+        );
 
         // Fresh: served from the cache.
         time.travel_seconds(5);
-        assert_eq!(cache.flexible("value", (10, 20), callback.clone()).await.unwrap(), 1);
+        assert_eq!(
+            cache
+                .flexible("value", (10, 20), callback.clone())
+                .await
+                .unwrap(),
+            1
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
 
         // Stale: the old value is served while it refreshes in the background.
         time.travel_seconds(10);
-        assert_eq!(cache.flexible("value", (10, 20), callback.clone()).await.unwrap(), 1);
+        assert_eq!(
+            cache
+                .flexible("value", (10, 20), callback.clone())
+                .await
+                .unwrap(),
+            1
+        );
         for _ in 0..10 {
             tokio::task::yield_now().await;
         }
         assert_eq!(calls.load(Ordering::SeqCst), 2);
-        assert_eq!(cache.flexible("value", (10, 20), callback.clone()).await.unwrap(), 2);
+        assert_eq!(
+            cache
+                .flexible("value", (10, 20), callback.clone())
+                .await
+                .unwrap(),
+            2
+        );
 
         // Expired: recomputed before returning.
         time.travel_seconds(25);
-        assert_eq!(cache.flexible("value", (10, 20), callback.clone()).await.unwrap(), 3);
+        assert_eq!(
+            cache
+                .flexible("value", (10, 20), callback.clone())
+                .await
+                .unwrap(),
+            3
+        );
     }
 
     #[tokio::test]
@@ -799,17 +952,41 @@ mod tests {
         let authors = cache.tags(["people", "authors"]).unwrap();
         artists.put("John", "Lennon", 60).await.unwrap();
         authors.put("Anne", "Rice", 60).await.unwrap();
-        assert_eq!(artists.get_tags().unwrap().get_names(), ["people", "artists"]);
+        assert_eq!(
+            artists.get_tags().unwrap().get_names(),
+            ["people", "artists"]
+        );
 
         assert!(cache.missing("John").await.unwrap());
         assert_eq!(artists.increment("plays").await.unwrap(), 1);
 
         cache.tags(["authors"]).unwrap().flush().await.unwrap();
-        assert!(cache.tags(["people", "artists"]).unwrap().has("John").await.unwrap());
-        assert!(cache.tags(["people", "authors"]).unwrap().missing("Anne").await.unwrap());
+        assert!(
+            cache
+                .tags(["people", "artists"])
+                .unwrap()
+                .has("John")
+                .await
+                .unwrap()
+        );
+        assert!(
+            cache
+                .tags(["people", "authors"])
+                .unwrap()
+                .missing("Anne")
+                .await
+                .unwrap()
+        );
 
         cache.tags(["people"]).unwrap().flush().await.unwrap();
-        assert!(cache.tags(["people", "artists"]).unwrap().missing("John").await.unwrap());
+        assert!(
+            cache
+                .tags(["people", "artists"])
+                .unwrap()
+                .missing("John")
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]
@@ -857,13 +1034,24 @@ mod tests {
     async fn lock_callbacks_release_automatically() {
         let _time = freeze_time(Carbon::from_timestamp(1_700_000_000));
         let cache = cache();
-        let value = cache.lock("foo", 10).get_with(|| async { "done" }).await.unwrap();
+        let value = cache
+            .lock("foo", 10)
+            .get_with(|| async { "done" })
+            .await
+            .unwrap();
         assert_eq!(value, Some("done"));
         assert!(!cache.lock("foo", 10).is_locked().await.unwrap());
 
         let held = cache.lock("foo", 10);
         held.get().await.unwrap();
-        assert_eq!(cache.lock("foo", 10).get_with(|| async { "never" }).await.unwrap(), None);
+        assert_eq!(
+            cache
+                .lock("foo", 10)
+                .get_with(|| async { "never" })
+                .await
+                .unwrap(),
+            None
+        );
     }
 
     #[tokio::test]
@@ -880,7 +1068,9 @@ mod tests {
                 held.release().await.unwrap();
             })
         };
-        let waiter = cache.lock("contended", 10).between_blocked_attempts_sleep_for(10);
+        let waiter = cache
+            .lock("contended", 10)
+            .between_blocked_attempts_sleep_for(10);
         let value = waiter.block_with(2, || async { "acquired" }).await.unwrap();
         assert_eq!(value, "acquired");
         releaser.await.unwrap();
@@ -888,12 +1078,20 @@ mod tests {
 
         let held = cache.lock("busy", 10);
         held.get().await.unwrap();
-        let error = cache.lock("busy", 10).between_blocked_attempts_sleep_for(10).block(0).await.unwrap_err();
+        let error = cache
+            .lock("busy", 10)
+            .between_blocked_attempts_sleep_for(10)
+            .block(0)
+            .await
+            .unwrap_err();
         let timeout = error.downcast_ref::<crate::LockTimeoutException>().unwrap();
         assert_eq!(timeout.name, "busy");
         assert_eq!(error.to_string(), "Unable to acquire lock [busy].");
 
-        let result = cache.without_overlapping("job", || async { 7 }, 10, 1).await.unwrap();
+        let result = cache
+            .without_overlapping("job", || async { 7 }, 10, 1)
+            .await
+            .unwrap();
         assert_eq!(result, 7);
     }
 
@@ -939,7 +1137,10 @@ mod tests {
         }
         let cache = Repository::new(Plain);
         let error = cache.lock("foo", 1).get().await.unwrap_err();
-        assert_eq!(error.to_string(), "This cache store does not support locks.");
+        assert_eq!(
+            error.to_string(),
+            "This cache store does not support locks."
+        );
         assert!(cache.flush_locks().await.is_err());
         // The default `add` checks before writing.
         assert!(cache.add("key", "value", 10).await.unwrap());

@@ -19,7 +19,9 @@ pub struct TagSet {
 
 impl std::fmt::Debug for TagSet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TagSet").field("names", &self.names).finish()
+        f.debug_struct("TagSet")
+            .field("names", &self.names)
+            .finish()
     }
 }
 
@@ -88,6 +90,9 @@ impl TagSet {
     /// The key a tagged item is stored under.
     pub async fn tagged_item_key(&self, key: &str) -> Result<String> {
         let namespace = self.get_namespace().await?;
-        Ok(format!("{}:{key}", hex::encode(Sha1::digest(namespace.as_bytes()))))
+        Ok(format!(
+            "{}:{key}",
+            hex::encode(Sha1::digest(namespace.as_bytes()))
+        ))
     }
 }

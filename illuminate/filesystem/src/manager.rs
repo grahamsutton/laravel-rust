@@ -27,7 +27,11 @@ pub struct FilesystemManager {
 impl FilesystemManager {
     /// Create a new filesystem manager reading the given configuration.
     pub fn new(config: Arc<Config>) -> Self {
-        Self { config, disks: RwLock::new(HashMap::new()), custom_creators: RwLock::new(HashMap::new()) }
+        Self {
+            config,
+            disks: RwLock::new(HashMap::new()),
+            custom_creators: RwLock::new(HashMap::new()),
+        }
     }
 
     /// Get a disk by name.
@@ -51,7 +55,13 @@ impl FilesystemManager {
             return Ok(disk.clone());
         }
         let disk = Arc::new(self.resolve(name, None)?);
-        Ok(self.disks.write().unwrap().entry(name.to_string()).or_insert(disk).clone())
+        Ok(self
+            .disks
+            .write()
+            .unwrap()
+            .entry(name.to_string())
+            .or_insert(disk)
+            .clone())
     }
 
     /// Alias of [`FilesystemManager::disk`].
@@ -88,9 +98,16 @@ impl FilesystemManager {
 
     fn resolve(&self, name: &str, config: Option<Value>) -> Result<FilesystemAdapter> {
         let config = config.unwrap_or_else(|| self.get_config(name));
-        let driver = config.get("driver").and_then(Value::as_str).unwrap_or_default().to_string();
+        let driver = config
+            .get("driver")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
         if driver.is_empty() {
-            return Err(InvalidArgumentException::new(format!("Disk [{name}] does not have a configured driver.")).into());
+            return Err(InvalidArgumentException::new(format!(
+                "Disk [{name}] does not have a configured driver."
+            ))
+            .into());
         }
 
         let creator = self.custom_creators.read().unwrap().get(&driver).cloned();
@@ -101,7 +118,10 @@ impl FilesystemManager {
         match driver.as_str() {
             "local" => self.create_local_driver(&config, name),
             "scoped" => self.create_scoped_driver(&config, name),
-            _ => Err(InvalidArgumentException::new(format!("Driver [{driver}] is not supported.")).into()),
+            _ => Err(
+                InvalidArgumentException::new(format!("Driver [{driver}] is not supported."))
+                    .into(),
+            ),
         }
     }
 
@@ -116,16 +136,35 @@ impl FilesystemManager {
         let parent = match config.get("disk") {
             Some(Value::String(disk)) if !disk.is_empty() => self.get_config(disk),
             Some(Value::Object(map)) => Value::Object(map.clone()),
-            _ => return Err(InvalidArgumentException::new("Scoped disk is missing \"disk\" configuration option.").into()),
+            _ => {
+                return Err(InvalidArgumentException::new(
+                    "Scoped disk is missing \"disk\" configuration option.",
+                )
+                .into());
+            }
         };
-        let prefix = config.get("prefix").and_then(Value::as_str).unwrap_or_default();
+        let prefix = config
+            .get("prefix")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         if prefix.is_empty() {
-            return Err(InvalidArgumentException::new("Scoped disk is missing \"prefix\" configuration option.").into());
+            return Err(InvalidArgumentException::new(
+                "Scoped disk is missing \"prefix\" configuration option.",
+            )
+            .into());
         }
 
         let mut parent = parent;
-        let combined = match parent.get("prefix").and_then(Value::as_str).filter(|p| !p.is_empty()) {
-            Some(existing) => format!("{}/{}", existing.trim_end_matches('/'), prefix.trim_start_matches('/')),
+        let combined = match parent
+            .get("prefix")
+            .and_then(Value::as_str)
+            .filter(|p| !p.is_empty())
+        {
+            Some(existing) => format!(
+                "{}/{}",
+                existing.trim_end_matches('/'),
+                prefix.trim_start_matches('/')
+            ),
             None => prefix.to_string(),
         };
         parent["prefix"] = json!(combined);
@@ -139,7 +178,10 @@ impl FilesystemManager {
 
     /// Set the given disk instance.
     pub fn set(&self, name: &str, disk: impl Into<Arc<FilesystemAdapter>>) -> &Self {
-        self.disks.write().unwrap().insert(name.to_string(), disk.into());
+        self.disks
+            .write()
+            .unwrap()
+            .insert(name.to_string(), disk.into());
         self
     }
 
@@ -164,7 +206,9 @@ impl FilesystemManager {
 
     /// Disconnect the given disk (the default disk when `None`).
     pub fn purge(&self, name: Option<&str>) {
-        let name = name.map(str::to_string).unwrap_or_else(|| self.get_default_driver());
+        let name = name
+            .map(str::to_string)
+            .unwrap_or_else(|| self.get_default_driver());
         self.disks.write().unwrap().remove(&name);
     }
 
@@ -192,7 +236,10 @@ impl FilesystemManager {
         driver: &str,
         creator: impl Fn(&Container, &Value) -> Result<FilesystemAdapter> + Send + Sync + 'static,
     ) -> &Self {
-        self.custom_creators.write().unwrap().insert(driver.to_string(), Arc::new(creator));
+        self.custom_creators
+            .write()
+            .unwrap()
+            .insert(driver.to_string(), Arc::new(creator));
         self
     }
 
@@ -212,7 +259,9 @@ impl FilesystemManager {
     pub fn fake_with(&self, disk: &str, config: Value) -> Result<Arc<FilesystemAdapter>> {
         let base = testing_root();
         std::fs::create_dir_all(&base)?;
-        let directory = tempfile::Builder::new().prefix(&format!("{disk}-")).tempdir_in(&base)?;
+        let directory = tempfile::Builder::new()
+            .prefix(&format!("{disk}-"))
+            .tempdir_in(&base)?;
         let root = directory.path().to_path_buf();
 
         let fake = self.create_local_driver(&self.fake_configuration(disk, config, &root), disk)?;
@@ -237,7 +286,8 @@ impl FilesystemManager {
     /// files between test runs.
     pub fn persistent_fake(&self, disk: &str) -> Result<Arc<FilesystemAdapter>> {
         let root = testing_root().join(disk);
-        let fake = self.create_local_driver(&self.fake_configuration(disk, json!({}), &root), disk)?;
+        let fake =
+            self.create_local_driver(&self.fake_configuration(disk, json!({}), &root), disk)?;
         let fake = Arc::new(fake);
         self.set(disk, fake.clone());
         Ok(fake)
@@ -246,7 +296,10 @@ impl FilesystemManager {
     fn fake_configuration(&self, disk: &str, config: Value, root: &std::path::Path) -> Value {
         let original = self.get_config(disk);
         let mut merged = Map::new();
-        merged.insert("throw".into(), json!(original.get("throw").is_some_and(ValueExt::truthy)));
+        merged.insert(
+            "throw".into(),
+            json!(original.get("throw").is_some_and(ValueExt::truthy)),
+        );
         if let Value::Object(extra) = config {
             merged.extend(extra);
         }
@@ -283,7 +336,11 @@ impl FilesystemManager {
                 ))
                 .into());
             }
-            served.push(ServedDisk { disk: disk.clone(), uri, config: config.clone() });
+            served.push(ServedDisk {
+                disk: disk.clone(),
+                uri,
+                config: config.clone(),
+            });
         }
         Ok(served)
     }
@@ -291,14 +348,19 @@ impl FilesystemManager {
 
 /// The directory fake disks live in.
 fn testing_root() -> PathBuf {
-    std::env::temp_dir().join("illuminate-testing").join("disks")
+    std::env::temp_dir()
+        .join("illuminate-testing")
+        .join("disks")
 }
 
 /// The path portion of a URL (`https://example.com/storage` → `/storage`).
 fn url_path(url: &str) -> String {
     let without_query = url.split(['?', '#']).next().unwrap_or_default();
     match without_query.split_once("://") {
-        Some((_, rest)) => rest.find('/').map(|index| rest[index..].to_string()).unwrap_or_default(),
+        Some((_, rest)) => rest
+            .find('/')
+            .map(|index| rest[index..].to_string())
+            .unwrap_or_default(),
         None => without_query.to_string(),
     }
 }
@@ -441,15 +503,25 @@ impl Storage {
         Self::default_disk()?.put(path, contents).await
     }
 
-    pub async fn put_with_visibility(path: &str, contents: impl AsRef<[u8]>, visibility: Visibility) -> Result<bool> {
-        Self::default_disk()?.put_with_visibility(path, contents, visibility).await
+    pub async fn put_with_visibility(
+        path: &str,
+        contents: impl AsRef<[u8]>,
+        visibility: Visibility,
+    ) -> Result<bool> {
+        Self::default_disk()?
+            .put_with_visibility(path, contents, visibility)
+            .await
     }
 
     pub async fn put_file(path: &str, file: &illuminate_http::UploadedFile) -> Result<String> {
         Self::default_disk()?.put_file(path, file).await
     }
 
-    pub async fn put_file_as(path: &str, file: &illuminate_http::UploadedFile, name: &str) -> Result<String> {
+    pub async fn put_file_as(
+        path: &str,
+        file: &illuminate_http::UploadedFile,
+        name: &str,
+    ) -> Result<String> {
         Self::default_disk()?.put_file_as(path, file, name).await
     }
 
@@ -564,13 +636,19 @@ mod tests {
         let local = manager.default_disk().unwrap();
         assert!(Arc::ptr_eq(&local, &manager.disk("local").unwrap()));
         assert_eq!(local.name(), "local");
-        assert_eq!(manager.disk("public").unwrap().url("a.jpg").unwrap(), "http://localhost/storage/a.jpg");
+        assert_eq!(
+            manager.disk("public").unwrap().url("a.jpg").unwrap(),
+            "http://localhost/storage/a.jpg"
+        );
 
         assert_eq!(
             manager.disk("broken").unwrap_err().to_string(),
             "Disk [broken] does not have a configured driver."
         );
-        assert_eq!(manager.disk("ftp").unwrap_err().to_string(), "Driver [ftp] is not supported.");
+        assert_eq!(
+            manager.disk("ftp").unwrap_err().to_string(),
+            "Driver [ftp] is not supported."
+        );
         assert_eq!(
             manager.disk("missing").unwrap_err().to_string(),
             "Disk [missing] does not have a configured driver."
@@ -591,7 +669,9 @@ mod tests {
             }},
         }));
 
-        let disk = manager.build(json!({"driver": "local", "root": root})).unwrap();
+        let disk = manager
+            .build(json!({"driver": "local", "root": root}))
+            .unwrap();
         disk.put("on-demand.txt", "x").await.unwrap();
         assert!(dir.path().join("on-demand.txt").exists());
 
@@ -618,9 +698,13 @@ mod tests {
         assert!(root.starts_with(std::env::temp_dir()));
 
         fake.put("photo1.jpg", "x").await.unwrap();
-        fake.assert_exists("photo1.jpg").await.assert_missing("photo2.jpg").await;
+        fake.assert_exists("photo1.jpg")
+            .await
+            .assert_missing("photo2.jpg")
+            .await;
         assert_eq!(
-            fake.temporary_url("photo1.jpg", Carbon::from_timestamp(1_000)).unwrap(),
+            fake.temporary_url("photo1.jpg", Carbon::from_timestamp(1_000))
+                .unwrap(),
             "https://laravel.com/photo1.jpg?expiration=1000"
         );
 

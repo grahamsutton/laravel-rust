@@ -57,7 +57,9 @@ pub mod uploaded;
 
 pub use adapter::{FilesystemAdapter, TemporaryUrlCallback};
 pub use driver::{Driver, LocalDriver, Permissions, StorageAttributes, Visibility, WriteOptions};
-pub use exceptions::{CorruptedPathDetected, FileNotFoundException, FilesystemException, PathTraversalDetected};
+pub use exceptions::{
+    CorruptedPathDetected, FileNotFoundException, FilesystemException, PathTraversalDetected,
+};
 pub use filesystem::{File, Filesystem};
 pub use manager::{DiskCreator, FilesystemManager, Storage};
 pub use path::{IntoPaths, normalize_path};
