@@ -25,7 +25,7 @@ const DONT_FLASH: [&str; 3] = ["current_password", "password", "password_confirm
 /// assert_eq!(exception.errors.first("password"), Some("The password is too weak."));
 /// ```
 #[derive(Debug, Clone, thiserror::Error)]
-#[error("{message}")]
+#[error("{}", self.message())]
 pub struct ValidationException {
     /// The validation errors.
     pub errors: MessageBag,
@@ -35,19 +35,16 @@ pub struct ValidationException {
     pub error_bag: String,
     /// Where to redirect to (instead of the previous URL).
     pub redirect_to: Option<String>,
-    message: String,
 }
 
 impl ValidationException {
     /// Create an exception for the given errors.
     pub fn new(errors: MessageBag) -> Self {
-        let message = Self::summarize(&errors);
         Self {
             errors,
             status: 422,
             error_bag: "default".to_string(),
             redirect_to: None,
-            message,
         }
     }
 
@@ -55,7 +52,7 @@ impl ValidationException {
     pub fn with_messages<K, V>(messages: impl IntoIterator<Item = (K, V)>) -> Self
     where
         K: Into<String>,
-        V: Into<Messages>,
+        V: Into<ErrorMessages>,
     {
         let mut bag = MessageBag::new();
         for (key, value) in messages {
@@ -80,9 +77,9 @@ impl ValidationException {
         }
     }
 
-    /// The summary message.
-    pub fn message(&self) -> &str {
-        &self.message
+    /// The summary message: the first error, and how many more there are.
+    pub fn message(&self) -> String {
+        Self::summarize(&self.errors)
     }
 
     /// The errors, keyed by attribute.
@@ -111,7 +108,7 @@ impl ValidationException {
     /// The JSON payload rendered for XHR requests.
     pub fn to_json(&self) -> Value {
         json!({
-            "message": self.message,
+            "message": self.message(),
             "errors": self.errors.messages(),
         })
     }
@@ -151,31 +148,31 @@ impl IntoResponse for ValidationException {
     }
 }
 
-/// One or more messages for an attribute.
+/// One or more error messages for an attribute.
 #[derive(Clone, Debug, Default)]
-pub struct Messages(pub Vec<String>);
+pub struct ErrorMessages(pub Vec<String>);
 
-impl From<&str> for Messages {
+impl From<&str> for ErrorMessages {
     fn from(message: &str) -> Self {
-        Messages(vec![message.to_string()])
+        ErrorMessages(vec![message.to_string()])
     }
 }
 
-impl From<String> for Messages {
+impl From<String> for ErrorMessages {
     fn from(message: String) -> Self {
-        Messages(vec![message])
+        ErrorMessages(vec![message])
     }
 }
 
-impl<S: Into<String>> From<Vec<S>> for Messages {
+impl<S: Into<String>> From<Vec<S>> for ErrorMessages {
     fn from(messages: Vec<S>) -> Self {
-        Messages(messages.into_iter().map(Into::into).collect())
+        ErrorMessages(messages.into_iter().map(Into::into).collect())
     }
 }
 
-impl<S: Into<String>, const N: usize> From<[S; N]> for Messages {
+impl<S: Into<String>, const N: usize> From<[S; N]> for ErrorMessages {
     fn from(messages: [S; N]) -> Self {
-        Messages(messages.into_iter().map(Into::into).collect())
+        ErrorMessages(messages.into_iter().map(Into::into).collect())
     }
 }
 

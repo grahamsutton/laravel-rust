@@ -1255,3 +1255,30 @@ fn replace_asterisks(parameter: &str, keys: &[String]) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use illuminate_container::Container;
+    use illuminate_support::json;
+
+    fn assert_send<T: Send>(_: &T) {}
+    fn assert_sync<T: Sync>(_: &T) {}
+
+    #[test]
+    fn validators_and_their_futures_are_send() {
+        let _guard = Container::set_local_instance(Arc::new(Container::new()));
+        let mut validator = Validator::make(json!({}), Rules::new());
+        assert_sync(&validator);
+        assert_send(&validator);
+        let future = validator.passes();
+        assert_send(&future);
+    }
+
+    #[test]
+    fn asterisks_are_replaced_in_order() {
+        let keys = vec!["1".to_string(), "2".to_string()];
+        assert_eq!(replace_asterisks("a.*.b.*", &keys), "a.1.b.2");
+        assert_eq!(replace_asterisks("a.*.b.*.c.*", &keys), "a.1.b.2.c.*");
+    }
+}

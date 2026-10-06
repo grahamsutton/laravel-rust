@@ -61,7 +61,8 @@ pub type FailCallback<'a> = dyn FnMut(&str) + Send + 'a;
 /// [`ValidationContext`].
 #[async_trait]
 pub trait ValidationRule: Send + Sync {
-    /// Run the validation rule.
+    /// Run the validation rule. Implement this (or
+    /// [`ValidationRule::validate_with`]); the default accepts everything.
     async fn validate(&self, attribute: &str, value: &Value, fail: &mut FailCallback<'_>) {
         let _ = (attribute, value, fail);
     }

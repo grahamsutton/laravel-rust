@@ -29,7 +29,59 @@ pub(crate) fn parse_carbon(value: &str) -> Option<Carbon> {
     if let Some(stripped) = value.strip_prefix('@') {
         return stripped.parse::<i64>().ok().map(Carbon::from_timestamp);
     }
-    parse_relative(value)
+    parse_relative(value).or_else(|| {
+        // Bare integers aren't dates (PHP's `strtotime` doesn't read them as timestamps).
+        let unsigned = value.strip_prefix(['+', '-']).unwrap_or(value);
+        if unsigned.bytes().all(|b| b.is_ascii_digit()) {
+            None
+        } else {
+            Carbon::parse(value).ok()
+        }
+    })
+}
+
+const RELATIVE_WORDS: [&str; 26] = [
+    "now",
+    "today",
+    "tomorrow",
+    "yesterday",
+    "midnight",
+    "noon",
+    "ago",
+    "next",
+    "last",
+    "previous",
+    "this",
+    "first",
+    "of",
+    "sec",
+    "second",
+    "min",
+    "minute",
+    "hour",
+    "day",
+    "week",
+    "weekday",
+    "fortnight",
+    "month",
+    "year",
+    "weeks",
+    "days",
+];
+
+/// Determine if a date string is (or contains) a relative expression.
+fn looks_relative(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if lower.starts_with(['+', '-']) {
+        return true;
+    }
+    lower
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .map(|word| word.trim_start_matches(|c: char| c.is_ascii_digit() || c == '+' || c == '-'))
+        .any(|word| {
+            let singular = word.strip_suffix('s').unwrap_or(word);
+            RELATIVE_WORDS.contains(&word) || RELATIVE_WORDS.contains(&singular)
+        })
 }
 
 /// Parse an absolute date (no relative words, no bare integers).
@@ -38,8 +90,7 @@ fn parse_absolute(value: &str) -> Option<Carbon> {
     if value.is_empty() || unsigned.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
-    let lower = value.to_ascii_lowercase();
-    if matches!(lower.as_str(), "now" | "today" | "tomorrow" | "yesterday") {
+    if !value.bytes().any(|b| b.is_ascii_digit()) || looks_relative(value) {
         return None;
     }
     Carbon::parse(value).ok()
@@ -644,6 +695,11 @@ mod tests {
         assert!(!is_valid_date("2024"));
         assert!(!is_valid_date("not a date"));
         assert!(is_valid_date("2024-01-01 +1 day"));
+        assert!(!is_valid_date("+1 week"));
+        assert!(!is_valid_date("next monday"));
+        assert!(!is_valid_date("3 days ago"));
+        assert!(is_valid_date("10 September 2000"));
+        assert!(is_valid_date("Tue, 12 Mar 2024 10:00:00 +0000"));
     }
 
     #[test]

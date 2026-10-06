@@ -1151,6 +1151,7 @@ dependencies = [
  "hmac",
  "illuminate-cache",
  "illuminate-config",
+ "illuminate-console",
  "illuminate-container",
  "illuminate-cookie",
  "illuminate-encryption",

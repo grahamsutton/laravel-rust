@@ -147,6 +147,22 @@ impl IntoRuleItems for RuleSet {
     }
 }
 
+impl<T: IntoRuleItems> IntoRuleItems for Vec<T> {
+    fn into_rule_items(self) -> Vec<RuleItem> {
+        self.into_iter()
+            .flat_map(IntoRuleItems::into_rule_items)
+            .collect()
+    }
+}
+
+impl<T: IntoRuleItems, const N: usize> IntoRuleItems for [T; N] {
+    fn into_rule_items(self) -> Vec<RuleItem> {
+        self.into_iter()
+            .flat_map(IntoRuleItems::into_rule_items)
+            .collect()
+    }
+}
+
 impl IntoRuleItems for Arc<dyn ValidationRule> {
     fn into_rule_items(self) -> Vec<RuleItem> {
         vec![RuleItem::Custom(self)]

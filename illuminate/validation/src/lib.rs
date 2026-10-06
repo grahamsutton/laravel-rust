@@ -65,7 +65,7 @@ mod validated_input;
 mod validates;
 mod validator;
 
-pub use exception::{Messages, ValidationException};
+pub use exception::{ErrorMessages, ValidationException};
 pub use factory::{ExtensionFn, Factory, PendingExtension, ReplacerFn, ValidationServiceProvider};
 pub use formats::InvalidPatternException;
 pub use http::{

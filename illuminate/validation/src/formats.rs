@@ -312,7 +312,9 @@ static REGEX_CACHE: LazyLock<Mutex<HashMap<String, Arc<Regex>>>> = LazyLock::new
     "The regular expression [{pattern}] is invalid or uses features Rust's regex engine doesn't support: {reason}"
 )]
 pub struct InvalidPatternException {
+    /// The pattern as written in the rule.
     pub pattern: String,
+    /// Why it couldn't be compiled.
     pub reason: String,
 }
 
