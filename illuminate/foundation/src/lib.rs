@@ -6,6 +6,7 @@
 pub mod application;
 pub mod bootstrap;
 pub mod defaults;
+pub mod exceptions;
 pub mod helpers;
 pub mod inspiring;
 pub mod providers;
