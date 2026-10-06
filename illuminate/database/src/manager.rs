@@ -78,7 +78,7 @@ impl DatabaseManager {
     /// Get a database connection instance by name.
     ///
     /// Unknown connections still return a handle; every query on it fails
-    /// with "Database connection [name] not configured.".
+    /// with `Database connection [name] not configured.`.
     pub fn connection(&self, name: &str) -> Connection {
         if let Some(connection) = self.connections.read().unwrap().get(name) {
             return connection.clone();
