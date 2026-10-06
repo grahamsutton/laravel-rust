@@ -64,7 +64,7 @@ impl HashManager {
 
     /// Get a hashing driver by name.
     ///
-    /// Fails with an `InvalidArgumentException` ("Driver [name] not supported.")
+    /// Fails with an `InvalidArgumentException` (`Driver [name] not supported.`)
     /// for unknown drivers.
     pub fn driver(&self, name: &str) -> Result<Arc<dyn Hasher>> {
         if let Some(driver) = self.drivers.read().unwrap().get(name) {
@@ -84,7 +84,9 @@ impl HashManager {
             "bcrypt" => Ok(Arc::new(self.create_bcrypt_driver())),
             "argon" => Ok(Arc::new(self.create_argon_driver())),
             "argon2id" => Ok(Arc::new(self.create_argon2id_driver())),
-            _ => Err(InvalidArgumentException::new(format!("Driver [{name}] not supported.")).into()),
+            _ => {
+                Err(InvalidArgumentException::new(format!("Driver [{name}] not supported.")).into())
+            }
         }
     }
 
@@ -127,7 +129,10 @@ impl HashManager {
     ) -> &Self {
         let driver = driver.into();
         self.drivers.write().unwrap().remove(&driver);
-        self.custom_creators.write().unwrap().insert(driver, Arc::new(creator));
+        self.custom_creators
+            .write()
+            .unwrap()
+            .insert(driver, Arc::new(creator));
         self
     }
 
@@ -221,7 +226,10 @@ mod tests {
         let error = manager.make("password").err().unwrap();
         assert!(error.downcast_ref::<InvalidArgumentException>().is_some());
         assert_eq!(error.to_string(), "Driver [md5] not supported.");
-        assert!(!manager.check("password", "$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi"));
+        assert!(!manager.check(
+            "password",
+            "$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi"
+        ));
         assert!(manager.needs_rehash("x"));
         assert!(!manager.verify_configuration("x"));
         assert_eq!(manager.info("x").algo_name, "unknown");

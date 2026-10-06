@@ -1,6 +1,6 @@
 //! # Illuminate Hashing
 //!
-//! The [`Hash`] facade provides secure Bcrypt and Argon2 hashing for storing
+//! The [`Hash`](struct@Hash) facade provides secure Bcrypt and Argon2 hashing for storing
 //! user passwords. Bcrypt is the default: its "work factor" is adjustable,
 //! so the time it takes to generate a hash can grow as hardware gets faster.
 //! When hashing passwords, slow is good.

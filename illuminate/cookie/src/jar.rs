@@ -178,7 +178,11 @@ impl CookieJar {
         same_site: Option<SameSite>,
     ) -> &Self {
         *self.defaults.write().unwrap() = Defaults {
-            path: if path.is_empty() { "/".to_string() } else { path.to_string() },
+            path: if path.is_empty() {
+                "/".to_string()
+            } else {
+                path.to_string()
+            },
             domain: domain.map(str::to_string),
             secure,
             same_site,
@@ -222,7 +226,12 @@ impl CookieJar {
     }
 
     /// Create a cookie that expires the given cookie for a specific path and domain.
-    pub fn forget_at(&self, name: impl Into<String>, path: Option<&str>, domain: Option<&str>) -> Cookie {
+    pub fn forget_at(
+        &self,
+        name: impl Into<String>,
+        path: Option<&str>,
+        domain: Option<&str>,
+    ) -> Cookie {
         let mut cookie = self.forget(name);
         if let Some(path) = path {
             cookie = cookie.path(path);
@@ -353,7 +362,9 @@ mod tests {
         assert!(cookie.secure);
         assert_eq!(cookie.same_site, Some(SameSite::Strict));
 
-        let config = Repository::new(json!({"session": {"path": "/", "domain": null, "secure": null, "same_site": null}}));
+        let config = Repository::new(
+            json!({"session": {"path": "/", "domain": null, "secure": null, "same_site": null}}),
+        );
         let cookie = CookieJar::from_config(&config).make("a", "b", 1);
         assert_eq!(cookie.domain, None);
         assert!(!cookie.secure);
@@ -402,7 +413,13 @@ mod tests {
         let first_queue = first.extension::<CookieQueue>().unwrap();
         assert_eq!(first_queue.all().len(), 1);
         assert_eq!(first_queue.queued("first", None).unwrap().value, "1");
-        assert!(second.extension::<CookieQueue>().unwrap().queued("first", None).is_none());
+        assert!(
+            second
+                .extension::<CookieQueue>()
+                .unwrap()
+                .queued("first", None)
+                .is_none()
+        );
 
         jar.queue_on(&first, Cookie::new("explicit", "yes"));
         assert_eq!(first_queue.all().len(), 2);

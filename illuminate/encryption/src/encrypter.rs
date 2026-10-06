@@ -10,8 +10,8 @@ use aes_gcm::aead::{Aead, Nonce};
 use aes_gcm::{Aes128Gcm, Aes256Gcm};
 use base64::Engine;
 use base64::alphabet;
-use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig, STANDARD};
 use base64::engine::DecodePaddingMode;
+use base64::engine::general_purpose::{GeneralPurpose, GeneralPurposeConfig, STANDARD};
 use hmac::{Hmac, Mac};
 use rand::RngCore;
 use serde::Serialize;
@@ -271,7 +271,8 @@ impl Encrypter {
     /// assert_eq!(encrypter.decrypt::<Vec<i32>>(&payload).unwrap(), vec![1, 2, 3]);
     /// ```
     pub fn encrypt<T: Serialize + ?Sized>(&self, value: &T) -> Result<String, EncryptException> {
-        let serialized = serde_json::to_vec(value).map_err(|_| EncryptException::could_not_encrypt())?;
+        let serialized =
+            serde_json::to_vec(value).map_err(|_| EncryptException::could_not_encrypt())?;
         self.encrypt_bytes(&serialized)
     }
 
@@ -290,7 +291,11 @@ impl Encrypter {
     }
 
     /// Encrypt the value with a specific initialization vector.
-    pub(crate) fn encrypt_with_iv(&self, value: &[u8], iv: &[u8]) -> Result<String, EncryptException> {
+    pub(crate) fn encrypt_with_iv(
+        &self,
+        value: &[u8],
+        iv: &[u8],
+    ) -> Result<String, EncryptException> {
         let key = self.key.as_slice();
         let (ciphertext, tag) = match self.cipher {
             Cipher::Aes128Cbc => (cbc_encrypt::<Aes128>(key, iv, value), Vec::new()),
@@ -336,7 +341,8 @@ impl Encrypter {
 
     /// Decrypt the given payload without deserialization (Laravel's `decryptString`).
     pub fn decrypt_string(&self, payload: &str) -> Result<String, DecryptException> {
-        String::from_utf8(self.decrypt_bytes(payload)?).map_err(|_| DecryptException::could_not_decrypt())
+        String::from_utf8(self.decrypt_bytes(payload)?)
+            .map_err(|_| DecryptException::could_not_decrypt())
     }
 
     /// Decrypt the given payload into raw bytes.
@@ -378,7 +384,13 @@ impl Encrypter {
             .ok_or_else(DecryptException::could_not_decrypt)
     }
 
-    fn decrypt_with_key(&self, key: &[u8], iv: &[u8], ciphertext: &[u8], tag: &[u8]) -> Option<Vec<u8>> {
+    fn decrypt_with_key(
+        &self,
+        key: &[u8],
+        iv: &[u8],
+        ciphertext: &[u8],
+        tag: &[u8],
+    ) -> Option<Vec<u8>> {
         match self.cipher {
             Cipher::Aes128Cbc => cbc_decrypt::<Aes128>(key, iv, ciphertext),
             Cipher::Aes256Cbc => cbc_decrypt::<Aes256>(key, iv, ciphertext),
@@ -390,13 +402,20 @@ impl Encrypter {
     /// Decode and validate the JSON payload.
     fn get_json_payload(&self, payload: &str) -> Result<OwnedPayload, DecryptException> {
         let decoded = php_base64_decode(payload).ok_or_else(DecryptException::invalid_payload)?;
-        let json: Value = serde_json::from_slice(&decoded).map_err(|_| DecryptException::invalid_payload())?;
-        self.valid_payload(&json).ok_or_else(DecryptException::invalid_payload)
+        let json: Value =
+            serde_json::from_slice(&decoded).map_err(|_| DecryptException::invalid_payload())?;
+        self.valid_payload(&json)
+            .ok_or_else(DecryptException::invalid_payload)
     }
 
     /// Verify that the encryption payload is valid.
     fn valid_payload(&self, payload: &Value) -> Option<OwnedPayload> {
-        let field = |name: &str| payload.get(name).and_then(Value::as_str).map(str::to_string);
+        let field = |name: &str| {
+            payload
+                .get(name)
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        };
         let (iv, value, mac) = (field("iv")?, field("value")?, field("mac")?);
         let tag = match payload.get("tag") {
             None | Some(Value::Null) => None,
@@ -404,7 +423,12 @@ impl Encrypter {
             Some(_) => return None,
         };
         let iv_length = LENIENT_BASE64.decode(&iv).ok()?.len();
-        (iv_length == self.cipher.iv_size()).then_some(OwnedPayload { iv, value, mac, tag })
+        (iv_length == self.cipher.iv_size()).then_some(OwnedPayload {
+            iv,
+            value,
+            mac,
+            tag,
+        })
     }
 
     /// Ensure the given tag is a valid tag given the selected cipher.
@@ -535,7 +559,8 @@ struct OwnedPayload {
 
 /// Create a MAC for the given (base64) IV and value.
 fn hash(iv: &str, value: &str, key: &[u8]) -> String {
-    let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC accepts keys of any length");
+    let mut mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC accepts keys of any length");
     mac.update(iv.as_bytes());
     mac.update(value.as_bytes());
     hex::encode(mac.finalize().into_bytes())
@@ -544,7 +569,8 @@ fn hash(iv: &str, value: &str, key: &[u8]) -> String {
 /// Determine if the MAC is valid for the given payload and key (in constant time).
 fn valid_mac_for_key(payload: &OwnedPayload, key: &[u8]) -> bool {
     let expected = hash(&payload.iv, &payload.value, key);
-    expected.len() == payload.mac.len() && bool::from(expected.as_bytes().ct_eq(payload.mac.as_bytes()))
+    expected.len() == payload.mac.len()
+        && bool::from(expected.as_bytes().ct_eq(payload.mac.as_bytes()))
 }
 
 /// Decode base64 the way PHP's non-strict `base64_decode` does, skipping
@@ -602,7 +628,9 @@ where
     }
     let mut sealed = ciphertext.to_vec();
     sealed.extend_from_slice(tag);
-    cipher.decrypt(Nonce::<A>::from_slice(iv), sealed.as_slice()).ok()
+    cipher
+        .decrypt(Nonce::<A>::from_slice(iv), sealed.as_slice())
+        .ok()
 }
 
 #[cfg(test)]
@@ -625,7 +653,11 @@ mod tests {
     const PHP_FIXED_IV_GCM: &str = "eyJpdiI6Ik1ERXlNelExTmpjNE9XRmkiLCJ2YWx1ZSI6IjJrT3FJamkxWjJya25WYlYvdz09IiwibWFjIjoiIiwidGFnIjoiZkF0Z3N3L1FwNUdhSkNwNzBBTDJadz09In0=";
 
     fn encrypter(cipher: &str) -> Encrypter {
-        let key = if cipher.contains("128") { KEY_128 } else { KEY_256 };
+        let key = if cipher.contains("128") {
+            KEY_128
+        } else {
+            KEY_256
+        };
         Encrypter::new(key, cipher).unwrap()
     }
 
@@ -657,13 +689,15 @@ mod tests {
     fn it_produces_byte_identical_payloads_to_laravel() {
         let cbc = encrypter("AES-256-CBC");
         assert_eq!(
-            cbc.encrypt_with_iv(b"Taylor Otwell", b"0123456789abcdef").unwrap(),
+            cbc.encrypt_with_iv(b"Taylor Otwell", b"0123456789abcdef")
+                .unwrap(),
             PHP_FIXED_IV_CBC
         );
 
         let gcm = encrypter("AES-256-GCM");
         assert_eq!(
-            gcm.encrypt_with_iv(b"Taylor Otwell", b"0123456789ab").unwrap(),
+            gcm.encrypt_with_iv(b"Taylor Otwell", b"0123456789ab")
+                .unwrap(),
             PHP_FIXED_IV_GCM
         );
     }
@@ -685,14 +719,23 @@ mod tests {
             "tag": "",
         }));
 
-        assert_eq!(encrypter("AES-256-CBC").decrypt_string(&payload).unwrap(), "by hand");
-        assert_eq!(encrypter("AES-256-CBC").encrypt_with_iv(b"by hand", iv).unwrap(), payload);
+        assert_eq!(
+            encrypter("AES-256-CBC").decrypt_string(&payload).unwrap(),
+            "by hand"
+        );
+        assert_eq!(
+            encrypter("AES-256-CBC")
+                .encrypt_with_iv(b"by hand", iv)
+                .unwrap(),
+            payload
+        );
     }
 
     #[test]
     fn every_cipher_roundtrips() {
         for cipher in Cipher::ALL {
-            let encrypter = Encrypter::new(Encrypter::generate_key(cipher.name()), cipher.name()).unwrap();
+            let encrypter =
+                Encrypter::new(Encrypter::generate_key(cipher.name()), cipher.name()).unwrap();
             let payload = encrypter.encrypt_string("foo").unwrap();
             assert_ne!(payload, "foo");
             assert_eq!(encrypter.decrypt_string(&payload).unwrap(), "foo");
@@ -700,7 +743,13 @@ mod tests {
             let payload = decode_payload(&payload);
             if cipher.is_aead() {
                 assert_eq!(payload["mac"], json!(""));
-                assert_eq!(STANDARD.decode(payload["tag"].as_str().unwrap()).unwrap().len(), 16);
+                assert_eq!(
+                    STANDARD
+                        .decode(payload["tag"].as_str().unwrap())
+                        .unwrap()
+                        .len(),
+                    16
+                );
             } else {
                 assert_eq!(payload["tag"], json!(""));
                 assert_eq!(payload["mac"].as_str().unwrap().len(), 64);
@@ -711,10 +760,15 @@ mod tests {
     #[test]
     fn serialized_values_roundtrip_as_json() {
         let encrypter = encrypter("AES-256-GCM");
-        let payload = encrypter.encrypt(&json!({"name": "Taylor", "roles": ["admin"]})).unwrap();
+        let payload = encrypter
+            .encrypt(&json!({"name": "Taylor", "roles": ["admin"]}))
+            .unwrap();
         let value: Value = encrypter.decrypt(&payload).unwrap();
         assert_eq!(value, json!({"name": "Taylor", "roles": ["admin"]}));
-        assert_eq!(encrypter.decrypt_string(&payload).unwrap(), r#"{"name":"Taylor","roles":["admin"]}"#);
+        assert_eq!(
+            encrypter.decrypt_string(&payload).unwrap(),
+            r#"{"name":"Taylor","roles":["admin"]}"#
+        );
         assert!(encrypter.decrypt::<Vec<u8>>(&payload).is_err());
     }
 
@@ -723,13 +777,17 @@ mod tests {
         let encrypter = encrypter("AES-256-CBC");
         let mut payload = decode_payload(&encrypter.encrypt_string("foo").unwrap());
         payload["value"] = json!(STANDARD.encode(b"0123456789abcdef"));
-        let error = encrypter.decrypt_string(&encode_payload(&payload)).unwrap_err();
+        let error = encrypter
+            .decrypt_string(&encode_payload(&payload))
+            .unwrap_err();
         assert_eq!(error.to_string(), "The MAC is invalid.");
 
         let mut payload = decode_payload(&encrypter.encrypt_string("foo").unwrap());
         payload["mac"] = json!("0".repeat(64));
         assert_eq!(
-            encrypter.decrypt_string(&encode_payload(&payload)).unwrap_err(),
+            encrypter
+                .decrypt_string(&encode_payload(&payload))
+                .unwrap_err(),
             DecryptException::invalid_mac()
         );
     }
@@ -740,14 +798,19 @@ mod tests {
         let mut payload = decode_payload(&encrypter.encrypt_string("foo").unwrap());
         payload["tag"] = json!(STANDARD.encode([0u8; 16]));
         assert_eq!(
-            encrypter.decrypt_string(&encode_payload(&payload)).unwrap_err().to_string(),
+            encrypter
+                .decrypt_string(&encode_payload(&payload))
+                .unwrap_err()
+                .to_string(),
             "Could not decrypt the data."
         );
 
         let mut payload = decode_payload(&encrypter.encrypt_string("foo").unwrap());
         payload["tag"] = json!(STANDARD.encode([0u8; 8]));
         assert_eq!(
-            encrypter.decrypt_string(&encode_payload(&payload)).unwrap_err(),
+            encrypter
+                .decrypt_string(&encode_payload(&payload))
+                .unwrap_err(),
             DecryptException::could_not_decrypt()
         );
     }
@@ -762,7 +825,9 @@ mod tests {
             &encode_payload(&json!({"iv": "x", "value": "y"})),
             &encode_payload(&json!({"iv": STANDARD.encode([0u8; 4]), "value": "y", "mac": "z"})),
             &encode_payload(&json!({"iv": STANDARD.encode([0u8; 16]), "value": "y", "mac": 5})),
-            &encode_payload(&json!({"iv": STANDARD.encode([0u8; 16]), "value": "y", "mac": "z", "tag": []})),
+            &encode_payload(
+                &json!({"iv": STANDARD.encode([0u8; 16]), "value": "y", "mac": "z", "tag": []}),
+            ),
         ] {
             assert_eq!(
                 encrypter.decrypt_string(payload).unwrap_err().to_string(),
@@ -778,20 +843,35 @@ mod tests {
         let mut payload = decode_payload(&encrypter.encrypt_string("foo").unwrap());
         payload["tag"] = json!(STANDARD.encode([1u8; 16]));
         assert_eq!(
-            encrypter.decrypt_string(&encode_payload(&payload)).unwrap_err().to_string(),
+            encrypter
+                .decrypt_string(&encode_payload(&payload))
+                .unwrap_err()
+                .to_string(),
             "Unable to use tag because the cipher algorithm does not support AEAD."
         );
     }
 
     #[test]
     fn payloads_for_other_keys_are_rejected() {
-        let payload = Encrypter::new([1u8; 32], "aes-256-cbc").unwrap().encrypt_string("foo").unwrap();
+        let payload = Encrypter::new([1u8; 32], "aes-256-cbc")
+            .unwrap()
+            .encrypt_string("foo")
+            .unwrap();
         let other = Encrypter::new([2u8; 32], "aes-256-cbc").unwrap();
-        assert_eq!(other.decrypt_string(&payload).unwrap_err(), DecryptException::invalid_mac());
+        assert_eq!(
+            other.decrypt_string(&payload).unwrap_err(),
+            DecryptException::invalid_mac()
+        );
 
-        let payload = Encrypter::new([1u8; 32], "aes-256-gcm").unwrap().encrypt_string("foo").unwrap();
+        let payload = Encrypter::new([1u8; 32], "aes-256-gcm")
+            .unwrap()
+            .encrypt_string("foo")
+            .unwrap();
         let other = Encrypter::new([2u8; 32], "aes-256-gcm").unwrap();
-        assert_eq!(other.decrypt_string(&payload).unwrap_err(), DecryptException::could_not_decrypt());
+        assert_eq!(
+            other.decrypt_string(&payload).unwrap_err(),
+            DecryptException::could_not_decrypt()
+        );
     }
 
     #[test]
@@ -818,8 +898,18 @@ mod tests {
     #[test]
     fn invalid_keys_and_ciphers_are_rejected() {
         let message = "Unsupported cipher or incorrect key length. Supported ciphers are: aes-128-cbc, aes-256-cbc, aes-128-gcm, aes-256-gcm.";
-        assert_eq!(Encrypter::new([0u8; 16], "aes-256-cbc").unwrap_err().to_string(), message);
-        assert_eq!(Encrypter::new([0u8; 32], "aes-256-cfb").unwrap_err().to_string(), message);
+        assert_eq!(
+            Encrypter::new([0u8; 16], "aes-256-cbc")
+                .unwrap_err()
+                .to_string(),
+            message
+        );
+        assert_eq!(
+            Encrypter::new([0u8; 32], "aes-256-cfb")
+                .unwrap_err()
+                .to_string(),
+            message
+        );
         let encrypter = Encrypter::new([0u8; 32], "aes-256-cbc").unwrap();
         assert!(encrypter.previous_keys([[0u8; 16]]).is_err());
         assert!(Encrypter::with_cipher([0u8; 16], Cipher::Aes128Gcm).is_ok());
@@ -831,7 +921,10 @@ mod tests {
         assert_eq!(Encrypter::generate_key("aes-128-cbc").len(), 16);
         assert_eq!(Encrypter::generate_key("AES-256-GCM").len(), 32);
         assert_eq!(Encrypter::generate_key("unknown").len(), 32);
-        assert_ne!(Encrypter::generate_key("aes-256-cbc"), Encrypter::generate_key("aes-256-cbc"));
+        assert_ne!(
+            Encrypter::generate_key("aes-256-cbc"),
+            Encrypter::generate_key("aes-256-cbc")
+        );
     }
 
     #[test]
@@ -840,7 +933,9 @@ mod tests {
         assert!(Encrypter::appears_encrypted(&payload));
         assert!(Encrypter::appears_encrypted(PHP_AES_256_GCM));
         assert!(!Encrypter::appears_encrypted("foo"));
-        assert!(!Encrypter::appears_encrypted(&STANDARD.encode(r#"{"iv":"a","value":"b"}"#)));
+        assert!(!Encrypter::appears_encrypted(
+            &STANDARD.encode(r#"{"iv":"a","value":"b"}"#)
+        ));
     }
 
     #[test]
@@ -848,7 +943,10 @@ mod tests {
         let config = Repository::new(json!({"app": {"key": "", "cipher": "AES-256-CBC"}}));
         let error = Encrypter::from_config(&config).unwrap_err();
         assert!(error.downcast_ref::<MissingAppKeyException>().is_some());
-        assert_eq!(error.to_string(), "No application encryption key has been specified.");
+        assert_eq!(
+            error.to_string(),
+            "No application encryption key has been specified."
+        );
 
         let key = format!("base64:{}", STANDARD.encode([9u8; 16]));
         let previous = format!("base64:{}", STANDARD.encode([8u8; 16]));
@@ -861,7 +959,10 @@ mod tests {
         assert_eq!(encrypter.get_previous_keys(), &[vec![8u8; 16]]);
 
         let config = Repository::new(json!({"app": {"key": KEY_256}}));
-        assert_eq!(Encrypter::from_config(&config).unwrap().cipher(), Cipher::Aes256Cbc);
+        assert_eq!(
+            Encrypter::from_config(&config).unwrap().cipher(),
+            Cipher::Aes256Cbc
+        );
 
         let config = Repository::new(json!({"app": {"key": KEY_128, "cipher": "AES-256-CBC"}}));
         assert!(Encrypter::from_config(&config).is_err());

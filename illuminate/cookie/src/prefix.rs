@@ -24,7 +24,8 @@ pub struct CookieValuePrefix;
 impl CookieValuePrefix {
     /// Create a new cookie value prefix for the given cookie name.
     pub fn create(cookie_name: &str, key: &[u8]) -> String {
-        let mut mac = <Hmac<Sha1> as Mac>::new_from_slice(key).expect("HMAC accepts keys of any length");
+        let mut mac =
+            <Hmac<Sha1> as Mac>::new_from_slice(key).expect("HMAC accepts keys of any length");
         mac.update(cookie_name.as_bytes());
         mac.update(b"v2");
         format!("{}|", hex::encode(mac.finalize().into_bytes()))
@@ -37,7 +38,11 @@ impl CookieValuePrefix {
 
     /// Validate that a cookie value carries a valid prefix for one of the
     /// given keys, returning the value with the prefix removed.
-    pub fn validate<K: AsRef<[u8]>>(cookie_name: &str, cookie_value: &str, keys: &[K]) -> Option<String> {
+    pub fn validate<K: AsRef<[u8]>>(
+        cookie_name: &str,
+        cookie_value: &str,
+        keys: &[K],
+    ) -> Option<String> {
         keys.iter().find_map(|key| {
             let prefix = Self::create(cookie_name, key.as_ref());
             let candidate = cookie_value.as_bytes().get(..prefix.len())?;
@@ -65,7 +70,10 @@ mod tests {
         let old: &[u8] = b"old-key";
         let new: &[u8] = b"new-key";
         let value = format!("{}blue", CookieValuePrefix::create("color", old));
-        assert_eq!(CookieValuePrefix::validate("color", &value, &[new, old]).as_deref(), Some("blue"));
+        assert_eq!(
+            CookieValuePrefix::validate("color", &value, &[new, old]).as_deref(),
+            Some("blue")
+        );
         assert_eq!(CookieValuePrefix::validate("color", &value, &[new]), None);
         assert_eq!(CookieValuePrefix::validate("color", "short", &[new]), None);
         assert_eq!(CookieValuePrefix::remove("short"), "");

@@ -137,7 +137,12 @@ pub fn password_get_info(hashed: &str) -> HashInfo {
 
 fn bcrypt_info(hashed: &str) -> Option<HashInfo> {
     let bytes = hashed.as_bytes();
-    if bytes.len() != 60 || bytes[0] != b'$' || bytes[1] != b'2' || bytes[3] != b'$' || bytes[6] != b'$' {
+    if bytes.len() != 60
+        || bytes[0] != b'$'
+        || bytes[1] != b'2'
+        || bytes[3] != b'$'
+        || bytes[6] != b'$'
+    {
         return None;
     }
     // PHP only recognizes `$2y$`; the other revisions verify identically, so we accept them too.
@@ -263,9 +268,13 @@ mod tests {
         let info = password_get_info(PHP_ARGON2ID);
         assert_eq!(info.algo.as_deref(), Some("argon2id"));
         assert_eq!(info.algo_name, "argon2id");
-        assert_eq!(info.options, json!({"memory_cost": 1024, "time_cost": 2, "threads": 1}));
+        assert_eq!(
+            info.options,
+            json!({"memory_cost": 1024, "time_cost": 2, "threads": 1})
+        );
 
-        let info = password_get_info("$2y$04$UtsTbDj3S8JnxjQ9frsVDuGWdvYreKAjxMFDN7b8aabNihodod5Zy");
+        let info =
+            password_get_info("$2y$04$UtsTbDj3S8JnxjQ9frsVDuGWdvYreKAjxMFDN7b8aabNihodod5Zy");
         assert_eq!(info.algo.as_deref(), Some("2y"));
         assert_eq!(info.option("cost"), Some(4));
         assert_eq!(
@@ -273,7 +282,13 @@ mod tests {
             json!({"algo": "2y", "algoName": "bcrypt", "options": {"cost": 4}})
         );
 
-        for value in ["", "password", "$2y$10$short", "$argon2i$v=19$m=x,t=2,p=1$a$b", "$md5$abc"] {
+        for value in [
+            "",
+            "password",
+            "$2y$10$short",
+            "$argon2i$v=19$m=x,t=2,p=1$a$b",
+            "$md5$abc",
+        ] {
             assert_eq!(password_get_info(value), HashInfo::unknown(), "{value}");
         }
     }

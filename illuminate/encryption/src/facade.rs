@@ -63,7 +63,11 @@ impl Crypt {
 
     /// The current key followed by every previous key.
     pub fn get_all_keys() -> Result<Vec<Vec<u8>>> {
-        Ok(encrypter()?.get_all_keys().into_iter().map(<[u8]>::to_vec).collect())
+        Ok(encrypter()?
+            .get_all_keys()
+            .into_iter()
+            .map(<[u8]>::to_vec)
+            .collect())
     }
 
     /// The previous encryption keys.

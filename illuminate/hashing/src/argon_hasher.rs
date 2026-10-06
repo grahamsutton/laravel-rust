@@ -176,8 +176,11 @@ impl Hasher for ArgonHasher {
 
 /// Verify a value against an Argon2 PHC string.
 pub(crate) fn verify(value: &str, hashed: &str) -> bool {
-    PasswordHash::new(hashed)
-        .is_ok_and(|parsed| Argon2::default().verify_password(value.as_bytes(), &parsed).is_ok())
+    PasswordHash::new(hashed).is_ok_and(|parsed| {
+        Argon2::default()
+            .verify_password(value.as_bytes(), &parsed)
+            .is_ok()
+    })
 }
 
 #[cfg(test)]
@@ -205,7 +208,9 @@ mod tests {
     #[test]
     fn argon2id_roundtrips() {
         let hasher = ArgonHasher::argon2id().memory(1024).time(1).threads(1);
-        let hashed = hasher.make_with("password", &HashOptions::new().time(2)).unwrap();
+        let hashed = hasher
+            .make_with("password", &HashOptions::new().time(2))
+            .unwrap();
         assert!(hashed.starts_with("$argon2id$v=19$m=1024,t=2,p=1$"));
         assert!(hasher.check("password", &hashed));
         assert!(hasher.needs_rehash(&hashed));
@@ -226,17 +231,26 @@ mod tests {
     fn the_algorithm_can_be_verified() {
         let strict = argon().verify(true);
         assert_eq!(
-            strict.try_check("password", PHP_ARGON2ID).unwrap_err().to_string(),
+            strict
+                .try_check("password", PHP_ARGON2ID)
+                .unwrap_err()
+                .to_string(),
             "This password does not use the Argon2i algorithm."
         );
         assert!(strict.try_check("password", PHP_ARGON2I).unwrap());
 
         let strict = ArgonHasher::argon2id().verify(true);
         assert_eq!(
-            strict.try_check("password", PHP_ARGON2I).unwrap_err().to_string(),
+            strict
+                .try_check("password", PHP_ARGON2I)
+                .unwrap_err()
+                .to_string(),
             "This password does not use the Argon2id algorithm."
         );
-        assert!(!strict.check("password", "$2y$04$UtsTbDj3S8JnxjQ9frsVDuGWdvYreKAjxMFDN7b8aabNihodod5Zy"));
+        assert!(!strict.check(
+            "password",
+            "$2y$04$UtsTbDj3S8JnxjQ9frsVDuGWdvYreKAjxMFDN7b8aabNihodod5Zy"
+        ));
     }
 
     #[test]
@@ -254,7 +268,15 @@ mod tests {
 
     #[test]
     fn it_reads_configuration() {
-        let hasher = ArgonHasher::new().with_config(&json!({"memory": 65536, "threads": "1", "time": 4, "verify": true}));
-        assert_eq!(hasher, ArgonHasher::new().memory(65536).threads(1).time(4).verify(true));
+        let hasher = ArgonHasher::new()
+            .with_config(&json!({"memory": 65536, "threads": "1", "time": 4, "verify": true}));
+        assert_eq!(
+            hasher,
+            ArgonHasher::new()
+                .memory(65536)
+                .threads(1)
+                .time(4)
+                .verify(true)
+        );
     }
 }

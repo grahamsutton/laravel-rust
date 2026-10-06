@@ -112,14 +112,17 @@ impl Hasher for BcryptHasher {
             return Ok(false);
         }
         if self.verify_algorithm && !self.is_using_correct_algorithm(hashed) {
-            return Err(RuntimeException::new("This password does not use the Bcrypt algorithm.").into());
+            return Err(
+                RuntimeException::new("This password does not use the Bcrypt algorithm.").into(),
+            );
         }
         Ok(password_verify(value, hashed))
     }
 
     fn needs_rehash_with(&self, hashed: &str, options: &HashOptions) -> bool {
         let info = password_get_info(hashed);
-        info.algo_name != "bcrypt" || info.option("cost") != Some(options.rounds.unwrap_or(self.rounds))
+        info.algo_name != "bcrypt"
+            || info.option("cost") != Some(options.rounds.unwrap_or(self.rounds))
     }
 
     fn verify_configuration(&self, hashed: &str) -> bool {
@@ -141,7 +144,10 @@ pub(crate) fn config_bool(value: &Value) -> Option<bool> {
     match value {
         Value::Null => None,
         Value::Bool(b) => Some(*b),
-        Value::String(s) => Some(matches!(s.to_ascii_lowercase().trim(), "1" | "true" | "on" | "yes")),
+        Value::String(s) => Some(matches!(
+            s.to_ascii_lowercase().trim(),
+            "1" | "true" | "on" | "yes"
+        )),
         other => Some(other.truthy()),
     }
 }
@@ -154,7 +160,8 @@ mod tests {
     // Produced by PHP 8.3: password_hash('password', PASSWORD_BCRYPT, ['cost' => 4]).
     const PHP_BCRYPT: &str = "$2y$04$UtsTbDj3S8JnxjQ9frsVDuGWdvYreKAjxMFDN7b8aabNihodod5Zy";
     // The hash of "password" shipped in Laravel's user factory for years.
-    const LARAVEL_FACTORY_HASH: &str = "$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi";
+    const LARAVEL_FACTORY_HASH: &str =
+        "$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi";
 
     fn hasher() -> BcryptHasher {
         BcryptHasher::new().rounds(4)
@@ -180,11 +187,17 @@ mod tests {
 
     #[test]
     fn work_factors_are_configurable() {
-        let hashed = hasher().make_with("password", &HashOptions::new().rounds(5)).unwrap();
+        let hashed = hasher()
+            .make_with("password", &HashOptions::new().rounds(5))
+            .unwrap();
         assert!(hashed.starts_with("$2y$05$"));
         assert!(hasher().needs_rehash(&hashed));
         assert!(!hasher().needs_rehash_with(&hashed, &HashOptions::new().rounds(5)));
-        assert!(!BcryptHasher::new().rounds(10).needs_rehash(LARAVEL_FACTORY_HASH));
+        assert!(
+            !BcryptHasher::new()
+                .rounds(10)
+                .needs_rehash(LARAVEL_FACTORY_HASH)
+        );
         assert!(BcryptHasher::new().needs_rehash(LARAVEL_FACTORY_HASH));
         assert!(hasher().needs_rehash("plain"));
         assert_eq!(BcryptHasher::new().cost(), 12);
@@ -205,7 +218,10 @@ mod tests {
         let hasher = hasher().limit(Some(8));
         let error = hasher.make("much-too-long").unwrap_err();
         assert!(error.downcast_ref::<InvalidArgumentException>().is_some());
-        assert_eq!(error.to_string(), "Value is too long to hash. Value must be less than 8 bytes.");
+        assert_eq!(
+            error.to_string(),
+            "Value is too long to hash. Value must be less than 8 bytes."
+        );
         assert!(hasher.make("short").is_ok());
     }
 
@@ -218,7 +234,10 @@ mod tests {
 
         let strict = hasher().verify(true);
         let error = strict.try_check("password", argon).unwrap_err();
-        assert_eq!(error.to_string(), "This password does not use the Bcrypt algorithm.");
+        assert_eq!(
+            error.to_string(),
+            "This password does not use the Bcrypt algorithm."
+        );
         assert!(!strict.check("password", argon));
         assert!(strict.try_check("password", PHP_BCRYPT).unwrap());
         assert!(!strict.try_check("password", "").unwrap());
@@ -226,14 +245,19 @@ mod tests {
 
     #[test]
     fn it_verifies_its_configuration() {
-        assert!(BcryptHasher::new().rounds(10).verify_configuration(LARAVEL_FACTORY_HASH));
+        assert!(
+            BcryptHasher::new()
+                .rounds(10)
+                .verify_configuration(LARAVEL_FACTORY_HASH)
+        );
         assert!(!hasher().verify_configuration(LARAVEL_FACTORY_HASH));
         assert!(!hasher().verify_configuration("plain"));
     }
 
     #[test]
     fn it_reads_configuration() {
-        let hasher = BcryptHasher::from_config(&json!({"rounds": "4", "verify": "true", "limit": null}));
+        let hasher =
+            BcryptHasher::from_config(&json!({"rounds": "4", "verify": "true", "limit": null}));
         assert_eq!(hasher, BcryptHasher::new().rounds(4).verify(true));
         let hasher = BcryptHasher::from_config(&json!({"limit": 72}));
         assert_eq!(hasher, BcryptHasher::new().limit(Some(72)));

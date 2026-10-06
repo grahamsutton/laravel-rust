@@ -88,12 +88,20 @@ impl EncryptCookies {
     }
 
     /// Encrypt the cookies on an outgoing response.
-    pub fn encrypt(&self, response: &mut Response, encrypter: &Encrypter) -> Result<(), EncryptException> {
+    pub fn encrypt(
+        &self,
+        response: &mut Response,
+        encrypter: &Encrypter,
+    ) -> Result<(), EncryptException> {
         for cookie in response.cookies_mut() {
             if self.is_disabled(&cookie.name) {
                 continue;
             }
-            let prefixed = format!("{}{}", CookieValuePrefix::create(&cookie.name, encrypter.get_key()), cookie.value);
+            let prefixed = format!(
+                "{}{}",
+                CookieValuePrefix::create(&cookie.name, encrypter.get_key()),
+                cookie.value
+            );
             cookie.value = encrypter.encrypt_string(&prefixed)?;
         }
         Ok(())

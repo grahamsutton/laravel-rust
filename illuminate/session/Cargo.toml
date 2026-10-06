@@ -9,3 +9,19 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-config.workspace = true
+illuminate-http.workspace = true
+illuminate-encryption.workspace = true
+illuminate-cookie.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+rand.workspace = true
+subtle.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

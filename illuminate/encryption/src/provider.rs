@@ -59,20 +59,34 @@ mod tests {
 
     #[test]
     fn the_facade_uses_the_configured_key() {
-        let container = container(json!({"key": "base64:J63qRTDLub5NuZvP+kb8YIorGS6qFYHKVo6u7179stY=", "cipher": "AES-256-GCM"}));
+        let container = container(
+            json!({"key": "base64:J63qRTDLub5NuZvP+kb8YIorGS6qFYHKVo6u7179stY=", "cipher": "AES-256-GCM"}),
+        );
         let _guard = Container::set_local_instance(container.clone());
 
         let payload = Crypt::encrypt_string("secret").unwrap();
         assert_eq!(Crypt::decrypt_string(&payload).unwrap(), "secret");
-        assert_eq!(container.make::<Encrypter>().decrypt_string(&payload).unwrap(), "secret");
+        assert_eq!(
+            container
+                .make::<Encrypter>()
+                .decrypt_string(&payload)
+                .unwrap(),
+            "secret"
+        );
         assert_eq!(Crypt::get_key().unwrap().len(), 32);
         assert_eq!(Crypt::get_all_keys().unwrap().len(), 1);
         assert!(Crypt::get_previous_keys().unwrap().is_empty());
         assert!(Crypt::appears_encrypted(&payload));
 
         let payload = encrypt(&json!({"id": 1})).unwrap();
-        assert_eq!(decrypt::<illuminate_support::Value>(&payload).unwrap(), json!({"id": 1}));
-        assert_eq!(Crypt::decrypt::<illuminate_support::Value>(&payload).unwrap(), json!({"id": 1}));
+        assert_eq!(
+            decrypt::<illuminate_support::Value>(&payload).unwrap(),
+            json!({"id": 1})
+        );
+        assert_eq!(
+            Crypt::decrypt::<illuminate_support::Value>(&payload).unwrap(),
+            json!({"id": 1})
+        );
         assert!(Crypt::encrypt(&5).is_ok());
     }
 
@@ -83,7 +97,10 @@ mod tests {
 
         let error = Crypt::encrypt_string("secret").unwrap_err();
         assert!(error.downcast_ref::<MissingAppKeyException>().is_some());
-        assert_eq!(error.to_string(), "No application encryption key has been specified.");
+        assert_eq!(
+            error.to_string(),
+            "No application encryption key has been specified."
+        );
     }
 
     #[test]
@@ -96,7 +113,9 @@ mod tests {
     #[test]
     fn an_encrypter_can_be_built_without_the_provider() {
         let container = Arc::new(Container::new());
-        container.instance(Repository::new(json!({"app": {"key": "bbbbbbbbbbbbbbbb", "cipher": "aes-128-cbc"}})));
+        container.instance(Repository::new(
+            json!({"app": {"key": "bbbbbbbbbbbbbbbb", "cipher": "aes-128-cbc"}}),
+        ));
         let _guard = Container::set_local_instance(container);
         assert_eq!(Crypt::encrypter().unwrap().cipher().name(), "aes-128-cbc");
         assert!(Crypt::supported("bbbbbbbbbbbbbbbb", "aes-128-cbc"));

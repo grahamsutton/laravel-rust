@@ -51,13 +51,23 @@ mod tests {
         assert!(!Hash::check("nope", &hashed));
         assert!(Hash::try_check("password", &hashed).unwrap());
         assert!(!Hash::needs_rehash(&hashed));
-        assert!(Hash::needs_rehash_with(&hashed, HashOptions::new().rounds(5)));
+        assert!(Hash::needs_rehash_with(
+            &hashed,
+            HashOptions::new().rounds(5)
+        ));
         assert!(Hash::is_hashed(&hashed));
         assert_eq!(Hash::info(&hashed).algo_name, "bcrypt");
         assert!(Hash::verify_configuration(&hashed));
-        assert!(Hash::make_with("password", HashOptions::new().rounds(5)).unwrap().starts_with("$2y$05$"));
+        assert!(
+            Hash::make_with("password", HashOptions::new().rounds(5))
+                .unwrap()
+                .starts_with("$2y$05$")
+        );
         assert!(bcrypt("password").unwrap().starts_with("$2y$04$"));
-        assert!(Arc::ptr_eq(&Hash::manager(), &container.make::<HashManager>()));
+        assert!(Arc::ptr_eq(
+            &Hash::manager(),
+            &container.make::<HashManager>()
+        ));
 
         let argon = Hash::driver("argon").unwrap().make("password").unwrap();
         assert!(argon.starts_with("$argon2i$v=19$m=1024,t=1,p=1$"));
@@ -70,7 +80,13 @@ mod tests {
         let container = app();
         let _guard = Container::set_local_instance(container);
         Hash::extend("legacy", |_| Arc::new(BcryptHasher::new().rounds(5)));
-        assert!(Hash::driver("legacy").unwrap().make("x").unwrap().starts_with("$2y$05$"));
+        assert!(
+            Hash::driver("legacy")
+                .unwrap()
+                .make("x")
+                .unwrap()
+                .starts_with("$2y$05$")
+        );
     }
 
     #[test]
@@ -78,6 +94,9 @@ mod tests {
         let container = Arc::new(Container::new());
         let _guard = Container::set_local_instance(container);
         assert_eq!(Hash::manager().get_default_driver(), "bcrypt");
-        assert!(Hash::check("password", "$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi"));
+        assert!(Hash::check(
+            "password",
+            "$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi"
+        ));
     }
 }

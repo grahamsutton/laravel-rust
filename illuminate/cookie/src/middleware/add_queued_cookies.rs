@@ -1,4 +1,6 @@
-use illuminate_http::{Middleware, Next, Request, Response, async_trait, current_request, with_request};
+use illuminate_http::{
+    Middleware, Next, Request, Response, async_trait, current_request, with_request,
+};
 use illuminate_support::Result;
 
 use crate::jar::CookieQueue;

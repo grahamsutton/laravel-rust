@@ -3,9 +3,13 @@ use std::sync::{Arc, Mutex};
 use illuminate_config::Repository;
 use illuminate_container::{Container, LocalInstanceGuard, ServiceProvider};
 use illuminate_cookie::facades::Cookie;
-use illuminate_cookie::{AddQueuedCookiesToResponse, CookieJar, CookieServiceProvider, CookieValuePrefix, EncryptCookies};
-use illuminate_encryption::{EncryptionServiceProvider, Encrypter, MissingAppKeyException};
-use illuminate_http::{Cookie as HttpCookie, HeaderMap, HeaderValue, Middleware, Request, Response, run_middleware};
+use illuminate_cookie::{
+    AddQueuedCookiesToResponse, CookieJar, CookieServiceProvider, CookieValuePrefix, EncryptCookies,
+};
+use illuminate_encryption::{Encrypter, EncryptionServiceProvider, MissingAppKeyException};
+use illuminate_http::{
+    Cookie as HttpCookie, HeaderMap, HeaderValue, Middleware, Request, Response, run_middleware,
+};
 use illuminate_support::{Value, json};
 
 const KEY: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -67,7 +71,12 @@ async fn it_decrypts_cookies_encrypted_by_laravel() {
     let (_app, _guard) = default_app();
     let request = request_with_cookies(&format!("theme={LARAVEL_THEME_COOKIE}"));
 
-    let (_, seen) = run(request, vec![Arc::new(EncryptCookies::new())], Response::default).await;
+    let (_, seen) = run(
+        request,
+        vec![Arc::new(EncryptCookies::new())],
+        Response::default,
+    )
+    .await;
 
     assert_eq!(seen, vec![("theme".to_string(), "dark".to_string())]);
 }
@@ -76,19 +85,29 @@ async fn it_decrypts_cookies_encrypted_by_laravel() {
 async fn outgoing_cookies_are_encrypted_with_the_value_prefix() {
     let (app, _guard) = default_app();
 
-    let (response, _) = run(Request::create("/", "GET"), vec![Arc::new(EncryptCookies::new())], || {
-        Response::new("ok").with_cookie(HttpCookie::new("color", "blue"))
-    })
+    let (response, _) = run(
+        Request::create("/", "GET"),
+        vec![Arc::new(EncryptCookies::new())],
+        || Response::new("ok").with_cookie(HttpCookie::new("color", "blue")),
+    )
     .await;
 
     let encrypted = response.get_cookie("color").unwrap().value.clone();
     assert_ne!(encrypted, "blue");
     let decrypted = app.make::<Encrypter>().decrypt_string(&encrypted).unwrap();
-    assert_eq!(decrypted, format!("{}blue", CookieValuePrefix::create("color", KEY.as_bytes())));
+    assert_eq!(
+        decrypted,
+        format!("{}blue", CookieValuePrefix::create("color", KEY.as_bytes()))
+    );
 
     // Sending it back in, the application sees the plain value.
     let request = request_with_cookies(&format!("color={encrypted}"));
-    let (_, seen) = run(request, vec![Arc::new(EncryptCookies::new())], Response::default).await;
+    let (_, seen) = run(
+        request,
+        vec![Arc::new(EncryptCookies::new())],
+        Response::default,
+    )
+    .await;
     assert_eq!(seen, vec![("color".to_string(), "blue".to_string())]);
 }
 
@@ -99,7 +118,10 @@ async fn invalid_cookies_are_dropped() {
 
     // Encrypted for another cookie name, so the prefix doesn't match.
     let swapped = encrypter
-        .encrypt_string(&format!("{}admin", CookieValuePrefix::create("role", KEY.as_bytes())))
+        .encrypt_string(&format!(
+            "{}admin",
+            CookieValuePrefix::create("role", KEY.as_bytes())
+        ))
         .unwrap();
     // Encrypted without any prefix at all.
     let unprefixed = encrypter.encrypt_string("admin").unwrap();
@@ -107,7 +129,12 @@ async fn invalid_cookies_are_dropped() {
     let request = request_with_cookies(&format!(
         "tampered=not-encrypted; user={swapped}; legacy={unprefixed}; theme={LARAVEL_THEME_COOKIE}"
     ));
-    let (_, seen) = run(request, vec![Arc::new(EncryptCookies::new())], Response::default).await;
+    let (_, seen) = run(
+        request,
+        vec![Arc::new(EncryptCookies::new())],
+        Response::default,
+    )
+    .await;
 
     assert_eq!(seen, vec![("theme".to_string(), "dark".to_string())]);
 }
@@ -124,7 +151,10 @@ async fn excepted_cookies_are_left_alone() {
     .await;
 
     assert_eq!(seen, vec![("plain".to_string(), "readable".to_string())]);
-    assert_eq!(response.get_cookie("plain").unwrap().value, "still-readable");
+    assert_eq!(
+        response.get_cookie("plain").unwrap().value,
+        "still-readable"
+    );
 
     let mut middleware = EncryptCookies::new();
     middleware.disable_for("other");
@@ -140,7 +170,14 @@ async fn previous_keys_still_decrypt_cookies() {
         .unwrap();
     let request = request_with_cookies(&format!("theme={LARAVEL_THEME_COOKIE}"));
 
-    let (_, seen) = run(request, vec![Arc::new(EncryptCookies::with_encrypter(Arc::new(encrypter)))], Response::default).await;
+    let (_, seen) = run(
+        request,
+        vec![Arc::new(EncryptCookies::with_encrypter(Arc::new(
+            encrypter,
+        )))],
+        Response::default,
+    )
+    .await;
 
     assert_eq!(seen, vec![("theme".to_string(), "dark".to_string())]);
 }
@@ -151,7 +188,10 @@ async fn queued_cookies_are_attached_and_encrypted() {
 
     let (response, _) = run(
         Request::create("/", "GET"),
-        vec![Arc::new(EncryptCookies::new()), Arc::new(AddQueuedCookiesToResponse)],
+        vec![
+            Arc::new(EncryptCookies::new()),
+            Arc::new(AddQueuedCookiesToResponse),
+        ],
         || {
             Cookie::queue_make("name", "value", 60);
             Cookie::queue(Cookie::forever("remember", "me"));
@@ -168,7 +208,10 @@ async fn queued_cookies_are_attached_and_encrypted() {
         CookieValuePrefix::remove(&encrypter.decrypt_string(&name.value).unwrap()),
         "value"
     );
-    assert_eq!(response.get_cookie("remember").unwrap().minutes, Some(576_000));
+    assert_eq!(
+        response.get_cookie("remember").unwrap().minutes,
+        Some(576_000)
+    );
     assert!(response.get_cookie("old").unwrap().is_cleared());
 
     // The queue belonged to that request: nothing leaks into the jar.
@@ -179,17 +222,31 @@ async fn queued_cookies_are_attached_and_encrypted() {
 async fn a_missing_key_renders_an_error() {
     let (_app, _guard) = app(json!({"app": {"key": null}}));
 
-    let (response, _) = run(Request::create("/", "GET"), vec![Arc::new(EncryptCookies::new())], Response::default).await;
+    let (response, _) = run(
+        Request::create("/", "GET"),
+        vec![Arc::new(EncryptCookies::new())],
+        Response::default,
+    )
+    .await;
 
     assert_eq!(response.status_code(), 500);
-    assert!(response.exception().unwrap().downcast_ref::<MissingAppKeyException>().is_some());
+    assert!(
+        response
+            .exception()
+            .unwrap()
+            .downcast_ref::<MissingAppKeyException>()
+            .is_some()
+    );
 }
 
 #[tokio::test]
 async fn the_facade_reads_request_cookies() {
     let (_app, _guard) = default_app();
     let request = request_with_cookies("theme=dark");
-    let theme = illuminate_http::with_request(request, async { (Cookie::get("theme"), Cookie::has("missing")) }).await;
+    let theme = illuminate_http::with_request(request, async {
+        (Cookie::get("theme"), Cookie::has("missing"))
+    })
+    .await;
     assert_eq!(theme, (Some("dark".to_string()), false));
     assert_eq!(Cookie::make("a", "b", 5).minutes, Some(5));
     assert!(Cookie::forget("a").is_cleared());
@@ -198,7 +255,9 @@ async fn the_facade_reads_request_cookies() {
 
 #[test]
 fn the_provider_reads_session_configuration() {
-    let (app, _guard) = app(json!({"session": {"path": "/app", "domain": ".laravel.com", "secure": true, "same_site": "none"}}));
+    let (app, _guard) = app(
+        json!({"session": {"path": "/app", "domain": ".laravel.com", "secure": true, "same_site": "none"}}),
+    );
     let cookie = app.make::<CookieJar>().make("a", "b", 1);
     assert_eq!(cookie.path, "/app");
     assert_eq!(cookie.domain.as_deref(), Some(".laravel.com"));
