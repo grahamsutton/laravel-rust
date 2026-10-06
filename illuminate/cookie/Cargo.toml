@@ -9,3 +9,17 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-config.workspace = true
+illuminate-http.workspace = true
+illuminate-encryption.workspace = true
+indexmap.workspace = true
+hmac.workspace = true
+sha1.workspace = true
+hex.workspace = true
+subtle.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

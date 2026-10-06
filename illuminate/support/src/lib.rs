@@ -25,6 +25,7 @@ pub mod html_string;
 pub mod message_bag;
 pub mod number;
 pub mod pluralizer;
+pub mod preg;
 pub mod str;
 pub mod stringable;
 pub mod traits;

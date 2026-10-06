@@ -9,3 +9,9 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

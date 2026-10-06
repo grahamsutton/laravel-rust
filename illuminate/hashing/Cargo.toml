@@ -9,3 +9,12 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-config.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+bcrypt.workspace = true
+argon2.workspace = true
+rand.workspace = true
