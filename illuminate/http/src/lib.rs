@@ -38,7 +38,7 @@ pub use exceptions::{
 pub use into_response::{IntoResponse, Json};
 pub use middleware::{Destination, Middleware, Next, build_pipeline, middleware_fn, run_middleware};
 pub use request::Request;
-pub use response::{Body, Response, ResponseFactory, response};
+pub use response::{Body, BodyStream, Response, ResponseFactory, SyncStream, response};
 pub use uploaded_file::UploadedFile;
 
 /// Re-exports of the underlying `http` crate types.

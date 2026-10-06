@@ -5,14 +5,19 @@
 
 pub mod application;
 pub mod bootstrap;
+pub mod builder;
+pub mod configuration;
 pub mod defaults;
 pub mod exceptions;
 pub mod helpers;
 pub mod http;
 pub mod inspiring;
+mod integration;
 pub mod providers;
 
 pub use application::{Application, VERSION};
 pub use bootstrap::ConfigFile;
+pub use builder::ApplicationBuilder;
+pub use http::kernel::HttpKernel;
 pub use helpers::*;
 pub use inspiring::Inspiring;

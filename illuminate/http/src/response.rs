@@ -25,7 +25,23 @@ pub enum Body {
     /// A fully buffered body.
     Bytes(Bytes),
     /// A body streamed to the client chunk by chunk.
-    Stream(BodyStream),
+    Stream(SyncStream),
+}
+
+/// A streamed body that can be shared between threads (the stream itself is
+/// only ever polled by the server, so a mutex makes the response `Sync`).
+pub struct SyncStream(std::sync::Mutex<BodyStream>);
+
+impl SyncStream {
+    /// Wrap a stream.
+    pub fn new(stream: BodyStream) -> Self {
+        Self(std::sync::Mutex::new(stream))
+    }
+
+    /// Take the underlying stream.
+    pub fn into_inner(self) -> BodyStream {
+        self.0.into_inner().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 }
 
 impl std::fmt::Debug for Body {
@@ -146,7 +162,7 @@ impl Response {
     /// Create a response that streams the given chunks to the client.
     pub fn stream(stream: impl Stream<Item = Result<Bytes, Error>> + Send + 'static) -> Self {
         let mut response = Self::new(Bytes::new());
-        response.body = Body::Stream(Box::pin(stream));
+        response.body = Body::Stream(SyncStream::new(Box::pin(stream)));
         response
     }
 
@@ -496,7 +512,7 @@ impl Response {
                 .boxed_unsync(),
             Body::Stream(stream) => {
                 use futures::StreamExt;
-                let frames = stream.map(|chunk| {
+                let frames = stream.into_inner().map(|chunk| {
                     chunk
                         .map(hyper::body::Frame::data)
                         .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
