@@ -404,6 +404,39 @@ impl Container {
     }
 }
 
+/// Service providers are the central place of all application bootstrapping.
+///
+/// `register` should only bind things into the container; `boot` runs after
+/// every provider has been registered, so it may use any other service.
+///
+/// ```
+/// use std::sync::Arc;
+/// use illuminate_container::{Container, ServiceProvider};
+///
+/// struct Riak;
+///
+/// struct RiakServiceProvider;
+///
+/// impl ServiceProvider for RiakServiceProvider {
+///     fn register(&self, app: &Container) {
+///         app.singleton::<Riak>(|_| Arc::new(Riak));
+///     }
+/// }
+/// ```
+pub trait ServiceProvider: Send + Sync + 'static {
+    /// Register any application services.
+    fn register(&self, _app: &Container) {}
+
+    /// Bootstrap any application services.
+    fn boot(&self, _app: &Container) {}
+
+    /// The provider's name, for display in `about` and debugging.
+    fn name(&self) -> String {
+        let full = std::any::type_name::<Self>();
+        full.rsplit("::").next().unwrap_or(full).to_string()
+    }
+}
+
 /// Restores the previous thread-local container when dropped.
 pub struct LocalInstanceGuard {
     _private: (),

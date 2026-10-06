@@ -23,18 +23,20 @@ pub mod cookie;
 pub mod exceptions;
 pub mod input;
 pub mod into_response;
+pub mod middleware;
 pub mod request;
 pub mod response;
 pub mod server;
 pub mod uploaded_file;
 
-pub use context::{current_request, request, with_request};
+pub use context::{current_request, request, with_request, with_request_sync};
 pub use cookie::{Cookie, SameSite, cookie};
 pub use exceptions::{
     ExceptionHandler, HttpException, HttpResponseException, abort, abort_if, abort_unless,
     abort_with, render_exception,
 };
 pub use into_response::{IntoResponse, Json};
+pub use middleware::{Destination, Middleware, Next, build_pipeline, middleware_fn, run_middleware};
 pub use request::Request;
 pub use response::{Body, Response, ResponseFactory, response};
 pub use uploaded_file::UploadedFile;
@@ -44,3 +46,6 @@ pub use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri, head
 
 /// A boxed, sendable future — the currency of middleware and handlers.
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;
+
+/// Re-exported so implementors of [`Middleware`] don't need their own dependency.
+pub use async_trait::async_trait;

@@ -27,3 +27,4 @@ multer.workspace = true
 mime_guess.workspace = true
 percent-encoding.workspace = true
 form_urlencoded.workspace = true
+async-trait.workspace = true

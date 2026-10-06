@@ -563,6 +563,7 @@ name = "illuminate-http"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "bytes",
  "form_urlencoded",
  "futures",
