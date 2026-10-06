@@ -112,7 +112,7 @@ builtins!(
     "print_r", "var_export", "ctype_digit", "ctype_alpha", "ctype_alnum", "ctype_upper", "ctype_lower",
     "ctype_space", "lcg_value", "pi", "sqrt", "pow", "intdiv", "fmod", "array_rand", "uniqid", "md5",
     "spl_object_id", "tap", "with", "throw_if", "throw_unless", "abort", "abort_if", "abort_unless",
-    "to_route", "retry", "now_timestamp",
+    "to_route", "retry", "now_timestamp", "request",
 );
 
 /// Determine if a built-in function exists.
@@ -871,6 +871,16 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
             ViewValue::Object(o) => Arc::as_ptr(o) as *const () as usize as i64,
             _ => 0,
         }),
+        "request" => {
+            let request = illuminate_http::request();
+            match opt_str(args, 0)? {
+                Some(key) => {
+                    let value = ViewValue::from(request.input(&key));
+                    if value.is_null() { arg(args, 1).clone() } else { value }
+                }
+                None => ViewValue::object(crate::objects::RequestObject(request)),
+            }
+        }
         "to_route" => return Err(error("to_route() is not available in views")),
         _ => return Err(error(format!("Call to undefined function {name}()"))),
     })

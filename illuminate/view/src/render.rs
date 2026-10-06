@@ -155,7 +155,7 @@ impl Renderer {
 
     fn load(&self, view: &View) -> Result<Arc<Template>> {
         let ctx = view.context();
-        view.template(&self.registry).map_err(|e| {
+        view.template().map_err(|e| {
             if passes_through(&e) {
                 e
             } else {

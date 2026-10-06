@@ -177,7 +177,7 @@ impl View {
     }
 
     /// The compiled template for this view.
-    pub(crate) fn template(&self, _registry: &crate::registry::Registry) -> Result<Arc<Template>> {
+    pub(crate) fn template(&self) -> Result<Arc<Template>> {
         let blade = self.factory.blade();
         match &self.source {
             Source::Named => {

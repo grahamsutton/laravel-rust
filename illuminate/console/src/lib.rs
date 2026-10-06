@@ -47,6 +47,8 @@
 //! # }
 //! ```
 
+#![warn(missing_docs)]
+
 pub mod application;
 mod builtin;
 pub mod command;
