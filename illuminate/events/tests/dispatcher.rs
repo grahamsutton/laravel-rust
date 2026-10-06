@@ -50,7 +50,10 @@ async fn listeners_run_in_registration_order() {
 
     let first = log.clone();
     events.listen(move |event: &OrderShipped| {
-        first.lock().unwrap().push(format!("first {}", event.order_id));
+        first
+            .lock()
+            .unwrap()
+            .push(format!("first {}", event.order_id));
         async { Ok(()) }
     });
 
@@ -59,7 +62,9 @@ async fn listeners_run_in_registration_order() {
         let log = second.clone();
         async move {
             tokio::task::yield_now().await;
-            log.lock().unwrap().push(format!("second {}", event.order_id));
+            log.lock()
+                .unwrap()
+                .push(format!("second {}", event.order_id));
             Ok(())
         }
     });
@@ -177,7 +182,10 @@ async fn errors_propagate_and_stop_the_dispatch() {
     });
     events.listen(SendShipmentNotification { log: log.clone() });
 
-    let error = events.dispatch(OrderShipped { order_id: 13 }).await.unwrap_err();
+    let error = events
+        .dispatch(OrderShipped { order_id: 13 })
+        .await
+        .unwrap_err();
 
     assert_eq!(error.to_string(), "Unlucky order 13.");
     assert!(entries(&log).is_empty());
@@ -215,10 +223,15 @@ async fn named_events_reach_exact_then_wildcard_listeners() {
         async { Ok(()) }
     });
     let l = log.clone();
-    events.listen_named("eloquent.created: App\\Models\\User", move |_, payload: &Value| {
-        l.lock().unwrap().push(format!("exact: {}", payload["name"]));
-        async { Ok(()) }
-    });
+    events.listen_named(
+        "eloquent.created: App\\Models\\User",
+        move |_, payload: &Value| {
+            l.lock()
+                .unwrap()
+                .push(format!("exact: {}", payload["name"]));
+            async { Ok(()) }
+        },
+    );
     let l = log.clone();
     events.listen_named("eloquent.created: *", move |name, _| {
         l.lock().unwrap().push(format!("created: {name}"));
@@ -231,7 +244,10 @@ async fn named_events_reach_exact_then_wildcard_listeners() {
     });
 
     events
-        .dispatch_named("eloquent.created: App\\Models\\User", json!({"name": "Taylor"}))
+        .dispatch_named(
+            "eloquent.created: App\\Models\\User",
+            json!({"name": "Taylor"}),
+        )
         .await
         .unwrap();
 
@@ -261,7 +277,10 @@ async fn named_events_can_be_halted() {
     );
     assert!(
         !events
-            .until_named("eloquent.saving: App\\Models\\Post", json!({"valid": false}))
+            .until_named(
+                "eloquent.saving: App\\Models\\Post",
+                json!({"valid": false})
+            )
             .await
             .unwrap()
     );
@@ -293,14 +312,20 @@ async fn wildcard_cache_is_refreshed_when_listeners_are_added() {
     let events = Dispatcher::new();
     let calls = Arc::new(AtomicUsize::new(0));
 
-    events.dispatch_named("cache.hit", json!(null)).await.unwrap();
+    events
+        .dispatch_named("cache.hit", json!(null))
+        .await
+        .unwrap();
 
     let c = calls.clone();
     events.listen_named("cache.*", move |_, _| {
         c.fetch_add(1, Ordering::SeqCst);
         async {}
     });
-    events.dispatch_named("cache.hit", json!(null)).await.unwrap();
+    events
+        .dispatch_named("cache.hit", json!(null))
+        .await
+        .unwrap();
 
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 }
@@ -377,7 +402,7 @@ impl Listener<OrderShipped> for QueuedNotification {
     }
 
     fn should_queue(&self, event: &OrderShipped) -> bool {
-        !self.only_even || event.order_id % 2 == 0
+        !self.only_even || event.order_id.is_multiple_of(2)
     }
 }
 
@@ -451,7 +476,10 @@ async fn raw_listeners_describe_every_event() {
     let raw = events.get_raw_listeners();
     assert_eq!(raw.len(), 2);
     assert_eq!(raw[0].0, std::any::type_name::<OrderShipped>());
-    assert_eq!(raw[0].1, vec![std::any::type_name::<SendShipmentNotification>()]);
+    assert_eq!(
+        raw[0].1,
+        vec![std::any::type_name::<SendShipmentNotification>()]
+    );
     assert_eq!(raw[1].0, "user.*");
 }
 
@@ -472,7 +500,11 @@ async fn the_facade_and_helper_use_the_container_dispatcher() {
     Event::dispatch(OrderShipped { order_id: 6 }).await.unwrap();
 
     assert_eq!(entries(&log), vec!["facade 5", "facade 6"]);
-    assert!(container.make::<Dispatcher>().has_listeners::<OrderShipped>());
+    assert!(
+        container
+            .make::<Dispatcher>()
+            .has_listeners::<OrderShipped>()
+    );
 }
 
 #[tokio::test]
@@ -501,4 +533,22 @@ async fn dispatch_futures_are_send() {
 
     let named = Event::dispatch_named("x", json!(null));
     assert_send(&named);
+}
+
+#[tokio::test]
+async fn closures_can_use_the_question_mark_operator_with_any_error() {
+    let events = Dispatcher::new();
+    events.listen(|event: &OrderShipped| {
+        let raw = format!("{}x", event.order_id);
+        async move {
+            let _id: u64 = raw.parse()?;
+            Ok(())
+        }
+    });
+
+    let error = events
+        .dispatch(OrderShipped { order_id: 4 })
+        .await
+        .unwrap_err();
+    assert!(error.is::<std::num::ParseIntError>());
 }

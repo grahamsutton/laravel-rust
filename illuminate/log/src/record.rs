@@ -29,7 +29,12 @@ pub struct LogRecord {
 
 impl LogRecord {
     /// Create a record logged "now".
-    pub fn new(channel: impl Into<String>, level: Level, message: impl Into<String>, context: Context) -> Self {
+    pub fn new(
+        channel: impl Into<String>,
+        level: Level,
+        message: impl Into<String>,
+        context: Context,
+    ) -> Self {
         Self {
             datetime: Carbon::now(),
             channel: channel.into(),

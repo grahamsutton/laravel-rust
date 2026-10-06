@@ -53,7 +53,9 @@ static FRAMEWORK_LINES: LazyLock<HashMap<&'static str, Value>> = LazyLock::new(|
 
 /// The framework's default lines for a locale and group, if it ships any.
 pub fn framework_lines(locale: &str, group: &str) -> Option<Value> {
-    (locale == "en").then(|| FRAMEWORK_LINES.get(group).cloned()).flatten()
+    (locale == "en")
+        .then(|| FRAMEWORK_LINES.get(group).cloned())
+        .flatten()
 }
 
 /// Loads language lines from JSON files on disk.
@@ -106,7 +108,13 @@ impl FileLoader {
         self.json_paths.read().unwrap().clone()
     }
 
-    fn load_paths(&self, paths: &[PathBuf], locale: &str, group: &str, framework: bool) -> Result<Value> {
+    fn load_paths(
+        &self,
+        paths: &[PathBuf],
+        locale: &str,
+        group: &str,
+        framework: bool,
+    ) -> Result<Value> {
         let mut output = match framework.then(|| framework_lines(locale, group)).flatten() {
             Some(lines) => lines,
             None => Value::Object(Map::new()),
@@ -162,7 +170,9 @@ impl FileLoader {
 
 impl Loader for FileLoader {
     fn load(&self, locale: &str, group: &str, namespace: Option<&str>) -> Result<Value> {
-        if is_unsafe_path_segment(locale, false) || (group != "*" && is_unsafe_path_segment(group, true)) {
+        if is_unsafe_path_segment(locale, false)
+            || (group != "*" && is_unsafe_path_segment(group, true))
+        {
             return Ok(Value::Object(Map::new()));
         }
         match namespace {
@@ -173,7 +183,10 @@ impl Loader for FileLoader {
     }
 
     fn add_namespace(&self, namespace: &str, hint: PathBuf) {
-        self.hints.write().unwrap().insert(namespace.to_string(), hint);
+        self.hints
+            .write()
+            .unwrap()
+            .insert(namespace.to_string(), hint);
     }
 
     fn add_json_path(&self, path: PathBuf) {
@@ -270,7 +283,13 @@ impl ArrayLoader {
 
     /// Add messages to the loader. Use the group `"*"` (and namespace
     /// `"*"`) for JSON translation strings.
-    pub fn add_messages(&self, locale: &str, group: &str, messages: Value, namespace: Option<&str>) -> &Self {
+    pub fn add_messages(
+        &self,
+        locale: &str,
+        group: &str,
+        messages: Value,
+        namespace: Option<&str>,
+    ) -> &Self {
         let namespace = namespace.filter(|n| !n.is_empty()).unwrap_or("*");
         self.messages.write().unwrap().insert(
             (namespace.to_string(), locale.to_string(), group.to_string()),
@@ -310,10 +329,22 @@ mod tests {
     fn framework_lines_are_embedded() {
         let validation = framework_lines("en", "validation").unwrap();
         assert_eq!(validation["required"], "The :attribute field is required.");
-        assert_eq!(validation["between"]["numeric"], "The :attribute field must be between :min and :max.");
-        assert_eq!(framework_lines("en", "auth").unwrap()["failed"], "These credentials do not match our records.");
-        assert_eq!(framework_lines("en", "pagination").unwrap()["next"], "Next &raquo;");
-        assert_eq!(framework_lines("en", "passwords").unwrap()["user"], "We can't find a user with that email address.");
+        assert_eq!(
+            validation["between"]["numeric"],
+            "The :attribute field must be between :min and :max."
+        );
+        assert_eq!(
+            framework_lines("en", "auth").unwrap()["failed"],
+            "These credentials do not match our records."
+        );
+        assert_eq!(
+            framework_lines("en", "pagination").unwrap()["next"],
+            "Next &raquo;"
+        );
+        assert_eq!(
+            framework_lines("en", "passwords").unwrap()["user"],
+            "We can't find a user with that email address."
+        );
         assert!(framework_lines("es", "auth").is_none());
         assert!(framework_lines("en", "missing").is_none());
     }
@@ -321,8 +352,14 @@ mod tests {
     #[test]
     fn replace_recursive_behaves_like_php() {
         let mut base = json!({"a": {"b": 1, "c": 2}, "list": [1, 2, 3], "d": "x"});
-        replace_recursive(&mut base, json!({"a": {"c": 3, "e": 4}, "list": [9], "d": {"nested": true}}));
-        assert_eq!(base, json!({"a": {"b": 1, "c": 3, "e": 4}, "list": [9, 2, 3], "d": {"nested": true}}));
+        replace_recursive(
+            &mut base,
+            json!({"a": {"c": 3, "e": 4}, "list": [9], "d": {"nested": true}}),
+        );
+        assert_eq!(
+            base,
+            json!({"a": {"b": 1, "c": 3, "e": 4}, "list": [9, 2, 3], "d": {"nested": true}})
+        );
     }
 
     #[test]

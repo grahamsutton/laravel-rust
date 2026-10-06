@@ -218,10 +218,12 @@ impl fmt::Debug for QueuedListener {
 pub(crate) type AnyEvent = Arc<dyn Any + Send + Sync>;
 
 /// The function a queue hook implements.
-pub(crate) type QueueHook = Arc<dyn Fn(QueuedListener) -> BoxFuture<'static, Result<()>> + Send + Sync>;
+pub(crate) type QueueHook =
+    Arc<dyn Fn(QueuedListener) -> BoxFuture<'static, Result<()>> + Send + Sync>;
 
-pub(crate) type TypedHandler =
-    Arc<dyn Fn(AnyEvent, Option<QueueHook>) -> BoxFuture<'static, Result<Propagation>> + Send + Sync>;
+pub(crate) type TypedHandler = Arc<
+    dyn Fn(AnyEvent, Option<QueueHook>) -> BoxFuture<'static, Result<Propagation>> + Send + Sync,
+>;
 
 pub(crate) type NamedHandler =
     Arc<dyn Fn(&str, &Value) -> BoxFuture<'static, Result<Propagation>> + Send + Sync>;

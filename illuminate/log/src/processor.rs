@@ -96,11 +96,12 @@ impl Processor for PsrLogMessageProcessor {
 /// PHP's `strtr` with an array: at each position the longest matching key
 /// wins, and replaced text is never scanned again.
 pub(crate) fn strtr(subject: &str, pairs: &[(String, String)]) -> String {
-    let mut pairs: Vec<&(String, String)> = pairs.iter().filter(|(from, _)| !from.is_empty()).collect();
+    let mut pairs: Vec<&(String, String)> =
+        pairs.iter().filter(|(from, _)| !from.is_empty()).collect();
     if pairs.is_empty() {
         return subject.to_string();
     }
-    pairs.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    pairs.sort_by_key(|pair| std::cmp::Reverse(pair.0.len()));
     let mut out = String::with_capacity(subject.len());
     let mut rest = subject;
     'outer: while !rest.is_empty() {
@@ -126,7 +127,12 @@ mod tests {
     use illuminate_support::json;
 
     fn process(message: &str, context: Value) -> LogRecord {
-        PsrLogMessageProcessor::new().process(LogRecord::new("local", Level::Info, message, to_context(context)))
+        PsrLogMessageProcessor::new().process(LogRecord::new(
+            "local",
+            Level::Info,
+            message,
+            to_context(context),
+        ))
     }
 
     #[test]
@@ -143,7 +149,12 @@ mod tests {
     fn used_fields_may_be_removed() {
         let record = PsrLogMessageProcessor::new()
             .remove_used_context_fields(true)
-            .process(LogRecord::new("local", Level::Info, "Hi {name}", to_context(json!({"name": "Taylor", "id": 1}))));
+            .process(LogRecord::new(
+                "local",
+                Level::Info,
+                "Hi {name}",
+                to_context(json!({"name": "Taylor", "id": 1})),
+            ));
         assert_eq!(record.message, "Hi Taylor");
         assert_eq!(record.context, to_context(json!({"id": 1})));
     }
@@ -154,6 +165,9 @@ mod tests {
             (":name".to_string(), "Taylor :name".to_string()),
             (":names".to_string(), "everyone".to_string()),
         ];
-        assert_eq!(strtr("Hi :name and :names, :é", &pairs), "Hi Taylor :name and everyone, :é");
+        assert_eq!(
+            strtr("Hi :name and :names, :é", &pairs),
+            "Hi Taylor :name and everyone, :é"
+        );
     }
 }

@@ -159,7 +159,10 @@ impl Formatter for LineFormatter {
             ("level", Value::from(record.level.value())),
             ("level_name", Value::String(record.level.name().to_string())),
             ("channel", Value::String(record.channel.clone())),
-            ("datetime", Value::String(record.datetime.format(&self.date_format))),
+            (
+                "datetime",
+                Value::String(record.datetime.format(&self.date_format)),
+            ),
             ("extra", Value::Object(extra)),
         ];
 
@@ -216,7 +219,10 @@ impl Formatter for JsonFormatter {
         document.insert("message".into(), Value::String(record.message.clone()));
         document.insert("context".into(), section(&record.context));
         document.insert("level".into(), Value::from(record.level.value()));
-        document.insert("level_name".into(), Value::String(record.level.name().into()));
+        document.insert(
+            "level_name".into(),
+            Value::String(record.level.name().into()),
+        );
         document.insert("channel".into(), Value::String(record.channel.clone()));
         document.insert(
             "datetime".into(),
@@ -309,7 +315,10 @@ mod tests {
             "[2024-01-01 12:00:00] local.INFO: User logged in.  \n"
         );
         assert_eq!(
-            formatter.format(&record("User logged in.", json!({"id": 1, "path": "/a/b", "name": "Zoë"}))),
+            formatter.format(&record(
+                "User logged in.",
+                json!({"id": 1, "path": "/a/b", "name": "Zoë"})
+            )),
             "[2024-01-01 12:00:00] local.INFO: User logged in. {\"id\":1,\"path\":\"/a/b\",\"name\":\"Zoë\"} \n"
         );
     }
@@ -352,7 +361,9 @@ mod tests {
     #[test]
     fn custom_formats_support_context_placeholders() {
         let formatter = LineFormatter::new()
-            .with_format("%level_name% (%level%) %context.user%: %message% %context% %context.missing%")
+            .with_format(
+                "%level_name% (%level%) %context.user%: %message% %context% %context.missing%",
+            )
             .ignore_empty_context_and_extra(true);
         assert_eq!(
             formatter.format(&record("Hi", json!({"user": "taylor"}))),
@@ -376,6 +387,9 @@ mod tests {
 
     #[test]
     fn escaped_backslashes_are_left_alone() {
-        assert_eq!(unescape_newlines(r#"{"a":"x\ny\\nz"}"#), "{\"a\":\"x\ny\\\\nz\"}");
+        assert_eq!(
+            unescape_newlines(r#"{"a":"x\ny\\nz"}"#),
+            "{\"a\":\"x\ny\\\\nz\"}"
+        );
     }
 }

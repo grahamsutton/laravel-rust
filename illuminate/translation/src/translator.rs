@@ -119,7 +119,13 @@ impl Translator {
     /// lines when the key names one (`"validation.between"`).
     ///
     /// This is Laravel's `Translator::get($key, $replace, $locale, $fallback)`.
-    pub fn get_value(&self, key: &str, replace: &Value, locale: Option<&str>, fallback: bool) -> Value {
+    pub fn get_value(
+        &self,
+        key: &str,
+        replace: &Value,
+        locale: Option<&str>,
+        fallback: bool,
+    ) -> Value {
         self.translate(key, replace, locale, fallback, true)
     }
 
@@ -150,7 +156,9 @@ impl Translator {
             };
 
             for line_locale in locales {
-                if let Some(line) = self.get_line(&namespace, &group, &line_locale, item.as_deref(), replace) {
+                if let Some(line) =
+                    self.get_line(&namespace, &group, &line_locale, item.as_deref(), replace)
+                {
                     return line;
                 }
             }
@@ -161,12 +169,13 @@ impl Translator {
             return Value::String(make_replacements(&key, replace));
         };
 
+        // Like PHP's `$line ?: $key`, an empty line falls back to the key.
+        if !line.truthy() {
+            return Value::String(make_replacements(key, replace));
+        }
         match line {
-            Value::String(line) if Value::String(line.clone()).truthy() => {
-                Value::String(make_replacements(&line, replace))
-            }
-            line if !line.truthy() => Value::String(make_replacements(key, replace)),
-            line => line,
+            Value::String(line) => Value::String(make_replacements(&line, replace)),
+            other => other,
         }
     }
 
@@ -204,8 +213,12 @@ impl Translator {
 
         match line {
             Value::String(line) => Some(Value::String(make_replacements(&line, replace))),
-            Value::Array(ref items) if !items.is_empty() => Some(replace_recursively(line, replace)),
-            Value::Object(ref items) if !items.is_empty() => Some(replace_recursively(line, replace)),
+            Value::Array(ref items) if !items.is_empty() => {
+                Some(replace_recursively(line, replace))
+            }
+            Value::Object(ref items) if !items.is_empty() => {
+                Some(replace_recursively(line, replace))
+            }
             _ => None,
         }
     }
@@ -252,16 +265,33 @@ impl Translator {
 
     /// Get a translation according to a count, replacing `:placeholders`
     /// (`:count` is filled in automatically).
-    pub fn choice_with(&self, key: &str, number: impl Into<ChoiceCount>, replace: &Value) -> String {
+    pub fn choice_with(
+        &self,
+        key: &str,
+        number: impl Into<ChoiceCount>,
+        replace: &Value,
+    ) -> String {
         self.choice_value(key, number.into(), replace, None)
     }
 
     /// Get a translation according to a count in a specific locale.
-    pub fn choice_in(&self, key: &str, number: impl Into<ChoiceCount>, replace: &Value, locale: &str) -> String {
+    pub fn choice_in(
+        &self,
+        key: &str,
+        number: impl Into<ChoiceCount>,
+        replace: &Value,
+        locale: &str,
+    ) -> String {
         self.choice_value(key, number.into(), replace, Some(locale))
     }
 
-    fn choice_value(&self, key: &str, number: ChoiceCount, replace: &Value, locale: Option<&str>) -> String {
+    fn choice_value(
+        &self,
+        key: &str,
+        number: ChoiceCount,
+        replace: &Value,
+        locale: Option<&str>,
+    ) -> String {
         let locale = self.locale_for_choice(key, locale);
         let line = into_string(self.get_value(key, &Value::Null, Some(&locale), true));
 
@@ -418,11 +448,21 @@ impl Translator {
 
     /// Specify a callback that determines the locales to check (it receives
     /// the requested and fallback locales).
-    pub fn determine_locales_using(&self, callback: impl Fn(Vec<String>) -> Vec<String> + Send + Sync + 'static) {
+    pub fn determine_locales_using(
+        &self,
+        callback: impl Fn(Vec<String>) -> Vec<String> + Send + Sync + 'static,
+    ) {
         *self.determine_locales.write().unwrap() = Some(Arc::new(callback));
     }
 
-    fn handle_missing_key(&self, key: &str, replace: &Value, locale: &str, fallback: bool, handle: bool) -> String {
+    fn handle_missing_key(
+        &self,
+        key: &str,
+        replace: &Value,
+        locale: &str,
+        fallback: bool,
+        handle: bool,
+    ) -> String {
         if !handle || HANDLING_MISSING_KEY.with(Cell::get) {
             return key.to_string();
         }
@@ -524,7 +564,9 @@ impl Translator {
     /// changes the locale for that scope; elsewhere it changes the default.
     pub fn set_locale(&self, locale: &str) -> Result<()> {
         if Str::contains_any(locale, &["/", "\\", "..", "\0"]) {
-            return Err(InvalidArgumentException::new("Invalid characters present in locale.").into());
+            return Err(
+                InvalidArgumentException::new("Invalid characters present in locale.").into(),
+            );
         }
         let scoped = SCOPED_LOCALE
             .try_with(|scoped| *scoped.borrow_mut() = Some(locale.to_string()))
@@ -580,7 +622,10 @@ impl fmt::Debug for Translator {
 /// # });
 /// ```
 pub async fn locale_scope<F: Future>(future: F) -> F::Output {
-    let current = SCOPED_LOCALE.try_with(|scoped| scoped.borrow().clone()).ok().flatten();
+    let current = SCOPED_LOCALE
+        .try_with(|scoped| scoped.borrow().clone())
+        .ok()
+        .flatten();
     SCOPED_LOCALE.scope(RefCell::new(current), future).await
 }
 
@@ -632,7 +677,12 @@ fn replacement_map(replace: &Value) -> Map<String, Value> {
 fn replace_recursively(value: Value, replace: &Value) -> Value {
     match value {
         Value::String(line) => Value::String(make_replacements(&line, replace)),
-        Value::Array(items) => Value::Array(items.into_iter().map(|v| replace_recursively(v, replace)).collect()),
+        Value::Array(items) => Value::Array(
+            items
+                .into_iter()
+                .map(|v| replace_recursively(v, replace))
+                .collect(),
+        ),
         Value::Object(map) => Value::Object(
             map.into_iter()
                 .map(|(k, v)| (k, replace_recursively(v, replace)))
@@ -680,11 +730,12 @@ pub fn make_replacements(line: &str, replace: &Value) -> String {
 /// PHP's `strtr` with an array: at each position the longest matching key
 /// wins, and replaced text is never scanned again.
 fn strtr(subject: &str, pairs: &IndexMap<String, String>) -> String {
-    let mut keys: Vec<(&String, &String)> = pairs.iter().filter(|(from, _)| !from.is_empty()).collect();
+    let mut keys: Vec<(&String, &String)> =
+        pairs.iter().filter(|(from, _)| !from.is_empty()).collect();
     if keys.is_empty() {
         return subject.to_string();
     }
-    keys.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    keys.sort_by_key(|pair| std::cmp::Reverse(pair.0.len()));
 
     let mut out = String::with_capacity(subject.len());
     let mut rest = subject;
@@ -710,11 +761,23 @@ mod tests {
 
     #[test]
     fn replacements_follow_laravels_rules() {
-        assert_eq!(make_replacements("Hello :name", &json!({"name": "taylor"})), "Hello taylor");
-        assert_eq!(make_replacements("Hello :Name", &json!({"name": "taylor"})), "Hello Taylor");
-        assert_eq!(make_replacements("Hello :NAME", &json!({"name": "taylor"})), "Hello TAYLOR");
+        assert_eq!(
+            make_replacements("Hello :name", &json!({"name": "taylor"})),
+            "Hello taylor"
+        );
+        assert_eq!(
+            make_replacements("Hello :Name", &json!({"name": "taylor"})),
+            "Hello Taylor"
+        );
+        assert_eq!(
+            make_replacements("Hello :NAME", &json!({"name": "taylor"})),
+            "Hello TAYLOR"
+        );
         assert_eq!(make_replacements("Hello :name", &json!({})), "Hello :name");
-        assert_eq!(make_replacements("Hello :name", &Value::Null), "Hello :name");
+        assert_eq!(
+            make_replacements("Hello :name", &Value::Null),
+            "Hello :name"
+        );
         // Longer keys are replaced first...
         assert_eq!(
             make_replacements(":name :names", &json!({"name": "a", "names": "b"})),
@@ -727,27 +790,51 @@ mod tests {
         );
         // Values of any kind become strings.
         assert_eq!(
-            make_replacements(":n :f :t :null", &json!({"n": 5, "f": 1.5, "t": true, "null": null})),
+            make_replacements(
+                ":n :f :t :null",
+                &json!({"n": 5, "f": 1.5, "t": true, "null": null})
+            ),
             "5 1.5 1 "
         );
         // Unicode is capitalized correctly.
-        assert_eq!(make_replacements(":Name :NAME", &json!({"name": "élise"})), "Élise ÉLISE");
+        assert_eq!(
+            make_replacements(":Name :NAME", &json!({"name": "élise"})),
+            "Élise ÉLISE"
+        );
         // Keys given in uppercase keep the value as-is.
-        assert_eq!(make_replacements(":NAME", &json!({"NAME": "taylor"})), "taylor");
+        assert_eq!(
+            make_replacements(":NAME", &json!({"NAME": "taylor"})),
+            "taylor"
+        );
         // Lists are keyed by index.
-        assert_eq!(make_replacements(":0 and :1", &json!(["a", "b"])), "a and b");
+        assert_eq!(
+            make_replacements(":0 and :1", &json!(["a", "b"])),
+            "a and b"
+        );
     }
 
     #[test]
     fn keys_are_parsed_into_namespace_group_and_item() {
         let translator = Translator::with_loader(crate::ArrayLoader::new(), "en");
-        assert_eq!(translator.parse_key("messages.welcome"), ("*".into(), "messages".into(), Some("welcome".into())));
-        assert_eq!(translator.parse_key("messages.a.b"), ("*".into(), "messages".into(), Some("a.b".into())));
-        assert_eq!(translator.parse_key("messages"), ("*".into(), "messages".into(), None));
+        assert_eq!(
+            translator.parse_key("messages.welcome"),
+            ("*".into(), "messages".into(), Some("welcome".into()))
+        );
+        assert_eq!(
+            translator.parse_key("messages.a.b"),
+            ("*".into(), "messages".into(), Some("a.b".into()))
+        );
+        assert_eq!(
+            translator.parse_key("messages"),
+            ("*".into(), "messages".into(), None)
+        );
         assert_eq!(
             translator.parse_key("courier::messages.welcome"),
             ("courier".into(), "messages".into(), Some("welcome".into()))
         );
-        assert_eq!(translator.parse_key("courier::messages"), ("courier".into(), "messages".into(), None));
+        assert_eq!(
+            translator.parse_key("courier::messages"),
+            ("courier".into(), "messages".into(), None)
+        );
     }
 }

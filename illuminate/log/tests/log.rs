@@ -28,7 +28,9 @@ impl Drop for Frozen {
 }
 
 fn freeze(at: &str) -> Frozen {
-    let guard = CLOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let guard = CLOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     travel(at);
     Frozen { _guard: guard }
 }
@@ -74,7 +76,10 @@ fn single_channel_writes_laravel_formatted_lines() {
 
     log.info("User logged in.");
     log.info_with("User logged in.", json!({"id": 1}));
-    log.error_with("Failed.", json!({"user": {"id": 1, "roles": ["admin"]}, "url": "https://laravel.com/docs"}));
+    log.error_with(
+        "Failed.",
+        json!({"user": {"id": 1, "roles": ["admin"]}, "url": "https://laravel.com/docs"}),
+    );
 
     assert_eq!(
         read(&path),
@@ -150,10 +155,14 @@ fn messages_keep_their_line_breaks() {
     let _now = freeze("2024-01-01 00:00:00");
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("laravel.log");
-    let log = manager(json!({"app": {"env": "local"}, "logging": {"channels": {"single": single(&path)}}}));
+    let log = manager(
+        json!({"app": {"env": "local"}, "logging": {"channels": {"single": single(&path)}}}),
+    );
 
-    log.channel("single")
-        .error_with("Something broke\non two lines", json!({"exception": "[object] (Error(code: 0): Boom)\n[stacktrace]\n#0 main"}));
+    log.channel("single").error_with(
+        "Something broke\non two lines",
+        json!({"exception": "[object] (Error(code: 0): Boom)\n[stacktrace]\n#0 main"}),
+    );
 
     assert_eq!(
         read(&path),
@@ -172,8 +181,10 @@ fn placeholders_are_replaced_when_enabled() {
         "off": single(&off),
     }}}));
 
-    log.channel("on").info_with("Showing the user profile for user: {id}", json!({"id": 7}));
-    log.channel("off").info_with("Showing the user profile for user: {id}", json!({"id": 7}));
+    log.channel("on")
+        .info_with("Showing the user profile for user: {id}", json!({"id": 7}));
+    log.channel("off")
+        .info_with("Showing the user profile for user: {id}", json!({"id": 7}));
 
     assert_eq!(
         read(&on),
@@ -241,7 +252,9 @@ fn channels_ignore_messages_below_their_level() {
     log.emergency("emergency");
 
     let contents = read(&path);
-    assert!(!contents.contains("debug") && !contents.contains(".INFO") && !contents.contains("notice"));
+    assert!(
+        !contents.contains("debug") && !contents.contains(".INFO") && !contents.contains("notice")
+    );
     assert_eq!(contents.lines().count(), 3);
     assert!(contents.contains("production.WARNING: warning"));
     assert!(contents.contains("production.EMERGENCY: emergency"));
@@ -276,7 +289,9 @@ fn undefined_channels_use_the_emergency_logger() {
     log.channel("missing").warning("Where am I?");
 
     let contents = read(&emergency);
-    assert!(contents.contains("(InvalidArgumentException(code: 0): Log [missing] is not defined.)"));
+    assert!(
+        contents.contains("(InvalidArgumentException(code: 0): Log [missing] is not defined.)")
+    );
     assert!(contents.contains("laravel.WARNING: Where am I?"));
 }
 
@@ -302,15 +317,20 @@ fn unsupported_drivers_use_the_emergency_logger() {
 fn daily_channels_write_one_file_per_day() {
     let _now = freeze("2024-01-01 23:59:59");
     let dir = tempfile::tempdir().unwrap();
-    let log = manager(json!({"app": {"env": "local"}, "logging": {"default": "daily", "channels": {
-        "daily": {"driver": "daily", "path": dir.path().join("laravel.log"), "days": 14},
-    }}}));
+    let log = manager(
+        json!({"app": {"env": "local"}, "logging": {"default": "daily", "channels": {
+            "daily": {"driver": "daily", "path": dir.path().join("laravel.log"), "days": 14},
+        }}}),
+    );
 
     log.info("first");
     travel("2024-01-02 00:00:01");
     log.info("second");
 
-    assert_eq!(files_in(dir.path()), vec!["laravel-2024-01-01.log", "laravel-2024-01-02.log"]);
+    assert_eq!(
+        files_in(dir.path()),
+        vec!["laravel-2024-01-01.log", "laravel-2024-01-02.log"]
+    );
     assert_eq!(
         read(&dir.path().join("laravel-2024-01-01.log")),
         "[2024-01-01 23:59:59] local.INFO: first  \n"
@@ -326,7 +346,12 @@ fn daily_channels_delete_files_beyond_the_retention() {
     let _now = freeze("2024-03-01 10:00:00");
     let dir = tempfile::tempdir().unwrap();
     // Files from previous runs, plus an unrelated file that must survive.
-    for name in ["laravel-2024-02-26.log", "laravel-2024-02-27.log", "laravel-2024-02-28.log", "other.log"] {
+    for name in [
+        "laravel-2024-02-26.log",
+        "laravel-2024-02-27.log",
+        "laravel-2024-02-28.log",
+        "other.log",
+    ] {
         fs::write(dir.path().join(name), "old\n").unwrap();
     }
     let log = manager(json!({"logging": {"default": "daily", "channels": {
@@ -336,7 +361,11 @@ fn daily_channels_delete_files_beyond_the_retention() {
     log.info("today");
     assert_eq!(
         files_in(dir.path()),
-        vec!["laravel-2024-02-28.log", "laravel-2024-03-01.log", "other.log"]
+        vec![
+            "laravel-2024-02-28.log",
+            "laravel-2024-03-01.log",
+            "other.log"
+        ]
     );
 
     travel("2024-03-02 10:00:00");
@@ -344,9 +373,18 @@ fn daily_channels_delete_files_beyond_the_retention() {
     log.info("tomorrow again");
     assert_eq!(
         files_in(dir.path()),
-        vec!["laravel-2024-03-01.log", "laravel-2024-03-02.log", "other.log"]
+        vec![
+            "laravel-2024-03-01.log",
+            "laravel-2024-03-02.log",
+            "other.log"
+        ]
     );
-    assert_eq!(read(&dir.path().join("laravel-2024-03-02.log")).lines().count(), 2);
+    assert_eq!(
+        read(&dir.path().join("laravel-2024-03-02.log"))
+            .lines()
+            .count(),
+        2
+    );
 }
 
 #[test]
@@ -375,7 +413,10 @@ fn monthly_channels_write_one_file_per_month() {
     travel("2024-02-01 12:00:00");
     log.channel("monthly").info("February");
 
-    assert_eq!(files_in(dir.path()), vec!["laravel-2024-01.log", "laravel-2024-02.log"]);
+    assert_eq!(
+        files_in(dir.path()),
+        vec!["laravel-2024-01.log", "laravel-2024-02.log"]
+    );
 }
 
 // ----------------------------------------------------------------------
@@ -388,11 +429,13 @@ fn stacks_fan_out_to_their_channels_respecting_levels() {
     let dir = tempfile::tempdir().unwrap();
     let all = dir.path().join("all.log");
     let errors = dir.path().join("errors.log");
-    let log = manager(json!({"app": {"env": "local"}, "logging": {"default": "stack", "channels": {
-        "stack": {"driver": "stack", "channels": ["all", "errors"], "ignore_exceptions": false},
-        "all": {"driver": "single", "path": all, "name": "ignored"},
-        "errors": {"driver": "single", "path": errors, "level": "error"},
-    }}}));
+    let log = manager(
+        json!({"app": {"env": "local"}, "logging": {"default": "stack", "channels": {
+            "stack": {"driver": "stack", "channels": ["all", "errors"], "ignore_exceptions": false},
+            "all": {"driver": "single", "path": all, "name": "ignored"},
+            "errors": {"driver": "single", "path": errors, "level": "error"},
+        }}}),
+    );
 
     log.info("Just so you know");
     log.critical("The system is down!");
@@ -402,7 +445,10 @@ fn stacks_fan_out_to_their_channels_respecting_levels() {
         read(&all),
         "[2024-01-01 00:00:00] local.INFO: Just so you know  \n[2024-01-01 00:00:00] local.CRITICAL: The system is down!  \n"
     );
-    assert_eq!(read(&errors), "[2024-01-01 00:00:00] local.CRITICAL: The system is down!  \n");
+    assert_eq!(
+        read(&errors),
+        "[2024-01-01 00:00:00] local.CRITICAL: The system is down!  \n"
+    );
 }
 
 #[test]
@@ -458,10 +504,12 @@ fn on_demand_stacks_and_channels() {
     let dir = tempfile::tempdir().unwrap();
     let a = dir.path().join("a.log");
     let custom = dir.path().join("custom.log");
-    let log = manager(json!({"app": {"env": "testing"}, "logging": {"channels": {"a": single(&a)}}}));
+    let log =
+        manager(json!({"app": {"env": "testing"}, "logging": {"channels": {"a": single(&a)}}}));
 
     let channel = log.build(json!({"driver": "single", "path": custom}));
-    log.stack([StackChannel::from("a"), channel.into()]).info("Something happened!");
+    log.stack([StackChannel::from("a"), channel.into()])
+        .info("Something happened!");
     log.stack(["a"]).info("Just the one");
 
     assert_eq!(read(&a).lines().count(), 2);
@@ -539,14 +587,19 @@ fn context_keys_can_be_removed() {
     let handler = Arc::new(TestHandler::new());
     let log = manager(json!({"logging": {"channels": {"test": {"driver": "test"}}}}));
     let shared = handler.clone();
-    log.extend("test", move |_, _| Ok(Monolog::new("testing").with_handler_arc(shared.clone())));
+    log.extend("test", move |_, _| {
+        Ok(Monolog::new("testing").with_handler_arc(shared.clone()))
+    });
 
     let channel = log.channel("test");
     channel.with_context(json!({"a": 1, "b": 2, "c": 3}));
     log.without_context_keys(&["a", "c"]);
     channel.info("hi");
 
-    assert_eq!(handler.records()[0].context, illuminate_log::to_context(json!({"b": 2})));
+    assert_eq!(
+        handler.records()[0].context,
+        illuminate_log::to_context(json!({"b": 2}))
+    );
 }
 
 // ----------------------------------------------------------------------
@@ -567,7 +620,10 @@ fn listeners_receive_logged_messages() {
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].level, Level::Warning);
     assert_eq!(messages[0].message, "Disk space low");
-    assert_eq!(messages[0].context, illuminate_log::to_context(json!({"request": 1, "free": "1GB"})));
+    assert_eq!(
+        messages[0].context,
+        illuminate_log::to_context(json!({"request": 1, "free": "1GB"}))
+    );
 }
 
 #[test]
@@ -604,7 +660,9 @@ fn custom_drivers_can_be_registered() {
         Ok(Monolog::new("mongo").with_handler_arc(h.clone()))
     });
     let h = handler.clone();
-    log.extend("factory", move |_, _| Ok(Monolog::new("factory").with_handler_arc(h.clone())));
+    log.extend("factory", move |_, _| {
+        Ok(Monolog::new("factory").with_handler_arc(h.clone()))
+    });
 
     log.info("to mongo");
     log.channel("factory").info("from the factory");
@@ -624,7 +682,9 @@ fn custom_via_without_a_creator_falls_back_to_emergency() {
 
     log.channel("custom").info("hi");
 
-    assert!(read(&emergency).contains("Custom log driver [App\\\\Logging\\\\CreateCustomLogger] has not been registered."));
+    assert!(read(&emergency).contains(
+        "Custom log driver [App\\\\Logging\\\\CreateCustomLogger] has not been registered."
+    ));
 }
 
 #[test]
@@ -642,15 +702,29 @@ fn monolog_driver_supports_the_built_in_handlers() {
         },
         "null": {"driver": "monolog", "handler": "Monolog\\Handler\\NullHandler"},
         "bogus": {"driver": "monolog", "handler": "App\\Handler"},
+        "emergency": {"path": dir.path().join("emergency.log")},
     }}}));
 
     log.channel("stream").debug("skipped");
-    log.channel("stream").info_with("Hi {name}", json!({"name": "Taylor"}));
+    log.channel("stream")
+        .info_with("Hi {name}", json!({"name": "Taylor"}));
     log.channel("null").info("nothing");
 
-    assert_eq!(read(&path), "[2024-01-01 00:00:00] local.INFO: Hi Taylor {\"name\":\"Taylor\"} \n");
+    assert_eq!(
+        read(&path),
+        "[2024-01-01 00:00:00] local.INFO: Hi Taylor {\"name\":\"Taylor\"} \n"
+    );
     assert!(log.channel("null").is_handling(Level::Debug));
-    assert_eq!(log.channel("bogus").name(), "laravel", "falls back to the emergency logger");
+    assert_eq!(
+        log.channel("bogus").name(),
+        "laravel",
+        "falls back to the emergency logger"
+    );
+    assert!(
+        read(&dir.path().join("emergency.log")).contains(
+            "App\\\\Handler must be an instance of Monolog\\\\Handler\\\\HandlerInterface"
+        )
+    );
 }
 
 #[test]
@@ -717,18 +791,26 @@ fn file_permissions_can_be_configured() {
     log.channel("private").info("secret");
     log.channel("octal").info("secret");
 
-    assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
-    assert_eq!(fs::metadata(&octal).unwrap().permissions().mode() & 0o777, 0o640);
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+    assert_eq!(
+        fs::metadata(&octal).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
 }
 
 #[test]
 fn concurrent_writes_never_interleave() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("busy.log");
-    let log = Arc::new(manager(json!({"logging": {"default": "single", "channels": {
-        "single": single(&path),
-        "same-file": single(&path),
-    }}})));
+    let log = Arc::new(manager(
+        json!({"logging": {"default": "single", "channels": {
+            "single": single(&path),
+            "same-file": single(&path),
+        }}}),
+    ));
 
     let threads: Vec<_> = (0..8)
         .map(|t| {
@@ -736,8 +818,10 @@ fn concurrent_writes_never_interleave() {
             std::thread::spawn(move || {
                 for i in 0..50 {
                     let channel = if i % 2 == 0 { "single" } else { "same-file" };
-                    log.channel(channel)
-                        .info_with(format!("thread {t} message {i}"), json!({"padding": "x".repeat(200)}));
+                    log.channel(channel).info_with(
+                        format!("thread {t} message {i}"),
+                        json!({"padding": "x".repeat(200)}),
+                    );
                 }
             })
         })
@@ -748,7 +832,11 @@ fn concurrent_writes_never_interleave() {
 
     let contents = read(&path);
     assert_eq!(contents.lines().count(), 400);
-    assert!(contents.lines().all(|line| line.starts_with('[') && line.ends_with("\"} ")));
+    assert!(
+        contents
+            .lines()
+            .all(|line| line.starts_with('[') && line.ends_with("\"} "))
+    );
 }
 
 #[test]
@@ -758,13 +846,15 @@ fn syslog_udp_handler_sends_rfc5424_datagrams() {
         .set_read_timeout(Some(std::time::Duration::from_secs(5)))
         .unwrap();
     let port = server.local_addr().unwrap().port();
-    let log = manager(json!({"app": {"env": "local", "name": "My App"}, "logging": {"channels": {
-        "papertrail": {
-            "driver": "monolog",
-            "handler": "Monolog\\Handler\\SyslogUdpHandler",
-            "handler_with": {"host": "127.0.0.1", "port": port, "ident": "my-app"},
-        },
-    }}}));
+    let log = manager(
+        json!({"app": {"env": "local", "name": "My App"}, "logging": {"channels": {
+            "papertrail": {
+                "driver": "monolog",
+                "handler": "Monolog\\Handler\\SyslogUdpHandler",
+                "handler_with": {"host": "127.0.0.1", "port": port, "ident": "my-app"},
+            },
+        }}}),
+    );
 
     log.channel("papertrail").info("Hello, Papertrail");
 
@@ -788,7 +878,12 @@ fn syslog_handler_sends_to_the_local_daemon() {
     let handler = SyslogHandler::new("laravel", illuminate_log::syslog_facility(&json!("local0")))
         .with_socket_path(&socket_path);
 
-    let record = LogRecord::new("production", Level::Error, "Database unavailable", Default::default());
+    let record = LogRecord::new(
+        "production",
+        Level::Error,
+        "Database unavailable",
+        Default::default(),
+    );
     handler.handle(&record).unwrap();
 
     let mut buffer = [0u8; 2048];
@@ -839,7 +934,10 @@ fn the_facade_logs_through_the_container_manager() {
         "local.INFO: helper {\"request-id\":9} ",
         "local.CRITICAL: logger helper {\"request-id\":9} ",
     ] {
-        assert!(contents.contains(expected), "missing [{expected}] in:\n{contents}");
+        assert!(
+            contents.contains(expected),
+            "missing [{expected}] in:\n{contents}"
+        );
     }
     assert!(Arc::ptr_eq(&app.make::<LogManager>(), &logger()));
 }
@@ -863,7 +961,9 @@ fn facade_extend_and_listen() {
     }}}));
     let handler = Arc::new(TestHandler::new());
     let h = handler.clone();
-    Log::extend("memory", move |_, _| Ok(Monolog::new("memory").with_handler_arc(h.clone())));
+    Log::extend("memory", move |_, _| {
+        Ok(Monolog::new("memory").with_handler_arc(h.clone()))
+    });
     let heard: Arc<Mutex<Vec<String>>> = Arc::default();
     let seen = heard.clone();
     Log::listen(move |event| seen.lock().unwrap().push(event.message.clone()));

@@ -114,10 +114,16 @@ impl Logger {
             merged.insert(key, value);
         }
 
-        match self.driver.add_record(level, message.clone(), merged.clone()) {
+        match self
+            .driver
+            .add_record(level, message.clone(), merged.clone())
+        {
             Ok(_) => self.fire_log_event(level, message, merged),
             Err(error) => {
-                eprintln!("Unable to write to the [{}] log channel: {error}", self.driver.name());
+                eprintln!(
+                    "Unable to write to the [{}] log channel: {error}",
+                    self.driver.name()
+                );
             }
         }
     }

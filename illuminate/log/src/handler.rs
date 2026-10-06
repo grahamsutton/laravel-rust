@@ -152,15 +152,15 @@ fn file_lock(path: &Path) -> Arc<Mutex<()>> {
 
 /// Open a log file for appending, creating its directory if needed.
 fn open_append(path: &Path, permission: Option<u32>) -> Result<File> {
-    if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty()) {
-        if !dir.is_dir() {
-            fs::create_dir_all(dir).map_err(|error| {
-                RuntimeException::new(format!(
-                    "There is no existing directory at \"{}\" and it could not be created: {error}",
-                    dir.display()
-                ))
-            })?;
-        }
+    if let Some(dir) = path.parent().filter(|dir| !dir.as_os_str().is_empty())
+        && !dir.is_dir()
+    {
+        fs::create_dir_all(dir).map_err(|error| {
+            RuntimeException::new(format!(
+                "There is no existing directory at \"{}\" and it could not be created: {error}",
+                dir.display()
+            ))
+        })?;
     }
     let file = OpenOptions::new()
         .create(true)
@@ -187,7 +187,12 @@ fn set_permission(path: &Path, mode: u32) {
 #[cfg(not(unix))]
 fn set_permission(_path: &Path, _mode: u32) {}
 
-fn write_stream(stream: &Stream, file: &Mutex<Option<File>>, permission: Option<u32>, line: &str) -> Result<()> {
+fn write_stream(
+    stream: &Stream,
+    file: &Mutex<Option<File>>,
+    permission: Option<u32>,
+    line: &str,
+) -> Result<()> {
     match stream {
         Stream::Stdout => {
             let mut out = std::io::stdout().lock();
@@ -485,7 +490,9 @@ pub struct NullHandler {
 impl NullHandler {
     /// Discard every record.
     pub fn new() -> Self {
-        Self { level: Level::Debug }
+        Self {
+            level: Level::Debug,
+        }
     }
 
     /// Discard records at or above the given level.
@@ -541,12 +548,22 @@ impl TestHandler {
 
     /// Every handled record.
     pub fn records(&self) -> Vec<LogRecord> {
-        self.records.lock().unwrap().iter().map(|(r, _)| r.clone()).collect()
+        self.records
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(r, _)| r.clone())
+            .collect()
     }
 
     /// Every handled record, formatted.
     pub fn formatted(&self) -> Vec<String> {
-        self.records.lock().unwrap().iter().map(|(_, f)| f.clone()).collect()
+        self.records
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, f)| f.clone())
+            .collect()
     }
 
     /// The handled messages.
@@ -561,7 +578,11 @@ impl TestHandler {
 
     /// Whether any record of the given level was handled.
     pub fn has_records(&self, level: Level) -> bool {
-        self.records.lock().unwrap().iter().any(|(r, _)| r.level == level)
+        self.records
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(r, _)| r.level == level)
     }
 
     /// Whether a record with the given level and message was handled.
@@ -604,7 +625,10 @@ impl Handler for TestHandler {
             return Ok(false);
         }
         let formatted = self.formatting.format(record);
-        self.records.lock().unwrap().push((record.clone(), formatted));
+        self.records
+            .lock()
+            .unwrap()
+            .push((record.clone(), formatted));
         Ok(!self.formatting.bubble)
     }
 
@@ -628,7 +652,9 @@ impl WhatFailureGroupHandler {
 
 impl Handler for WhatFailureGroupHandler {
     fn is_handling(&self, level: Level) -> bool {
-        self.handlers.iter().any(|handler| handler.is_handling(level))
+        self.handlers
+            .iter()
+            .any(|handler| handler.is_handling(level))
     }
 
     fn handle(&self, record: &LogRecord) -> Result<bool> {
@@ -716,7 +742,8 @@ impl SyslogUdpHandler {
             ident: "php".to_string(),
             facility: 8,
             formatting: Formatting::new(Arc::new(
-                LineFormatter::new().with_format("%channel%.%level_name%: %message% %context% %extra%"),
+                LineFormatter::new()
+                    .with_format("%channel%.%level_name%: %message% %context% %extra%"),
             )),
             socket: Mutex::new(None),
         }
@@ -794,7 +821,8 @@ impl SyslogHandler {
             facility,
             socket_path: PathBuf::from("/dev/log"),
             formatting: Formatting::new(Arc::new(
-                LineFormatter::new().with_format("%channel%.%level_name%: %message% %context% %extra%"),
+                LineFormatter::new()
+                    .with_format("%channel%.%level_name%: %message% %context% %extra%"),
             )),
         }
     }

@@ -235,11 +235,25 @@ impl Event {
         F: FnOnce() -> Fut,
         Fut: Future<Output = R>,
     {
-        let original = Self::dispatcher();
+        /// Puts the real dispatcher back, even if the callback panics.
+        struct Restore {
+            container: Arc<Container>,
+            original: Arc<Dispatcher>,
+        }
+
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                self.container
+                    .instance_arc::<Dispatcher>(self.original.clone());
+            }
+        }
+
+        let _restore = Restore {
+            container: Container::get_instance(),
+            original: Self::dispatcher(),
+        };
         Self::fake();
-        let result = callback().await;
-        Container::get_instance().instance_arc::<Dispatcher>(original);
-        result
+        callback().await
     }
 
     /// Get every recorded event of type `E`.

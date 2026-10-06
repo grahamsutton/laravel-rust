@@ -131,7 +131,9 @@ impl LogManager {
     pub fn driver(&self, name: Option<&str>) -> Arc<Logger> {
         let name = match name {
             Some(name) => name.trim().to_string(),
-            None => self.get_default_driver().unwrap_or_else(|| "null".to_string()),
+            None => self
+                .get_default_driver()
+                .unwrap_or_else(|| "null".to_string()),
         };
         self.get(&name, None)
     }
@@ -164,14 +166,18 @@ impl LogManager {
     /// use illuminate_log::StackChannel;
     /// use illuminate_support::json;
     ///
-    /// # let log = LogManager::new(Arc::new(Repository::empty()));
     /// # let dir = tempfile::tempdir().unwrap();
     /// # let path = dir.path().join("custom.log");
+    /// # let single = dir.path().join("laravel.log");
+    /// # let log = LogManager::new(Arc::new(Repository::new(json!({
+    /// #     "logging": {"channels": {"single": {"driver": "single", "path": single}}},
+    /// # }))));
     /// let channel = log.build(json!({"driver": "single", "path": path}));
     ///
-    /// log.stack(["null"]).info("Something happened!");
-    /// log.stack([StackChannel::from("null"), channel.into()]).info("Something else happened!");
+    /// log.stack(["single"]).info("Something happened!");
+    /// log.stack([StackChannel::from("single"), channel.into()]).info("Something else happened!");
     /// # assert!(std::fs::read_to_string(&path).unwrap().contains("Something else happened!"));
+    /// # assert_eq!(std::fs::read_to_string(&single).unwrap().lines().count(), 2);
     /// ```
     pub fn stack<I, S>(&self, channels: I) -> Arc<Logger>
     where
@@ -186,10 +192,10 @@ impl LogManager {
     }
 
     fn get(&self, name: &str, config: Option<Value>) -> Arc<Logger> {
-        if config.is_none() {
-            if let Some(logger) = self.channels.read().unwrap().get(name) {
-                return logger.clone();
-            }
+        if config.is_none()
+            && let Some(logger) = self.channels.read().unwrap().get(name)
+        {
+            return logger.clone();
         }
 
         match self.resolve(name, config) {
@@ -226,7 +232,10 @@ impl LogManager {
         let handler = StreamHandler::new(stream);
         handler.set_formatter(self.formatter());
         let monolog = Monolog::new("laravel").with_handler(handler);
-        Arc::new(Logger::with_listeners(Arc::new(monolog), self.listeners.clone()))
+        Arc::new(Logger::with_listeners(
+            Arc::new(monolog),
+            self.listeners.clone(),
+        ))
     }
 
     fn resolve(&self, name: &str, config: Option<Value>) -> Result<Monolog> {
@@ -237,12 +246,19 @@ impl LogManager {
 
         if config.is_null() {
             if name == "null" {
-                return Ok(Monolog::new(self.fallback_channel_name()).with_handler(NullHandler::new()));
+                return Ok(
+                    Monolog::new(self.fallback_channel_name()).with_handler(NullHandler::new())
+                );
             }
-            return Err(InvalidArgumentException::new(format!("Log [{name}] is not defined.")).into());
+            return Err(
+                InvalidArgumentException::new(format!("Log [{name}] is not defined.")).into(),
+            );
         }
 
-        let driver = config.get("driver").map(|d| d.to_string_lossy()).unwrap_or_default();
+        let driver = config
+            .get("driver")
+            .map(|d| d.to_string_lossy())
+            .unwrap_or_default();
 
         let creator = self.custom_creators.read().unwrap().get(&driver).cloned();
         if let Some(creator) = creator {
@@ -259,8 +275,13 @@ impl LogManager {
             "monolog" => self.create_monolog_driver(&config),
             "custom" => self.create_custom_driver(&config),
             "stderr" | "stdout" | "stream" => self.create_stream_driver(&driver, &config),
-            "null" => Ok(Monolog::new(self.parse_channel(&config)).with_handler(NullHandler::new())),
-            _ => Err(InvalidArgumentException::new(format!("Driver [{driver}] is not supported.")).into()),
+            "null" => {
+                Ok(Monolog::new(self.parse_channel(&config)).with_handler(NullHandler::new()))
+            }
+            _ => Err(
+                InvalidArgumentException::new(format!("Driver [{driver}] is not supported."))
+                    .into(),
+            ),
         }
     }
 
@@ -278,7 +299,10 @@ impl LogManager {
     /// Create a custom driver: `via` names a creator registered with
     /// [`LogManager::extend`].
     fn create_custom_driver(&self, config: &Value) -> Result<Monolog> {
-        let via = config.get("via").map(|v| v.to_string_lossy()).unwrap_or_default();
+        let via = config
+            .get("via")
+            .map(|v| v.to_string_lossy())
+            .unwrap_or_default();
         let creator = self.custom_creators.read().unwrap().get(&via).cloned();
         match creator {
             Some(creator) => creator(&Container::get_instance(), config),
@@ -291,15 +315,28 @@ impl LogManager {
 
     fn create_stack_driver(&self, config: &Value) -> Result<Monolog> {
         let channels: Vec<StackChannel> = match config.get("channels") {
-            Some(Value::String(list)) => list.split(',').map(|c| StackChannel::Name(c.trim().into())).collect(),
-            Some(Value::Array(list)) => list.iter().map(|c| StackChannel::Name(c.to_string_lossy())).collect(),
+            Some(Value::String(list)) => list
+                .split(',')
+                .map(|c| StackChannel::Name(c.trim().into()))
+                .collect(),
+            Some(Value::Array(list)) => list
+                .iter()
+                .map(|c| StackChannel::Name(c.to_string_lossy()))
+                .collect(),
             _ => Vec::new(),
         };
-        let ignore_exceptions = config.get("ignore_exceptions").is_some_and(ValueExt::truthy);
+        let ignore_exceptions = config
+            .get("ignore_exceptions")
+            .is_some_and(ValueExt::truthy);
         Ok(self.stack_monolog(&channels, self.parse_channel(config), ignore_exceptions))
     }
 
-    fn stack_monolog(&self, channels: &[StackChannel], name: String, ignore_exceptions: bool) -> Monolog {
+    fn stack_monolog(
+        &self,
+        channels: &[StackChannel],
+        name: String,
+        ignore_exceptions: bool,
+    ) -> Monolog {
         let loggers: Vec<Arc<Logger>> = channels
             .iter()
             .filter(|channel| !matches!(channel, StackChannel::Name(name) if name.is_empty()))
@@ -309,7 +346,10 @@ impl LogManager {
             })
             .collect();
 
-        let mut handlers: Vec<Arc<dyn Handler>> = loggers.iter().flat_map(|logger| logger.handlers()).collect();
+        let mut handlers: Vec<Arc<dyn Handler>> = loggers
+            .iter()
+            .flat_map(|logger| logger.handlers())
+            .collect();
         let processors: Vec<Arc<dyn Processor>> = loggers
             .iter()
             .flat_map(|logger| logger.get_logger().processors())
@@ -340,11 +380,19 @@ impl LogManager {
     }
 
     fn create_monthly_driver(&self, config: &Value) -> Result<Monolog> {
-        let max_files = config.get("max_files").and_then(ValueExt::to_i64_lossy).unwrap_or(3);
+        let max_files = config
+            .get("max_files")
+            .and_then(ValueExt::to_i64_lossy)
+            .unwrap_or(3);
         self.create_rotating_driver(config, RotatingFileHandler::FILE_PER_MONTH, max_files)
     }
 
-    fn create_rotating_driver(&self, config: &Value, date_format: &str, max_files: i64) -> Result<Monolog> {
+    fn create_rotating_driver(
+        &self,
+        config: &Value,
+        date_format: &str,
+        max_files: i64,
+    ) -> Result<Monolog> {
         let handler = RotatingFileHandler::new(self.path(config)?, max_files.max(0) as usize)
             .with_date_format(date_format)
             .with_level(self.level(config)?)
@@ -396,7 +444,10 @@ impl LogManager {
     /// `SyslogHandler`, `ErrorLogHandler`, `NullHandler`), configured with
     /// `handler_with` (or `with`).
     fn create_monolog_driver(&self, config: &Value) -> Result<Monolog> {
-        let handler_name = config.get("handler").map(|h| h.to_string_lossy()).unwrap_or_default();
+        let handler_name = config
+            .get("handler")
+            .map(|h| h.to_string_lossy())
+            .unwrap_or_default();
         let with = config
             .get("handler_with")
             .or_else(|| config.get("with"))
@@ -422,8 +473,12 @@ impl LogManager {
             "RotatingFileHandler" => {
                 let filename = argument("filename")
                     .map(|v| PathBuf::from(v.to_string_lossy()))
-                    .ok_or_else(|| InvalidArgumentException::new("RotatingFileHandler requires a filename."))?;
-                let max_files = argument("maxFiles").and_then(ValueExt::to_i64_lossy).unwrap_or(0);
+                    .ok_or_else(|| {
+                        InvalidArgumentException::new("RotatingFileHandler requires a filename.")
+                    })?;
+                let max_files = argument("maxFiles")
+                    .and_then(ValueExt::to_i64_lossy)
+                    .unwrap_or(0);
                 Arc::new(
                     RotatingFileHandler::new(filename, max_files.max(0) as usize)
                         .with_level(level)
@@ -431,11 +486,16 @@ impl LogManager {
                 )
             }
             "SyslogUdpHandler" => {
-                let host = argument("host").map(|v| v.to_string_lossy()).unwrap_or_default();
-                let port = argument("port").and_then(ValueExt::to_i64_lossy).unwrap_or(514);
-                let mut handler = SyslogUdpHandler::new(&host, port.clamp(0, u16::MAX as i64) as u16)
-                    .with_level(level)
-                    .with_bubble(bubble);
+                let host = argument("host")
+                    .map(|v| v.to_string_lossy())
+                    .unwrap_or_default();
+                let port = argument("port")
+                    .and_then(ValueExt::to_i64_lossy)
+                    .unwrap_or(514);
+                let mut handler =
+                    SyslogUdpHandler::new(&host, port.clamp(0, u16::MAX as i64) as u16)
+                        .with_level(level)
+                        .with_bubble(bubble);
                 if let Some(facility) = argument("facility") {
                     handler = handler.with_facility(syslog_facility(facility));
                 }
@@ -447,11 +507,21 @@ impl LogManager {
             "SyslogHandler" => {
                 let ident = argument("ident")
                     .map(|v| v.to_string_lossy())
-                    .unwrap_or_else(|| Str::snake_with(&self.config.string_or("app.name", "Laravel"), "-"));
+                    .unwrap_or_else(|| {
+                        Str::snake_with(&self.config.string_or("app.name", "Laravel"), "-")
+                    });
                 let facility = argument("facility").map(syslog_facility).unwrap_or(8);
-                Arc::new(SyslogHandler::new(ident, facility).with_level(level).with_bubble(bubble))
+                Arc::new(
+                    SyslogHandler::new(ident, facility)
+                        .with_level(level)
+                        .with_bubble(bubble),
+                )
             }
-            "ErrorLogHandler" => Arc::new(StreamHandler::stderr().with_level(level).with_bubble(bubble)),
+            "ErrorLogHandler" => Arc::new(
+                StreamHandler::stderr()
+                    .with_level(level)
+                    .with_bubble(bubble),
+            ),
             "NullHandler" => Arc::new(NullHandler::with_level(level)),
             _ => {
                 return Err(InvalidArgumentException::new(format!(
@@ -468,15 +538,21 @@ impl LogManager {
             for processor in processors {
                 let (name, with) = match processor {
                     Value::Object(map) => (
-                        map.get("processor").map(|p| p.to_string_lossy()).unwrap_or_default(),
+                        map.get("processor")
+                            .map(|p| p.to_string_lossy())
+                            .unwrap_or_default(),
                         map.get("with").cloned().unwrap_or(Value::Null),
                     ),
                     other => (other.to_string_lossy(), Value::Null),
                 };
                 match class_basename(&name).as_str() {
                     "PsrLogMessageProcessor" => {
-                        let remove = with.get("removeUsedContextFields").is_some_and(ValueExt::truthy);
-                        monolog.push_processor(PsrLogMessageProcessor::new().remove_used_context_fields(remove));
+                        let remove = with
+                            .get("removeUsedContextFields")
+                            .is_some_and(ValueExt::truthy);
+                        monolog.push_processor(
+                            PsrLogMessageProcessor::new().remove_used_context_fields(remove),
+                        );
                     }
                     _ => {
                         return Err(InvalidArgumentException::new(format!(
@@ -495,14 +571,21 @@ impl LogManager {
     /// processor when `replace_placeholders` is enabled.
     fn monolog_with(&self, config: &Value, handler: Arc<dyn Handler>) -> Result<Monolog> {
         let monolog = Monolog::new(self.parse_channel(config)).with_handler_arc(handler);
-        if config.get("replace_placeholders").is_some_and(ValueExt::truthy) {
+        if config
+            .get("replace_placeholders")
+            .is_some_and(ValueExt::truthy)
+        {
             monolog.push_processor(PsrLogMessageProcessor::new());
         }
         Ok(monolog)
     }
 
     /// Apply the configured formatter (Laravel's line format by default).
-    fn prepare_handler(&self, handler: Arc<dyn Handler>, config: &Value) -> Result<Arc<dyn Handler>> {
+    fn prepare_handler(
+        &self,
+        handler: Arc<dyn Handler>,
+        config: &Value,
+    ) -> Result<Arc<dyn Handler>> {
         let formatter = config.get("formatter").filter(|f| !f.is_null());
         match formatter.map(|f| f.to_string_lossy()) {
             None => handler.set_formatter(self.formatter()),
@@ -526,7 +609,10 @@ impl LogManager {
                 if let Some(date) = with.get("dateFormat").or_else(|| with.get("date_format")) {
                     formatter = formatter.with_date_format(date.to_string_lossy());
                 }
-                if let Some(allow) = with.get("allowInlineLineBreaks").or_else(|| with.get("allow_inline_line_breaks")) {
+                if let Some(allow) = with
+                    .get("allowInlineLineBreaks")
+                    .or_else(|| with.get("allow_inline_line_breaks"))
+                {
                     formatter = formatter.allow_inline_line_breaks(allow.truthy());
                 }
                 if let Some(ignore) = with
@@ -537,7 +623,10 @@ impl LogManager {
                 }
                 Ok(Arc::new(formatter))
             }
-            _ => Err(InvalidArgumentException::new(format!("Log formatter [{name}] is not supported.")).into()),
+            _ => Err(InvalidArgumentException::new(format!(
+                "Log formatter [{name}] is not supported."
+            ))
+            .into()),
         }
     }
 
@@ -683,7 +772,9 @@ impl LogManager {
     pub fn forget_channel(&self, name: Option<&str>) {
         let name = match name {
             Some(name) => name.trim().to_string(),
-            None => self.get_default_driver().unwrap_or_else(|| "null".to_string()),
+            None => self
+                .get_default_driver()
+                .unwrap_or_else(|| "null".to_string()),
         };
         self.channels.write().unwrap().shift_remove(&name);
     }
@@ -719,7 +810,10 @@ impl LogManager {
 impl fmt::Debug for LogManager {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("LogManager")
-            .field("channels", &self.channels.read().unwrap().keys().collect::<Vec<_>>())
+            .field(
+                "channels",
+                &self.channels.read().unwrap().keys().collect::<Vec<_>>(),
+            )
             .field("shared_context", &self.shared_context.read().unwrap())
             .finish_non_exhaustive()
     }
@@ -727,7 +821,11 @@ impl fmt::Debug for LogManager {
 
 /// `Monolog\Handler\StreamHandler` → `StreamHandler`.
 fn class_basename(name: &str) -> String {
-    name.rsplit(['\\', ':']).next().unwrap_or(name).trim().to_string()
+    name.rsplit(['\\', ':'])
+        .next()
+        .unwrap_or(name)
+        .trim()
+        .to_string()
 }
 
 /// Parse a file permission: an integer (`436`, i.e. PHP's `0664`) or an

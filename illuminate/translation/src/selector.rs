@@ -95,6 +95,12 @@ impl<T> From<&Vec<T>> for ChoiceCount {
     }
 }
 
+impl<T> From<&illuminate_support::Collection<T>> for ChoiceCount {
+    fn from(items: &illuminate_support::Collection<T>) -> Self {
+        ChoiceCount::from(items.count())
+    }
+}
+
 /// Selects the proper translation string based on a number, using
 /// Laravel's syntax:
 ///
@@ -147,12 +153,11 @@ impl MessageSelector {
         let value = captures.get(2)?.as_str();
 
         if let Some((from, to)) = condition.split_once(',') {
-            if to == "*" && php_compare(number, from) != Ordering::Less {
-                return Some(value);
-            } else if from == "*" && php_compare(number, to) != Ordering::Greater {
-                return Some(value);
-            } else if php_compare(number, from) != Ordering::Less
-                && php_compare(number, to) != Ordering::Greater
+            let from_matches = php_compare(number, from) != Ordering::Less;
+            let to_matches = php_compare(number, to) != Ordering::Greater;
+            if (to == "*" && from_matches)
+                || (from == "*" && to_matches)
+                || (from_matches && to_matches)
             {
                 return Some(value);
             }
@@ -171,36 +176,34 @@ impl MessageSelector {
 
         match locale {
             "az" | "az_AZ" | "bo" | "bo_CN" | "bo_IN" | "dz" | "dz_BT" | "id" | "id_ID" | "ja"
-            | "ja_JP" | "jv" | "ka" | "ka_GE" | "km" | "km_KH" | "kn" | "kn_IN" | "ko" | "ko_KR"
-            | "ms" | "ms_MY" | "th" | "th_TH" | "tr" | "tr_CY" | "tr_TR" | "vi" | "vi_VN" | "zh"
-            | "zh_CN" | "zh_HK" | "zh_SG" | "zh_TW" => 0,
+            | "ja_JP" | "jv" | "ka" | "ka_GE" | "km" | "km_KH" | "kn" | "kn_IN" | "ko"
+            | "ko_KR" | "ms" | "ms_MY" | "th" | "th_TH" | "tr" | "tr_CY" | "tr_TR" | "vi"
+            | "vi_VN" | "zh" | "zh_CN" | "zh_HK" | "zh_SG" | "zh_TW" => 0,
 
-            "af" | "af_ZA" | "bn" | "bn_BD" | "bn_IN" | "bg" | "bg_BG" | "ca" | "ca_AD" | "ca_ES"
-            | "ca_FR" | "ca_IT" | "da" | "da_DK" | "de" | "de_AT" | "de_BE" | "de_CH" | "de_DE"
-            | "de_LI" | "de_LU" | "el" | "el_CY" | "el_GR" | "en" | "en_AG" | "en_AU" | "en_BW"
-            | "en_CA" | "en_DK" | "en_GB" | "en_HK" | "en_IE" | "en_IN" | "en_NG" | "en_NZ"
-            | "en_PH" | "en_SG" | "en_US" | "en_ZA" | "en_ZM" | "en_ZW" | "eo" | "eo_US" | "es"
-            | "es_AR" | "es_BO" | "es_CL" | "es_CO" | "es_CR" | "es_CU" | "es_DO" | "es_EC"
-            | "es_ES" | "es_GT" | "es_HN" | "es_MX" | "es_NI" | "es_PA" | "es_PE" | "es_PR"
-            | "es_PY" | "es_SV" | "es_US" | "es_UY" | "es_VE" | "et" | "et_EE" | "eu" | "eu_ES"
-            | "eu_FR" | "fa" | "fa_IR" | "fi" | "fi_FI" | "fo" | "fo_FO" | "fur" | "fur_IT"
-            | "fy" | "fy_DE" | "fy_NL" | "gl" | "gl_ES" | "gu" | "gu_IN" | "ha" | "ha_NG" | "he"
-            | "he_IL" | "hu" | "hu_HU" | "is" | "is_IS" | "it" | "it_CH" | "it_IT" | "ku"
-            | "ku_TR" | "lb" | "lb_LU" | "ml" | "ml_IN" | "mn" | "mn_MN" | "mr" | "mr_IN" | "nah"
-            | "nb" | "nb_NO" | "ne" | "ne_NP" | "nl" | "nl_AW" | "nl_BE" | "nl_NL" | "nn"
-            | "nn_NO" | "no" | "om" | "om_ET" | "om_KE" | "or" | "or_IN" | "pa" | "pa_IN"
-            | "pa_PK" | "pap" | "pap_AN" | "pap_AW" | "pap_CW" | "ps" | "ps_AF" | "pt" | "pt_BR"
-            | "pt_PT" | "so" | "so_DJ" | "so_ET" | "so_KE" | "so_SO" | "sq" | "sq_AL" | "sq_MK"
-            | "sv" | "sv_FI" | "sv_SE" | "sw" | "sw_KE" | "sw_TZ" | "ta" | "ta_IN" | "ta_LK"
-            | "te" | "te_IN" | "tk" | "tk_TM" | "ur" | "ur_IN" | "ur_PK" | "zu" | "zu_ZA" => {
-                usize::from(n != 1.0)
-            }
+            "af" | "af_ZA" | "bn" | "bn_BD" | "bn_IN" | "bg" | "bg_BG" | "ca" | "ca_AD"
+            | "ca_ES" | "ca_FR" | "ca_IT" | "da" | "da_DK" | "de" | "de_AT" | "de_BE" | "de_CH"
+            | "de_DE" | "de_LI" | "de_LU" | "el" | "el_CY" | "el_GR" | "en" | "en_AG" | "en_AU"
+            | "en_BW" | "en_CA" | "en_DK" | "en_GB" | "en_HK" | "en_IE" | "en_IN" | "en_NG"
+            | "en_NZ" | "en_PH" | "en_SG" | "en_US" | "en_ZA" | "en_ZM" | "en_ZW" | "eo"
+            | "eo_US" | "es" | "es_AR" | "es_BO" | "es_CL" | "es_CO" | "es_CR" | "es_CU"
+            | "es_DO" | "es_EC" | "es_ES" | "es_GT" | "es_HN" | "es_MX" | "es_NI" | "es_PA"
+            | "es_PE" | "es_PR" | "es_PY" | "es_SV" | "es_US" | "es_UY" | "es_VE" | "et"
+            | "et_EE" | "eu" | "eu_ES" | "eu_FR" | "fa" | "fa_IR" | "fi" | "fi_FI" | "fo"
+            | "fo_FO" | "fur" | "fur_IT" | "fy" | "fy_DE" | "fy_NL" | "gl" | "gl_ES" | "gu"
+            | "gu_IN" | "ha" | "ha_NG" | "he" | "he_IL" | "hu" | "hu_HU" | "is" | "is_IS"
+            | "it" | "it_CH" | "it_IT" | "ku" | "ku_TR" | "lb" | "lb_LU" | "ml" | "ml_IN"
+            | "mn" | "mn_MN" | "mr" | "mr_IN" | "nah" | "nb" | "nb_NO" | "ne" | "ne_NP" | "nl"
+            | "nl_AW" | "nl_BE" | "nl_NL" | "nn" | "nn_NO" | "no" | "om" | "om_ET" | "om_KE"
+            | "or" | "or_IN" | "pa" | "pa_IN" | "pa_PK" | "pap" | "pap_AN" | "pap_AW"
+            | "pap_CW" | "ps" | "ps_AF" | "pt" | "pt_BR" | "pt_PT" | "so" | "so_DJ" | "so_ET"
+            | "so_KE" | "so_SO" | "sq" | "sq_AL" | "sq_MK" | "sv" | "sv_FI" | "sv_SE" | "sw"
+            | "sw_KE" | "sw_TZ" | "ta" | "ta_IN" | "ta_LK" | "te" | "te_IN" | "tk" | "tk_TM"
+            | "ur" | "ur_IN" | "ur_PK" | "zu" | "zu_ZA" => usize::from(n != 1.0),
 
             "am" | "am_ET" | "bh" | "fil" | "fil_PH" | "fr" | "fr_BE" | "fr_CA" | "fr_CH"
-            | "fr_FR" | "fr_LU" | "gun" | "hi" | "hi_IN" | "hy" | "hy_AM" | "ln" | "ln_CD" | "mg"
-            | "mg_MG" | "nso" | "nso_ZA" | "ti" | "ti_ER" | "ti_ET" | "wa" | "wa_BE" | "xbr" => {
-                usize::from(!(n == 0.0 || n == 1.0))
-            }
+            | "fr_FR" | "fr_LU" | "gun" | "hi" | "hi_IN" | "hy" | "hy_AM" | "ln" | "ln_CD"
+            | "mg" | "mg_MG" | "nso" | "nso_ZA" | "ti" | "ti_ER" | "ti_ET" | "wa" | "wa_BE"
+            | "xbr" => usize::from(!(n == 0.0 || n == 1.0)),
 
             "be" | "be_BY" | "bs" | "bs_BA" | "hr" | "hr_HR" | "ru" | "ru_RU" | "ru_UA" | "sr"
             | "sr_ME" | "sr_RS" | "uk" | "uk_UA" => {
@@ -306,9 +309,9 @@ impl MessageSelector {
                 }
             }
 
-            "ar" | "ar_AE" | "ar_BH" | "ar_DZ" | "ar_EG" | "ar_IN" | "ar_IQ" | "ar_JO" | "ar_KW"
-            | "ar_LB" | "ar_LY" | "ar_MA" | "ar_OM" | "ar_QA" | "ar_SA" | "ar_SD" | "ar_SS"
-            | "ar_SY" | "ar_TN" | "ar_YE" => {
+            "ar" | "ar_AE" | "ar_BH" | "ar_DZ" | "ar_EG" | "ar_IN" | "ar_IQ" | "ar_JO"
+            | "ar_KW" | "ar_LB" | "ar_LY" | "ar_MA" | "ar_OM" | "ar_QA" | "ar_SA" | "ar_SD"
+            | "ar_SS" | "ar_SY" | "ar_TN" | "ar_YE" => {
                 if n == 0.0 {
                     0
                 } else if n == 1.0 {
@@ -346,10 +349,10 @@ pub(crate) fn php_number(number: f64) -> String {
 /// Compare a number with a string the way PHP 8 does: numerically when the
 /// string is numeric, otherwise as strings.
 fn php_compare(number: f64, value: &str) -> Ordering {
-    if NUMERIC.is_match(value) {
-        if let Ok(parsed) = value.trim().parse::<f64>() {
-            return number.partial_cmp(&parsed).unwrap_or(Ordering::Less);
-        }
+    if NUMERIC.is_match(value)
+        && let Ok(parsed) = value.trim().parse::<f64>()
+    {
+        return number.partial_cmp(&parsed).unwrap_or(Ordering::Less);
     }
     php_number(number).as_str().cmp(value)
 }
@@ -403,7 +406,11 @@ mod tests {
             ("first", "[4,*]first | [1,3]second", 100.0),
         ];
         for (expected, line, number) in cases {
-            assert_eq!(choose(line, *number), *expected, "choose({line:?}, {number})");
+            assert_eq!(
+                choose(line, *number),
+                *expected,
+                "choose({line:?}, {number})"
+            );
         }
     }
 
@@ -412,7 +419,10 @@ mod tests {
         assert_eq!(choose("{0}first|{1}second|third", 5.0), "second");
         assert_eq!(choose("{1} one|{2} two", 5.0), " two");
         assert_eq!(choose("{-1}negative|{0}zero", -1.0), "negative");
-        assert_eq!(MessageSelector.choose("{0} none|[1,*] :count apples", 0.0, "ru"), "none");
+        assert_eq!(
+            MessageSelector.choose("{0} none|[1,*] :count apples", 0.0, "ru"),
+            "none"
+        );
     }
 
     #[test]

@@ -66,7 +66,8 @@ impl Log {
             return manager;
         }
         let container = Container::get_instance();
-        container.singleton_if::<LogManager>(|app| Arc::new(LogManager::new(config_repository(app))));
+        container
+            .singleton_if::<LogManager>(|app| Arc::new(LogManager::new(config_repository(app))));
         container.make::<LogManager>()
     }
 

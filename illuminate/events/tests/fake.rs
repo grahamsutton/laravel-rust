@@ -1,6 +1,6 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use illuminate_container::Container;
 use illuminate_events::{Dispatcher, Event, Listener, async_trait};
@@ -184,9 +184,8 @@ async fn assert_listening_reports_missing_listeners() {
     Event::fake();
     Event::listen(|_: &OrderShipped| async {});
 
-    let message = panic_message(|| {
-        Event::assert_listening::<OrderShipped, SendShipmentNotification>()
-    });
+    let message =
+        panic_message(|| Event::assert_listening::<OrderShipped, SendShipmentNotification>());
     assert_eq!(
         message,
         format!(
@@ -253,6 +252,23 @@ async fn fake_for_restores_the_real_dispatcher() {
 }
 
 #[tokio::test]
+async fn fake_for_restores_the_real_dispatcher_after_a_panic() {
+    use futures::FutureExt;
+
+    let (_container, _guard) = container();
+    let real = Event::dispatcher();
+
+    let outcome = AssertUnwindSafe(Event::fake_for(|| async {
+        panic!("the test failed");
+    }))
+    .catch_unwind()
+    .await;
+
+    assert!(outcome.is_err());
+    assert!(Arc::ptr_eq(&Event::dispatcher(), &real));
+}
+
+#[tokio::test]
 async fn faking_twice_wraps_the_real_dispatcher() {
     let (_container, _guard) = container();
     let real = Event::dispatcher();
@@ -285,6 +301,9 @@ async fn dispatched_events_lists_names_in_order() {
     Event::dispatch_named("audit", json!(null)).await.unwrap();
     assert_eq!(
         fake.dispatched_events(),
-        vec![std::any::type_name::<OrderCreated>().to_string(), "audit".to_string()]
+        vec![
+            std::any::type_name::<OrderCreated>().to_string(),
+            "audit".to_string()
+        ]
     );
 }

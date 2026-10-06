@@ -49,11 +49,13 @@ pub(crate) struct EventFake {
 
 impl EventFake {
     fn matches(matchers: &[Matcher], type_id: Option<TypeId>, name: Option<&str>) -> bool {
-        matchers.iter().any(|matcher| match (matcher, type_id, name) {
-            (Matcher::Type(expected), Some(actual), _) => *expected == actual,
-            (Matcher::Name(pattern), _, Some(name)) => Str::is(pattern, name),
-            _ => false,
-        })
+        matchers
+            .iter()
+            .any(|matcher| match (matcher, type_id, name) {
+                (Matcher::Type(expected), Some(actual), _) => *expected == actual,
+                (Matcher::Name(pattern), _, Some(name)) => Str::is(pattern, name),
+                _ => false,
+            })
     }
 
     fn should_fake(&self, type_id: Option<TypeId>, name: Option<&str>) -> bool {
@@ -126,9 +128,9 @@ impl Dispatcher {
 
     #[track_caller]
     fn fake_state(&self) -> &EventFake {
-        self.fake
-            .as_ref()
-            .expect("Event assertions require a fake dispatcher. Did you forget to call Event::fake()?")
+        self.fake.as_ref().expect(
+            "Event assertions require a fake dispatcher. Did you forget to call Event::fake()?",
+        )
     }
 
     /// Dispatch the event `E` normally instead of faking it.
@@ -299,7 +301,10 @@ impl Dispatcher {
 
     /// Assert that no event `E` passing the given truth test was dispatched.
     #[track_caller]
-    pub fn assert_not_dispatched_with<E: Send + Sync + 'static>(&self, callback: impl Fn(&E) -> bool) {
+    pub fn assert_not_dispatched_with<E: Send + Sync + 'static>(
+        &self,
+        callback: impl Fn(&E) -> bool,
+    ) {
         assert!(
             !self.dispatched::<E>().iter().any(|event| callback(event)),
             "The unexpected [{}] event was dispatched.",

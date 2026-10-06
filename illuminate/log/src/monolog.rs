@@ -134,7 +134,12 @@ impl Monolog {
     }
 
     /// Log a record "now". Returns whether any handler handled it.
-    pub fn add_record(&self, level: Level, message: impl Into<String>, context: Context) -> Result<bool> {
+    pub fn add_record(
+        &self,
+        level: Level,
+        message: impl Into<String>,
+        context: Context,
+    ) -> Result<bool> {
         self.add_record_at(level, message, context, Carbon::now())
     }
 
