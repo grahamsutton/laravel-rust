@@ -29,6 +29,8 @@ pub fn view_renderer() -> Option<ViewRenderer> {
 pub fn boot() {
     wire_exception_handler();
     wire_pagination();
+    wire_validation();
+    wire_filesystem();
 }
 
 /// Report exceptions through the log, and teach the handler about the
@@ -119,4 +121,66 @@ fn wire_pagination() {
         let line = illuminate_translation::Lang::get(key);
         (line != key).then_some(line)
     });
+}
+
+/// Validation messages come from the application's `lang` directory first,
+/// falling back to Laravel's English lines.
+fn wire_validation() {
+    struct TranslatedMessages;
+
+    impl illuminate_validation::MessageResolver for TranslatedMessages {
+        fn get(&self, key: &str) -> Option<Value> {
+            if illuminate_translation::Lang::has(key) {
+                let line = illuminate_translation::Lang::get_value(key, &Value::Object(Map::new()), None, true);
+                if !line.is_null() {
+                    return Some(line);
+                }
+            }
+            illuminate_validation::EnglishMessages.get(key)
+        }
+    }
+
+    illuminate_validation::Validator::resolve_messages_using(TranslatedMessages);
+}
+
+/// Local disks configured with `serve => true` hand out signed URLs, and get
+/// a `storage.{disk}` route serving their files.
+fn wire_filesystem() {
+    use illuminate_filesystem::{ServeFile, Storage, UrlSigner};
+    use illuminate_http::Request;
+    use illuminate_routing::{Path, Route, URL};
+    use illuminate_support::{Carbon, Result};
+
+    struct RoutingUrlSigner;
+
+    impl UrlSigner for RoutingUrlSigner {
+        fn temporary_signed_route(&self, name: &str, expiration: Carbon, parameters: Value) -> Result<String> {
+            // Signed relative to the app, so it survives proxies and host changes.
+            let relative = URL::signed_route_with(name, parameters, Some(expiration), false)?;
+            Ok(URL::to(&relative))
+        }
+
+        fn has_valid_relative_signature(&self, request: &Request) -> bool {
+            URL::has_valid_relative_signature(request)
+        }
+    }
+
+    let Some(app) = crate::Application::try_current() else {
+        return;
+    };
+    app.container().instance_arc::<dyn UrlSigner>(Arc::new(RoutingUrlSigner));
+
+    let Ok(disks) = Storage::manager().and_then(|manager| manager.served_disks()) else {
+        return;
+    };
+    let is_production = app.is_production();
+    for disk in disks {
+        let serve = Arc::new(ServeFile::new(disk.disk.clone(), disk.config.clone(), is_production));
+        Route::get(&disk.route_uri(), move |request: Request, Path(path): Path<String>| {
+            let serve = serve.clone();
+            async move { serve.handle(&request, &path).await }
+        })
+        .where_("path", ".*")
+        .name(&disk.route_name());
+    }
 }

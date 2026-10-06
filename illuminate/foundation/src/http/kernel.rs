@@ -82,6 +82,14 @@ impl HttpKernel {
 
     /// Handle an incoming request.
     pub async fn handle(&self, request: Request) -> Response {
+        // Like PHP's fresh process per request, locale changes made while
+        // handling a request don't leak into the next one.
+        let response = illuminate_translation::locale_scope(self.send_through_pipeline(request)).await;
+        self.app.container().forget_scoped_instances();
+        response
+    }
+
+    async fn send_through_pipeline(&self, request: Request) -> Response {
         let pipeline = self.pipeline.clone();
         let scoped = request.clone();
         let result = with_request(scoped.clone(), async move {
@@ -89,7 +97,7 @@ impl HttpKernel {
         })
         .await;
 
-        let response = match result {
+        match result {
             Ok(response) => response,
             Err(panic) => {
                 let message = panic
@@ -100,10 +108,7 @@ impl HttpKernel {
                 let error: Error = HandlerPanicked { message }.into();
                 with_request(request.clone(), async move { render_exception(error) }).await
             }
-        };
-
-        self.app.container().forget_scoped_instances();
-        response
+        }
     }
 
     /// Run any "terminable" middleware after the response was sent.

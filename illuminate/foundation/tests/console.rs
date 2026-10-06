@@ -33,7 +33,8 @@ async fn framework_commands_are_available() {
     app.artisan("route:list")
         .expects_output_to_contain("users/{user}")
         .expects_output_to_contain("users.show")
-        .expects_output_to_contain("Showing [2] routes")
+        .expects_output_to_contain("storage.local")
+        .expects_output_to_contain("Showing [3] routes")
         .assert_successful()
         .await;
     app.artisan("about")

@@ -69,3 +69,22 @@ async fn it_handles_requests_through_the_full_stack() {
     let response = kernel.handle(Request::create("/panic", "GET")).await;
     assert_eq!(response.status_code(), 500);
 }
+
+#[tokio::test]
+async fn local_disks_serve_files_through_signed_urls() {
+    use illuminate_filesystem::Storage;
+    use illuminate_support::Carbon;
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = illuminate_foundation::testing::TestApp::new(illuminate_foundation::Application::configure_detached(dir.path()));
+
+    Storage::disk("local").unwrap().put("reports/q1.txt", "Revenue is up").await.unwrap();
+    let url = Storage::disk("local")
+        .unwrap()
+        .temporary_url("reports/q1.txt", Carbon::now().add_minutes(5))
+        .unwrap();
+    assert!(url.starts_with("http://localhost/storage/reports/q1.txt?expires="));
+
+    app.get(&url).await.assert_ok().assert_see("Revenue is up");
+    app.get("/storage/reports/q1.txt").await.assert_forbidden();
+}
