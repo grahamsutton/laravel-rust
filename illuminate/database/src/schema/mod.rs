@@ -23,9 +23,9 @@ use std::future::Future;
 use illuminate_support::{Result, Value, ValueExt};
 
 pub use blueprint::{
-    Blueprint, ColumnAttributes, ColumnDefault, ColumnDefinition, Command, CommandAttributes, CommandDefinition,
-    ForeignKeyDefinition, IndexDefinition, IndexFlag, default_string_length, set_default_morph_key_type,
-    set_default_string_length,
+    Blueprint, ColumnAttributes, ColumnDefault, ColumnDefinition, Command, CommandAttributes,
+    CommandDefinition, ForeignKeyDefinition, IndexDefinition, IndexFlag, default_string_length,
+    set_default_morph_key_type, set_default_string_length,
 };
 pub use grammar::SchemaGrammar;
 pub use state::TableState;
@@ -154,7 +154,9 @@ pub struct ForeignKeyInfo {
 }
 
 fn string(row: &Value, key: &str) -> String {
-    row.get(key).map(|v| v.to_string_lossy()).unwrap_or_default()
+    row.get(key)
+        .map(|v| v.to_string_lossy())
+        .unwrap_or_default()
 }
 
 fn optional_string(row: &Value, key: &str) -> Option<String> {
@@ -218,7 +220,10 @@ impl SchemaBuilder {
 
     fn prefixed(&self, table: &str) -> (Option<String>, String) {
         let (schema, table) = SchemaGrammar::parse_schema_and_table(table);
-        (schema, format!("{}{table}", self.connection.get_table_prefix()))
+        (
+            schema,
+            format!("{}{table}", self.connection.get_table_prefix()),
+        )
     }
 
     /// Create a new blueprint for the table (index names honour `prefix_indexes`).
@@ -240,7 +245,7 @@ impl SchemaBuilder {
         } else {
             None
         };
-        for statement in blueprint.to_sql_with_state(&grammar, state)? {
+        for statement in blueprint.compile_with_state(&grammar, state)? {
             self.connection.statement(&statement, ()).await?;
         }
         Ok(())
@@ -304,7 +309,9 @@ impl SchemaBuilder {
     /// Determine if the given table exists.
     pub async fn has_table(&self, table: &str) -> Result<bool> {
         let (schema, table) = self.prefixed(table);
-        let sql = self.grammar().compile_table_exists(schema.as_deref(), &table);
+        let sql = self
+            .grammar()
+            .compile_table_exists(schema.as_deref(), &table);
         Ok(boolean(
             &serde_json::json!({"exists": self.connection.scalar(&sql, ()).await?}),
             "exists",
@@ -323,7 +330,10 @@ impl SchemaBuilder {
 
     /// Get the tables of the current schema.
     pub async fn get_tables(&self) -> Result<Vec<TableInfo>> {
-        let rows = self.connection.select(&self.grammar().compile_tables(), ()).await?;
+        let rows = self
+            .connection
+            .select(&self.grammar().compile_tables(), ())
+            .await?;
         Ok(rows
             .iter()
             .map(|row| {
@@ -347,12 +357,19 @@ impl SchemaBuilder {
 
     /// Get the names of the tables of the current schema.
     pub async fn get_table_listing(&self) -> Result<Vec<String>> {
-        Ok(self.get_tables().await?.into_iter().map(|t| t.name).collect())
+        Ok(self
+            .get_tables()
+            .await?
+            .into_iter()
+            .map(|t| t.name)
+            .collect())
     }
 
     /// Get the views of the current schema.
     pub async fn get_views(&self) -> Result<Vec<Value>> {
-        self.connection.select(&self.grammar().compile_views(), ()).await
+        self.connection
+            .select(&self.grammar().compile_views(), ())
+            .await
     }
 
     /// Get the columns of a table.
@@ -361,11 +378,17 @@ impl SchemaBuilder {
         let driver = self.connection.driver();
         let rows = self
             .connection
-            .select(&self.grammar().compile_columns(schema.as_deref(), &table), ())
+            .select(
+                &self.grammar().compile_columns(schema.as_deref(), &table),
+                (),
+            )
             .await?;
 
-        let sqlite_single_primary =
-            rows.iter().filter(|r| r.get("primary").and_then(|p| p.to_i64_lossy()).unwrap_or(0) > 0).count() == 1;
+        let sqlite_single_primary = rows
+            .iter()
+            .filter(|r| r.get("primary").and_then(|p| p.to_i64_lossy()).unwrap_or(0) > 0)
+            .count()
+            == 1;
 
         Ok(rows
             .iter()
@@ -373,7 +396,11 @@ impl SchemaBuilder {
                 Driver::Sqlite => {
                     let type_ = string(row, "type").to_lowercase();
                     let type_name = type_.split('(').next().unwrap_or_default().to_string();
-                    let primary = row.get("primary").and_then(|p| p.to_i64_lossy()).unwrap_or(0) > 0;
+                    let primary = row
+                        .get("primary")
+                        .and_then(|p| p.to_i64_lossy())
+                        .unwrap_or(0)
+                        > 0;
                     ColumnInfo {
                         name: string(row, "name"),
                         auto_increment: sqlite_single_primary && primary && type_ == "integer",
@@ -403,7 +430,9 @@ impl SchemaBuilder {
                         type_: string(row, "type"),
                         collation: optional_string(row, "collation"),
                         nullable: boolean(row, "nullable"),
-                        auto_increment: default.as_deref().is_some_and(|d| d.starts_with("nextval(")),
+                        auto_increment: default
+                            .as_deref()
+                            .is_some_and(|d| d.starts_with("nextval(")),
                         default,
                         comment: optional_string(row, "comment"),
                     }
@@ -414,7 +443,12 @@ impl SchemaBuilder {
 
     /// Get the column names of a table.
     pub async fn get_column_listing(&self, table: &str) -> Result<Vec<String>> {
-        Ok(self.get_columns(table).await?.into_iter().map(|c| c.name).collect())
+        Ok(self
+            .get_columns(table)
+            .await?
+            .into_iter()
+            .map(|c| c.name)
+            .collect())
     }
 
     /// Determine if the given table has a given column.
@@ -462,7 +496,10 @@ impl SchemaBuilder {
         let driver = self.connection.driver();
         let rows = self
             .connection
-            .select(&self.grammar().compile_indexes(schema.as_deref(), &table), ())
+            .select(
+                &self.grammar().compile_indexes(schema.as_deref(), &table),
+                (),
+            )
             .await?;
         let mut indexes: Vec<IndexInfo> = rows
             .iter()
@@ -488,12 +525,22 @@ impl SchemaBuilder {
 
     /// Get the names of the indexes of a table.
     pub async fn get_index_listing(&self, table: &str) -> Result<Vec<String>> {
-        Ok(self.get_indexes(table).await?.into_iter().map(|i| i.name).collect())
+        Ok(self
+            .get_indexes(table)
+            .await?
+            .into_iter()
+            .map(|i| i.name)
+            .collect())
     }
 
     /// Determine if the table has an index (by name, or by its columns),
     /// optionally of a given type (`primary`, `unique`, ...).
-    pub async fn has_index(&self, table: &str, index: impl Into<IndexName>, kind: Option<&str>) -> Result<bool> {
+    pub async fn has_index(
+        &self,
+        table: &str,
+        index: impl Into<IndexName>,
+        kind: Option<&str>,
+    ) -> Result<bool> {
         let index = index.into();
         let kind = kind.map(|k| k.to_lowercase());
         Ok(self.get_indexes(table).await?.iter().any(|value| {
@@ -517,7 +564,12 @@ impl SchemaBuilder {
         let driver = self.connection.driver();
         let rows = self
             .connection
-            .select(&self.grammar().compile_foreign_keys(schema.as_deref(), &table), ())
+            .select(
+                &self
+                    .grammar()
+                    .compile_foreign_keys(schema.as_deref(), &table),
+                (),
+            )
             .await?;
         Ok(rows
             .iter()
@@ -536,10 +588,14 @@ impl SchemaBuilder {
     /// Determine if the table has a foreign key (by name, or by its columns).
     pub async fn has_foreign_key(&self, table: &str, key: impl Into<IndexName>) -> Result<bool> {
         let key = key.into();
-        Ok(self.get_foreign_keys(table).await?.iter().any(|fk| match &key {
-            IndexName::Name(name) => fk.name.as_deref() == Some(name.as_str()),
-            IndexName::Columns(columns) => &fk.columns == columns,
-        }))
+        Ok(self
+            .get_foreign_keys(table)
+            .await?
+            .iter()
+            .any(|fk| match &key {
+                IndexName::Name(name) => fk.name.as_deref() == Some(name.as_str()),
+                IndexName::Columns(columns) => &fk.columns == columns,
+            }))
     }
 
     /// Drop all tables from the database.
@@ -561,7 +617,10 @@ impl SchemaBuilder {
                 self.disable_foreign_key_constraints().await?;
                 for table in &tables {
                     self.connection
-                        .statement(&grammar.compile_drop_all_tables(std::slice::from_ref(table)), ())
+                        .statement(
+                            &grammar.compile_drop_all_tables(std::slice::from_ref(table)),
+                            (),
+                        )
                         .await?;
                 }
                 self.enable_foreign_key_constraints().await?;
@@ -586,7 +645,12 @@ impl SchemaBuilder {
 
     /// Drop all views from the database.
     pub async fn drop_all_views(&self) -> Result<()> {
-        let views: Vec<String> = self.get_views().await?.iter().map(|v| string(v, "name")).collect();
+        let views: Vec<String> = self
+            .get_views()
+            .await?
+            .iter()
+            .map(|v| string(v, "name"))
+            .collect();
         if views.is_empty() {
             return Ok(());
         }
@@ -594,7 +658,10 @@ impl SchemaBuilder {
         if self.connection.driver() == Driver::Sqlite {
             for view in &views {
                 self.connection
-                    .statement(&grammar.compile_drop_all_views(std::slice::from_ref(view)), ())
+                    .statement(
+                        &grammar.compile_drop_all_views(std::slice::from_ref(view)),
+                        (),
+                    )
                     .await?;
             }
             return Ok(());
@@ -615,7 +682,10 @@ impl SchemaBuilder {
     /// Disable foreign key constraints.
     pub async fn disable_foreign_key_constraints(&self) -> Result<bool> {
         self.connection
-            .statement(&self.grammar().compile_disable_foreign_key_constraints(), ())
+            .statement(
+                &self.grammar().compile_disable_foreign_key_constraints(),
+                (),
+            )
             .await
     }
 
@@ -637,7 +707,9 @@ impl SchemaBuilder {
             Driver::Sqlite => Ok(std::fs::write(name, b"").is_ok()),
             _ => {
                 let wrapped = self.connection.query_grammar().wrap_value(name);
-                self.connection.statement(&format!("create database {wrapped}"), ()).await
+                self.connection
+                    .statement(&format!("create database {wrapped}"), ())
+                    .await
             }
         }
     }
@@ -667,11 +739,15 @@ pub struct Schema;
 impl Schema {
     /// Get a schema builder instance for a connection.
     pub fn connection(name: &str) -> SchemaBuilder {
-        DatabaseManager::resolve().connection(name).get_schema_builder()
+        DatabaseManager::resolve()
+            .connection(name)
+            .get_schema_builder()
     }
 
     fn builder() -> SchemaBuilder {
-        DatabaseManager::resolve().default_connection().get_schema_builder()
+        DatabaseManager::resolve()
+            .default_connection()
+            .get_schema_builder()
     }
 
     /// Set the default string length for migrations.
@@ -805,6 +881,8 @@ impl Schema {
         F: FnOnce() -> Fut,
         Fut: Future<Output = Result<T>>,
     {
-        Self::builder().without_foreign_key_constraints(callback).await
+        Self::builder()
+            .without_foreign_key_constraints(callback)
+            .await
     }
 }

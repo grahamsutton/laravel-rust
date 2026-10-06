@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use illuminate_support::{Carbon, Result, Str};
+use illuminate_support::{Carbon, Result, Str, ValueExt};
 
 use crate::exception::{TypeError, error};
 use crate::expr::eval::call_callable;
@@ -312,7 +312,7 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
         "urlencode" => s(url_encode(&str_arg(args, 0)?, true)),
         "rawurlencode" => s(url_encode(&str_arg(args, 0)?, false)),
         "urldecode" | "rawurldecode" => s(url_decode(&str_arg(args, 0)?, name == "urldecode")),
-        "http_build_query" => s(http_build_query(&array_arg(args, 0, name)?, None)),
+        "http_build_query" => s(http_build_query(&*array_arg(args, 0, name)?, None)),
         "ctype_digit" | "ctype_alpha" | "ctype_alnum" | "ctype_upper" | "ctype_lower" | "ctype_space" => {
             let ViewValue::Str(value) = a0 else { return Ok(ViewValue::Bool(false)) };
             let check: fn(&char) -> bool = match name {
@@ -448,7 +448,7 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
         "array_merge" => {
             let mut merged = ViewArray::new();
             for (index, _) in args.iter().enumerate() {
-                merge_into(&mut merged, &array_arg(args, index, name)?);
+                merge_into(&mut merged, &*array_arg(args, index, name)?);
             }
             ViewValue::from(merged)
         }

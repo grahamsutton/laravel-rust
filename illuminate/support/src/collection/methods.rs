@@ -23,13 +23,13 @@ impl<T> Collection<T> {
     /// assert_eq!(collect(vec![2, 4, 6, 8]).after_fn(|n| *n > 5), Some(&8));
     /// ```
     pub fn after_fn(&self, mut callback: impl FnMut(&T) -> bool) -> Option<&T> {
-        let index = self.items.iter().position(|item| callback(item))?;
+        let index = self.items.iter().position(&mut callback)?;
         self.items.get(index + 1)
     }
 
     /// Get the item before the first item passing the truth test.
     pub fn before_fn(&self, mut callback: impl FnMut(&T) -> bool) -> Option<&T> {
-        let index = self.items.iter().position(|item| callback(item))?;
+        let index = self.items.iter().position(&mut callback)?;
         index.checked_sub(1).and_then(|i| self.items.get(i))
     }
 
@@ -889,7 +889,7 @@ impl<T: Serialize> Collection<T> {
         }
         values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
         let mid = values.len() / 2;
-        Some(if values.len() % 2 == 0 {
+        Some(if values.len().is_multiple_of(2) {
             (values[mid - 1] + values[mid]) / 2.0
         } else {
             values[mid]
@@ -1205,7 +1205,7 @@ mod tests {
         assert_eq!(Collection::range_step(0, 10, 5).all(), &[0, 5, 10]);
         let map: IndexMap<&str, i32> = IndexMap::from([("a", 1)]);
         assert_eq!(Collection::from(map).into_map()["a"], 1);
-        assert_eq!(collect(vec![3, 1]).doesnt_contain_fn(|n| *n > 5), true);
+        assert!(collect(vec![3, 1]).doesnt_contain_fn(|n| *n > 5));
         assert!(collect(vec![3, 1]).some(|n| *n > 2));
     }
 }

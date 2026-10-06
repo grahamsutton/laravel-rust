@@ -88,7 +88,8 @@ impl DatabaseManager {
             return Connection::unconfigured(name, self.listeners.clone());
         }
         let config = Self::configure(name, config);
-        let connection = Connection::with_listeners(name.to_string(), config, self.listeners.clone());
+        let connection =
+            Connection::with_listeners(name.to_string(), config, self.listeners.clone());
         self.connections
             .write()
             .unwrap()

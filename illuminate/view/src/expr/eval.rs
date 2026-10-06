@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use illuminate_support::{Result, Str};
+use illuminate_support::Result;
 
 use super::{Arg, BinaryOp, CastType, ClosureDef, Expr, Stmt, UnaryOp};
 use crate::exception::{BadMethodCallException, TypeError, error};
@@ -19,10 +19,6 @@ pub(crate) struct Scope {
 }
 
 impl Scope {
-    pub(crate) fn new() -> Self {
-        Self::default()
-    }
-
     pub(crate) fn with_capacity(capacity: usize) -> Self {
         Self { vars: HashMap::with_capacity(capacity) }
     }
@@ -834,11 +830,6 @@ fn constant(name: &str, registry: &Registry) -> Result<ViewValue> {
     Ok(value)
 }
 
-/// `Str::camel` style lookups for "magic" accessor methods.
-pub(crate) fn snake(name: &str) -> String {
-    Str::snake(name)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -852,7 +843,7 @@ mod tests {
     }
 
     fn eval(src: &str) -> ViewValue {
-        let mut scope = Scope::new();
+        let mut scope = Scope::default();
         scope.set("user", ViewValue::from(json!({"name": "Taylor", "roles": ["admin", "dev"], "age": 40})));
         scope.set("items", ViewValue::from(json!([1, 2, 3])));
         scope.set("nothing", ViewValue::Null);
@@ -889,16 +880,16 @@ mod tests {
 
     #[test]
     fn it_reports_undefined_variables() {
-        let mut scope = Scope::new();
+        let mut scope = Scope::default();
         let error = eval_with("$missing + 1", &mut scope).unwrap_err();
         assert_eq!(error.to_string(), "Undefined variable $missing");
-        let error = eval_with("$nothing->name", &mut Scope::new()).unwrap_err();
+        let error = eval_with("$nothing->name", &mut Scope::default()).unwrap_err();
         assert_eq!(error.to_string(), "Undefined variable $nothing");
     }
 
     #[test]
     fn it_reads_properties_of_null_strictly() {
-        let mut scope = Scope::new();
+        let mut scope = Scope::default();
         scope.set("user", ViewValue::Null);
         let error = eval_with("$user->name", &mut scope).unwrap_err();
         assert_eq!(error.to_string(), "Attempt to read property \"name\" on null");
@@ -907,7 +898,7 @@ mod tests {
 
     #[test]
     fn it_assigns_values() {
-        let mut scope = Scope::new();
+        let mut scope = Scope::default();
         let registry = Arc::new(Registry::default());
         let stmts = crate::expr::Parser::statements(
             "$a = 1; $a += 2; $b = []; $b[] = 'x'; $b['k']['j'] = 'y'; $c = 'a'; $c .= 'b'; $i = 0; $i++; ++$i; $d ??= 5; [$p, $q] = [1, 2];",
@@ -926,7 +917,7 @@ mod tests {
 
     #[test]
     fn closures_capture_their_scope() {
-        let mut scope = Scope::new();
+        let mut scope = Scope::default();
         scope.set("factor", ViewValue::Int(3));
         let closure = eval_with("fn ($x) => $x * $factor", &mut scope).unwrap();
         let ViewValue::Closure(closure) = closure else { panic!() };

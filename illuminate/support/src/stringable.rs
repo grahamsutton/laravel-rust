@@ -256,6 +256,23 @@ impl Stringable {
         Self::new(base)
     }
 
+    /// Get the extension of the path (`"jpg"` for `photo.jpg`, empty when there is none).
+    ///
+    /// ```
+    /// use illuminate_support::Str;
+    ///
+    /// assert_eq!(Str::of("/foo/bar/baz.jpg").extension(), "jpg");
+    /// assert_eq!(Str::of("archive.tar.gz").extension(), "gz");
+    /// assert_eq!(Str::of("README").extension(), "");
+    /// ```
+    pub fn extension(self) -> Self {
+        let base = self.basename();
+        match base.value.rsplit_once('.') {
+            Some((_, extension)) => Self::new(extension),
+            None => Self::new(""),
+        }
+    }
+
     /// Get the parent directory's path.
     ///
     /// ```

@@ -5,7 +5,7 @@
 //! does while a view (and everything it includes) is rendered.
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
 use illuminate_support::{Error, Result, Str};
@@ -26,7 +26,7 @@ use crate::template::{
     Attr, AttrPart, AttrValue, Branch, ComponentName, ComponentNode, Cond, IncludeKind, JumpKind, Node, OnceKey,
     OutputDirective, SectionEnd, SlotBody, SlotNode, Template,
 };
-use crate::value::{ArrayKey, ViewArray, ViewData, ViewValue};
+use crate::value::{ArrayKey, ViewData, ViewValue};
 use crate::view::View;
 
 /// How deeply views may nest before we assume infinite recursion.
@@ -299,7 +299,7 @@ impl Renderer {
                     StmtFlow::Normal | StmtFlow::Return(_) => {}
                 }
             }
-            Node::If { branches, otherwise, .. } => return self.render_if(branches, otherwise.as_deref(), scope, out, ctx),
+            Node::If { branches, otherwise } => return self.render_if(branches, otherwise.as_deref(), scope, out, ctx),
             Node::Switch { subject, cases, line } => {
                 let subject = self.eval(subject, scope, ctx, *line)?;
                 let mut start = None;
@@ -1356,12 +1356,3 @@ fn apply_props(props: &ViewValue, scope: &mut Scope) {
     }
 }
 
-/// Build a list value of view names, for `View::first`.
-pub(crate) fn names_value(names: &[String]) -> ViewValue {
-    ViewValue::from(names.iter().map(|n| ViewValue::from(n.as_str())).collect::<ViewArray>())
-}
-
-/// The path of a view resolved from an anonymous component directory.
-pub(crate) fn path_view(name: &str) -> Option<PathBuf> {
-    name.strip_prefix("__path::").map(PathBuf::from)
-}

@@ -22,9 +22,6 @@ futures.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 regex.workspace = true
-chrono.workspace = true
-url.workspace = true
-percent-encoding.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

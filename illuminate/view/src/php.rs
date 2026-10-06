@@ -766,11 +766,11 @@ mod tests {
         let value = ViewValue::from(json!({"url": "http://laravel.com", "name": "Café", "tags": [], "meta": {}}));
         assert_eq!(
             json_encode(&value, 0).unwrap(),
-            r#"{"url":"http:\/\/laravel.com","name":"Café","tags":[],"meta":[]}"#
+            "{\"url\":\"http:\\/\\/laravel.com\",\"name\":\"Caf\\u00e9\",\"tags\":[],\"meta\":[]}"
         );
         assert_eq!(
             json_encode(&ViewValue::from("<a href='x'>&</a>"), BLADE_JSON_FLAGS).unwrap(),
-            r#""<a href='x'>&<\/a>""#
+            "\"\\u003Ca href=\\u0027x\\u0027\\u003E\\u0026\\u003C\\/a\\u003E\""
         );
         assert_eq!(
             json_encode(&ViewValue::from(json!({"a": [1, 2]})), JSON_PRETTY_PRINT).unwrap(),

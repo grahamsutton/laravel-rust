@@ -82,9 +82,12 @@ fn as_i64(value: &Value) -> Option<i64> {
         Value::Bool(b) => Some(*b as i64),
         Value::String(s) => {
             let s = s.trim();
-            s.parse::<i64>()
-                .ok()
-                .or_else(|| s.parse::<f64>().ok().filter(|f| f.fract() == 0.0).map(|f| f as i64))
+            s.parse::<i64>().ok().or_else(|| {
+                s.parse::<f64>()
+                    .ok()
+                    .filter(|f| f.fract() == 0.0)
+                    .map(|f| f as i64)
+            })
         }
         _ => None,
     }
@@ -116,7 +119,10 @@ fn parse_json(value: &Value) -> Option<Value> {
 }
 
 impl Lenient {
-    fn visit_seq_of<'de, V: Visitor<'de>>(items: Vec<Value>, visitor: V) -> Result<V::Value, Error> {
+    fn visit_seq_of<'de, V: Visitor<'de>>(
+        items: Vec<Value>,
+        visitor: V,
+    ) -> Result<V::Value, Error> {
         let mut seq = SeqDeserializer::new(items.into_iter().map(Lenient));
         let value = visitor.visit_seq(&mut seq)?;
         seq.end()?;
@@ -191,8 +197,18 @@ impl<'de> de::Deserializer<'de> for Lenient {
         }
     }
 
-    deserialize_signed!(deserialize_i8, deserialize_i16, deserialize_i32, deserialize_i64);
-    deserialize_unsigned!(deserialize_u8, deserialize_u16, deserialize_u32, deserialize_u64);
+    deserialize_signed!(
+        deserialize_i8,
+        deserialize_i16,
+        deserialize_i32,
+        deserialize_i64
+    );
+    deserialize_unsigned!(
+        deserialize_u8,
+        deserialize_u16,
+        deserialize_u32,
+        deserialize_u64
+    );
 
     fn deserialize_f32<V: Visitor<'de>>(self, visitor: V) -> Result<V::Value, Error> {
         self.deserialize_f64(visitor)
@@ -258,11 +274,19 @@ impl<'de> de::Deserializer<'de> for Lenient {
         visitor.visit_unit()
     }
 
-    fn deserialize_unit_struct<V: Visitor<'de>>(self, _name: &'static str, visitor: V) -> Result<V::Value, Error> {
+    fn deserialize_unit_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Error> {
         visitor.visit_unit()
     }
 
-    fn deserialize_newtype_struct<V: Visitor<'de>>(self, _name: &'static str, visitor: V) -> Result<V::Value, Error> {
+    fn deserialize_newtype_struct<V: Visitor<'de>>(
+        self,
+        _name: &'static str,
+        visitor: V,
+    ) -> Result<V::Value, Error> {
         visitor.visit_newtype_struct(self)
     }
 
@@ -277,7 +301,11 @@ impl<'de> de::Deserializer<'de> for Lenient {
         }
     }
 
-    fn deserialize_tuple<V: Visitor<'de>>(self, _len: usize, visitor: V) -> Result<V::Value, Error> {
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Error> {
         self.deserialize_seq(visitor)
     }
 
@@ -403,7 +431,12 @@ mod tests {
         assert_eq!(row.score, 4.5);
         assert_eq!(row.name, "Taylor");
         assert_eq!(row.tags, vec!["a", "b"]);
-        assert_eq!(row.settings, Settings { theme: "dark".into() });
+        assert_eq!(
+            row.settings,
+            Settings {
+                theme: "dark".into()
+            }
+        );
         assert_eq!(row.status, Status::Active);
         assert_eq!(row.nickname, None);
         assert_eq!(row.code, "42");
@@ -417,6 +450,9 @@ mod tests {
         assert!(from_value::<bool>(json!("maybe")).is_err());
         assert_eq!(from_value::<i64>(json!(3.0)).unwrap(), 3);
         assert_eq!(from_value::<Option<i64>>(json!(null)).unwrap(), None);
-        assert_eq!(from_value::<serde_json::Value>(json!({"a": 1})).unwrap(), json!({"a": 1}));
+        assert_eq!(
+            from_value::<serde_json::Value>(json!({"a": 1})).unwrap(),
+            json!({"a": 1})
+        );
     }
 }

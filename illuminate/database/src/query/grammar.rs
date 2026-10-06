@@ -130,7 +130,10 @@ impl QueryGrammar {
             return format!(
                 "{} as {}",
                 self.wrap_table_with_prefix(segments[0], prefix),
-                self.wrap_value(&format!("{prefix}{}", segments.get(1).copied().unwrap_or("")))
+                self.wrap_value(&format!(
+                    "{prefix}{}",
+                    segments.get(1).copied().unwrap_or("")
+                ))
             );
         }
         if let Some(index) = table.rfind('.') {
@@ -186,11 +189,19 @@ impl QueryGrammar {
 
     /// Convert a list of column names into a delimited string.
     pub fn columnize(&self, columns: &[Ident]) -> String {
-        columns.iter().map(|c| self.wrap(c)).collect::<Vec<_>>().join(", ")
+        columns
+            .iter()
+            .map(|c| self.wrap(c))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     fn columnize_str(&self, columns: &[String]) -> String {
-        columns.iter().map(|c| self.wrap_str(c)).collect::<Vec<_>>().join(", ")
+        columns
+            .iter()
+            .map(|c| self.wrap_str(c))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     /// Get the appropriate query parameter place-holder for a value.
@@ -203,7 +214,11 @@ impl QueryGrammar {
 
     /// Create query parameter place-holders for a list of values.
     pub fn parameterize(&self, values: &[Operand]) -> String {
-        values.iter().map(|v| self.parameter(v)).collect::<Vec<_>>().join(", ")
+        values
+            .iter()
+            .map(|v| self.parameter(v))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     /// Quote the given string literal (unescaped, like Laravel's `quoteString`).
@@ -318,7 +333,10 @@ impl QueryGrammar {
                 let (field, path) = self.wrap_json_field_and_path(value);
                 format!("json_extract({field}{path})")
             }
-            Driver::Postgres => format!("({})::jsonb", self.wrap_json_selector(value).replace("->>", "->")),
+            Driver::Postgres => format!(
+                "({})::jsonb",
+                self.wrap_json_selector(value).replace("->>", "->")
+            ),
             Driver::Sqlite => self.wrap_json_selector(value),
         }
     }
@@ -340,20 +358,21 @@ impl QueryGrammar {
 
     /// Prepare the binding of a `where_like` clause.
     pub fn prepare_where_like_binding(&self, value: &Value, case_sensitive: bool) -> Value {
-        if self.driver == Driver::Sqlite && case_sensitive {
-            if let Value::String(s) = value {
-                let mut out = String::with_capacity(s.len());
-                for ch in s.chars() {
-                    match ch {
-                        '*' => out.push_str("[*]"),
-                        '?' => out.push_str("[?]"),
-                        '%' => out.push('*'),
-                        '_' => out.push('?'),
-                        other => out.push(other),
-                    }
+        if self.driver == Driver::Sqlite
+            && case_sensitive
+            && let Value::String(s) = value
+        {
+            let mut out = String::with_capacity(s.len());
+            for ch in s.chars() {
+                match ch {
+                    '*' => out.push_str("[*]"),
+                    '?' => out.push_str("[?]"),
+                    '%' => out.push('*'),
+                    '_' => out.push('?'),
+                    other => out.push(other),
                 }
-                return Value::String(out);
             }
+            return Value::String(out);
         }
         value.clone()
     }
@@ -453,7 +472,11 @@ impl QueryGrammar {
         for join in joins {
             let table = self.wrap_table(&join.table);
             let wheres = self.compile_wheres(&join.query)?;
-            out.push(format!("{} join {table} {wheres}", join.kind).trim().to_string());
+            out.push(
+                format!("{} join {table} {wheres}", join.kind)
+                    .trim()
+                    .to_string(),
+            );
         }
         Ok(out.join(" "))
     }
@@ -475,7 +498,11 @@ impl QueryGrammar {
         }
         let mut parts = Vec::with_capacity(query.wheres.len());
         for clause in &query.wheres {
-            parts.push(format!("{} {}", clause.boolean, self.compile_where(query, clause)?));
+            parts.push(format!(
+                "{} {}",
+                clause.boolean,
+                self.compile_where(query, clause)?
+            ));
         }
         Ok(Some(remove_leading_boolean(&parts.join(" "))))
     }
@@ -519,7 +546,11 @@ impl QueryGrammar {
                 }
             }
             WhereKind::Raw { sql } => sql.clone(),
-            WhereKind::In { column, values, not } => {
+            WhereKind::In {
+                column,
+                values,
+                not,
+            } => {
                 if values.is_empty() {
                     if *not { "1 = 1" } else { "0 = 1" }.to_string()
                 } else {
@@ -531,7 +562,11 @@ impl QueryGrammar {
                     )
                 }
             }
-            WhereKind::InRaw { column, values, not } => {
+            WhereKind::InRaw {
+                column,
+                values,
+                not,
+            } => {
                 if values.is_empty() {
                     if *not { "1 = 1" } else { "0 = 1" }.to_string()
                 } else {
@@ -539,7 +574,11 @@ impl QueryGrammar {
                         "{} {}in ({})",
                         self.wrap(column),
                         if *not { "not " } else { "" },
-                        values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", ")
+                        values
+                            .iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     )
                 }
             }
@@ -591,7 +630,11 @@ impl QueryGrammar {
                 column,
                 operator,
                 query,
-            } => format!("{} {operator} ({})", self.wrap(column), self.compile_select(query)?),
+            } => format!(
+                "{} {operator} ({})",
+                self.wrap(column),
+                self.compile_select(query)?
+            ),
             WhereKind::Exists { query, not } => format!(
                 "{}exists ({})",
                 if *not { "not " } else { "" },
@@ -651,32 +694,45 @@ impl QueryGrammar {
     fn where_basic(&self, column: &Ident, operator: &str, value: &Operand) -> String {
         let operator = operator.replace('?', "??");
         if self.driver == Driver::Postgres && operator.to_lowercase().contains("like") {
-            return format!("{}::text {operator} {}", self.wrap(column), self.parameter(value));
+            return format!(
+                "{}::text {operator} {}",
+                self.wrap(column),
+                self.parameter(value)
+            );
         }
         format!("{} {operator} {}", self.wrap(column), self.parameter(value))
     }
 
     fn where_null(&self, column: &Ident, not: bool) -> String {
-        if self.is_mysql() {
-            if let Ident::Name(name) = column {
-                if self.is_json_selector(name) {
-                    let (field, path) = self.wrap_json_field_and_path(name);
-                    return if not {
-                        format!(
-                            "(json_extract({field}{path}) is not null AND json_type(json_extract({field}{path})) != 'NULL')"
-                        )
-                    } else {
-                        format!(
-                            "(json_extract({field}{path}) is null OR json_type(json_extract({field}{path})) = 'NULL')"
-                        )
-                    };
-                }
-            }
+        if self.is_mysql()
+            && let Ident::Name(name) = column
+            && self.is_json_selector(name)
+        {
+            let (field, path) = self.wrap_json_field_and_path(name);
+            return if not {
+                format!(
+                    "(json_extract({field}{path}) is not null AND json_type(json_extract({field}{path})) != 'NULL')"
+                )
+            } else {
+                format!(
+                    "(json_extract({field}{path}) is null OR json_type(json_extract({field}{path})) = 'NULL')"
+                )
+            };
         }
-        format!("{} is {}null", self.wrap(column), if not { "not " } else { "" })
+        format!(
+            "{} is {}null",
+            self.wrap(column),
+            if not { "not " } else { "" }
+        )
     }
 
-    fn where_date(&self, part: DatePart, column: &Ident, operator: &str, value: &Operand) -> String {
+    fn where_date(
+        &self,
+        part: DatePart,
+        column: &Ident,
+        operator: &str,
+        value: &Operand,
+    ) -> String {
         let parameter = self.parameter(value);
         let wrapped = self.wrap(column);
         match self.driver {
@@ -702,13 +758,21 @@ impl QueryGrammar {
             }
             Driver::Postgres => {
                 let is_json = column.as_name().is_some_and(|n| self.is_json_selector(n));
-                let cast_column = if is_json { format!("({wrapped})") } else { wrapped.clone() };
+                let cast_column = if is_json {
+                    format!("({wrapped})")
+                } else {
+                    wrapped.clone()
+                };
                 match part {
                     DatePart::Date => format!("{cast_column}::date {operator} {parameter}"),
                     DatePart::Time => format!("{cast_column}::time {operator} {parameter}"),
                     DatePart::Day => format!("extract(day from {wrapped}) {operator} {parameter}"),
-                    DatePart::Month => format!("extract(month from {wrapped}) {operator} {parameter}"),
-                    DatePart::Year => format!("extract(year from {wrapped}) {operator} {parameter}"),
+                    DatePart::Month => {
+                        format!("extract(month from {wrapped}) {operator} {parameter}")
+                    }
+                    DatePart::Year => {
+                        format!("extract(year from {wrapped}) {operator} {parameter}")
+                    }
                 }
             }
         }
@@ -786,12 +850,25 @@ impl QueryGrammar {
         }
     }
 
-    fn where_full_text(&self, columns: &[String], value: &Operand, options: &FullTextOptions) -> Result<String> {
+    fn where_full_text(
+        &self,
+        columns: &[String],
+        value: &Operand,
+        options: &FullTextOptions,
+    ) -> Result<String> {
         match self.driver {
             Driver::MySql | Driver::MariaDb => {
                 let boolean = options.mode.as_deref() == Some("boolean");
-                let mode = if boolean { " in boolean mode" } else { " in natural language mode" };
-                let expanded = if options.expanded && !boolean { " with query expansion" } else { "" };
+                let mode = if boolean {
+                    " in boolean mode"
+                } else {
+                    " in natural language mode"
+                };
+                let expanded = if options.expanded && !boolean {
+                    " with query expansion"
+                } else {
+                    ""
+                };
                 Ok(format!(
                     "match ({}) against ({}{mode}{expanded})",
                     self.columnize_str(columns),
@@ -800,9 +877,28 @@ impl QueryGrammar {
             }
             Driver::Postgres => {
                 const LANGUAGES: [&str; 22] = [
-                    "simple", "arabic", "danish", "dutch", "english", "finnish", "french", "german",
-                    "hungarian", "indonesian", "irish", "italian", "lithuanian", "nepali", "norwegian",
-                    "portuguese", "romanian", "russian", "spanish", "swedish", "tamil", "turkish",
+                    "simple",
+                    "arabic",
+                    "danish",
+                    "dutch",
+                    "english",
+                    "finnish",
+                    "french",
+                    "german",
+                    "hungarian",
+                    "indonesian",
+                    "irish",
+                    "italian",
+                    "lithuanian",
+                    "nepali",
+                    "norwegian",
+                    "portuguese",
+                    "romanian",
+                    "russian",
+                    "spanish",
+                    "swedish",
+                    "tamil",
+                    "turkish",
                 ];
                 let language = options
                     .language
@@ -825,7 +921,9 @@ impl QueryGrammar {
                     self.parameter(value)
                 ))
             }
-            Driver::Sqlite => unsupported("This database engine does not support fulltext search operations."),
+            Driver::Sqlite => {
+                unsupported("This database engine does not support fulltext search operations.")
+            }
         }
     }
 
@@ -852,7 +950,11 @@ impl QueryGrammar {
                     self.parameter(max)
                 ),
                 HavingKind::Null { column, not } => {
-                    format!("{} is {}null", self.wrap(column), if *not { "not " } else { "" })
+                    format!(
+                        "{} is {}null",
+                        self.wrap(column),
+                        if *not { "not " } else { "" }
+                    )
                 }
                 HavingKind::Bitwise {
                     column,
@@ -979,7 +1081,7 @@ impl QueryGrammar {
     // Inserts
     // ------------------------------------------------------------------
 
-    fn from_table(&self, query: &Builder) -> String {
+    fn table_of(&self, query: &Builder) -> String {
         query
             .from
             .as_ref()
@@ -989,7 +1091,7 @@ impl QueryGrammar {
 
     /// Compile an insert statement into SQL.
     pub fn compile_insert(&self, query: &Builder, records: &[Record]) -> String {
-        let table = self.from_table(query);
+        let table = self.table_of(query);
         let empty = records.is_empty() || records.iter().all(|r| r.is_empty());
         if empty {
             return if self.is_mysql() {
@@ -1025,7 +1127,12 @@ impl QueryGrammar {
     }
 
     /// Compile an insert and get ID statement into SQL.
-    pub fn compile_insert_get_id(&self, query: &Builder, records: &[Record], sequence: &str) -> String {
+    pub fn compile_insert_get_id(
+        &self,
+        query: &Builder,
+        records: &[Record],
+        sequence: &str,
+    ) -> String {
         let insert = self.compile_insert(query, records);
         match self.driver {
             Driver::Postgres => format!("{insert} returning {}", self.wrap_str(sequence)),
@@ -1035,15 +1142,23 @@ impl QueryGrammar {
 
     /// Compile an insert statement using a sub-query into SQL.
     pub fn compile_insert_using(&self, query: &Builder, columns: &[String], sql: &str) -> String {
-        let table = self.from_table(query);
+        let table = self.table_of(query);
         if columns.is_empty() || (columns.len() == 1 && columns[0] == "*") {
             return format!("insert into {table} {sql}");
         }
-        format!("insert into {table} ({}) {sql}", self.columnize_str(columns))
+        format!(
+            "insert into {table} ({}) {sql}",
+            self.columnize_str(columns)
+        )
     }
 
     /// Compile an insert-or-ignore statement using a sub-query into SQL.
-    pub fn compile_insert_or_ignore_using(&self, query: &Builder, columns: &[String], sql: &str) -> String {
+    pub fn compile_insert_or_ignore_using(
+        &self,
+        query: &Builder,
+        columns: &[String],
+        sql: &str,
+    ) -> String {
         let insert = self.compile_insert_using(query, columns, sql);
         match self.driver {
             Driver::Sqlite => insert.replacen("insert", "insert or ignore", 1),
@@ -1121,12 +1236,18 @@ impl QueryGrammar {
 
     /// Compile an update statement into SQL.
     pub fn compile_update(&self, query: &Builder, values: &Record) -> Result<String> {
-        let table = self.from_table(query);
+        let table = self.table_of(query);
         let columns = self.compile_update_columns(values);
 
         match self.driver {
-            Driver::Sqlite | Driver::Postgres if !query.joins.is_empty() || query.limit.is_some() => {
-                let row_id = if self.driver == Driver::Sqlite { "rowid" } else { "ctid" };
+            Driver::Sqlite | Driver::Postgres
+                if !query.joins.is_empty() || query.limit.is_some() =>
+            {
+                let row_id = if self.driver == Driver::Sqlite {
+                    "rowid"
+                } else {
+                    "ctid"
+                };
                 let select = self.row_id_select(query, row_id)?;
                 Ok(format!(
                     "update {table} set {columns} where {} in ({select})",
@@ -1141,7 +1262,9 @@ impl QueryGrammar {
                         .trim()
                         .to_string());
                 }
-                let mut sql = format!("update {table} set {columns} {wheres}").trim().to_string();
+                let mut sql = format!("update {table} set {columns} {wheres}")
+                    .trim()
+                    .to_string();
                 if !query.orders.is_empty() {
                     sql = format!("{sql} {}", self.compile_orders(&query.orders));
                 }
@@ -1152,7 +1275,9 @@ impl QueryGrammar {
             }
             _ => {
                 let wheres = self.compile_wheres(query)?;
-                Ok(format!("update {table} set {columns} {wheres}").trim().to_string())
+                Ok(format!("update {table} set {columns} {wheres}")
+                    .trim()
+                    .to_string())
             }
         }
     }
@@ -1197,7 +1322,9 @@ impl QueryGrammar {
                 .map(|(key, value)| {
                     if self.is_json_selector(key) {
                         let value = match value {
-                            Operand::Value(Value::Bool(b)) => if *b { "true" } else { "false" }.to_string(),
+                            Operand::Value(Value::Bool(b)) => {
+                                if *b { "true" } else { "false" }.to_string()
+                            }
                             Operand::Value(Value::Array(_)) | Operand::Value(Value::Object(_)) => {
                                 "cast(? as json)".to_string()
                             }
@@ -1218,8 +1345,14 @@ impl QueryGrammar {
                     if self.is_json_selector(key) {
                         let mut segments: Vec<&str> = column.split("->").collect();
                         let field = self.wrap_str(segments.remove(0));
-                        let path = format!("'{{{}}}'", self.wrap_json_path_attributes(&segments, "\"").join(","));
-                        format!("{field} = jsonb_set({field}::jsonb, {path}, {})", self.parameter(value))
+                        let path = format!(
+                            "'{{{}}}'",
+                            self.wrap_json_path_attributes(&segments, "\"").join(",")
+                        );
+                        format!(
+                            "{field} = jsonb_set({field}::jsonb, {path}, {})",
+                            self.parameter(value)
+                        )
                     } else {
                         format!("{} = {}", self.wrap_str(column), self.parameter(value))
                     }
@@ -1295,7 +1428,8 @@ impl QueryGrammar {
                     values
                         .iter()
                         .filter(|(key, value)| {
-                            !(self.is_json_selector(key) && matches!(value, Operand::Value(Value::Bool(_))))
+                            !(self.is_json_selector(key)
+                                && matches!(value, Operand::Value(Value::Bool(_))))
                         })
                         .filter_map(|(_, v)| v.as_value().map(encode)),
                 );
@@ -1327,12 +1461,21 @@ impl QueryGrammar {
 
     /// Compile a delete statement into SQL.
     pub fn compile_delete(&self, query: &Builder) -> Result<String> {
-        let table = self.from_table(query);
+        let table = self.table_of(query);
         match self.driver {
-            Driver::Sqlite | Driver::Postgres if !query.joins.is_empty() || query.limit.is_some() => {
-                let row_id = if self.driver == Driver::Sqlite { "rowid" } else { "ctid" };
+            Driver::Sqlite | Driver::Postgres
+                if !query.joins.is_empty() || query.limit.is_some() =>
+            {
+                let row_id = if self.driver == Driver::Sqlite {
+                    "rowid"
+                } else {
+                    "ctid"
+                };
                 let select = self.row_id_select(query, row_id)?;
-                Ok(format!("delete from {table} where {} in ({select})", self.wrap_str(row_id)))
+                Ok(format!(
+                    "delete from {table} where {} in ({select})",
+                    self.wrap_str(row_id)
+                ))
             }
             Driver::MySql | Driver::MariaDb => {
                 let wheres = self.compile_wheres(query)?;
@@ -1341,7 +1484,9 @@ impl QueryGrammar {
                 } else {
                     let alias = table.rsplit(" as ").next().unwrap_or(&table).to_string();
                     let joins = self.compile_joins(&query.joins)?;
-                    format!("delete {alias} from {table} {joins} {wheres}").trim().to_string()
+                    format!("delete {alias} from {table} {joins} {wheres}")
+                        .trim()
+                        .to_string()
                 };
                 if !query.orders.is_empty() {
                     sql = format!("{sql} {}", self.compile_orders(&query.orders));
@@ -1366,7 +1511,7 @@ impl QueryGrammar {
     /// Compile a truncate table statement into SQL (one or more statements
     /// with their bindings).
     pub fn compile_truncate(&self, query: &Builder) -> Vec<(String, Vec<Value>)> {
-        let table = self.from_table(query);
+        let table = self.table_of(query);
         match self.driver {
             Driver::Sqlite => {
                 let name = query
@@ -1376,7 +1521,9 @@ impl QueryGrammar {
                     .unwrap_or_default()
                     .to_string();
                 let (schema, name) = match name.split_once('.') {
-                    Some((schema, name)) => (format!("{}.", self.wrap_value(schema)), name.to_string()),
+                    Some((schema, name)) => {
+                        (format!("{}.", self.wrap_value(schema)), name.to_string())
+                    }
                     None => (String::new(), name),
                 };
                 vec![
@@ -1387,8 +1534,13 @@ impl QueryGrammar {
                     (format!("delete from {table}"), Vec::new()),
                 ]
             }
-            Driver::MySql | Driver::MariaDb => vec![(format!("truncate table {table}"), Vec::new())],
-            Driver::Postgres => vec![(format!("truncate {table} restart identity cascade"), Vec::new())],
+            Driver::MySql | Driver::MariaDb => {
+                vec![(format!("truncate table {table}"), Vec::new())]
+            }
+            Driver::Postgres => vec![(
+                format!("truncate {table} restart identity cascade"),
+                Vec::new(),
+            )],
         }
     }
 
@@ -1401,8 +1553,20 @@ impl QueryGrammar {
         match value {
             Value::Null => Ok("null".to_string()),
             Value::Bool(b) => Ok(match self.driver {
-                Driver::Postgres => if *b { "true" } else { "false" },
-                _ => if *b { "1" } else { "0" },
+                Driver::Postgres => {
+                    if *b {
+                        "true"
+                    } else {
+                        "false"
+                    }
+                }
+                _ => {
+                    if *b {
+                        "1"
+                    } else {
+                        "0"
+                    }
+                }
             }
             .to_string()),
             Value::Number(n) => Ok(Value::Number(n.clone()).to_string_lossy()),
@@ -1436,7 +1600,10 @@ impl QueryGrammar {
     /// ```
     pub fn numbered_placeholders(&self, sql: &str) -> String {
         let count = sql.matches('?').count();
-        let placeholders: Vec<Value> = (1..=count).map(|i| Value::String(format!("${i}"))).collect();
-        driver::interpolate(sql, &placeholders, |v| Ok(v.to_string_lossy()), true).unwrap_or_else(|_| sql.to_string())
+        let placeholders: Vec<Value> = (1..=count)
+            .map(|i| Value::String(format!("${i}")))
+            .collect();
+        driver::interpolate(sql, &placeholders, |v| Ok(v.to_string_lossy()), true)
+            .unwrap_or_else(|_| sql.to_string())
     }
 }

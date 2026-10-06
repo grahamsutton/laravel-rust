@@ -323,13 +323,17 @@ impl IntoRecord for Map<String, Value> {
 
 impl<K: Into<String>, V: Into<Operand>> IntoRecord for Vec<(K, V)> {
     fn into_record(self) -> Record {
-        self.into_iter().map(|(k, v)| (k.into(), v.into())).collect()
+        self.into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect()
     }
 }
 
 impl<K: Into<String>, V: Into<Operand>, const N: usize> IntoRecord for [(K, V); N] {
     fn into_record(self) -> Record {
-        self.into_iter().map(|(k, v)| (k.into(), v.into())).collect()
+        self.into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect()
     }
 }
 
@@ -415,7 +419,10 @@ mod tests {
     #[test]
     fn dates_are_bound_in_storage_format() {
         let date = Carbon::parse("2024-01-02 03:04:05").unwrap();
-        assert_eq!(Operand::from(date), Operand::Value(json!("2024-01-02 03:04:05")));
+        assert_eq!(
+            Operand::from(date),
+            Operand::Value(json!("2024-01-02 03:04:05"))
+        );
     }
 
     #[test]

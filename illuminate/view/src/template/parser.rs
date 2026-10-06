@@ -154,10 +154,6 @@ impl TemplateParser<'_> {
         token
     }
 
-    fn peek(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
-    }
-
     /// Parse nodes until a directive for which `stop` returns true.
     fn parse_nodes(&mut self, stop: &dyn Fn(&Stop) -> bool) -> PResult<(Vec<Node>, Option<Stop>)> {
         let mut nodes = Vec::new();
@@ -592,7 +588,7 @@ impl TemplateParser<'_> {
                 return Err(unclosed(directive, &end, line));
             };
             if is_if_end(registry, &stop.name) {
-                return Ok(Node::If { branches, otherwise: None, line });
+                return Ok(Node::If { branches, otherwise: None });
             }
             let lowered = lower(&stop.name);
             if lowered == "else" {
@@ -600,7 +596,7 @@ impl TemplateParser<'_> {
                     self.parse_nodes(&|s| is_if_end(registry, &s.name) || is_else_branch(registry, &s.name))?;
                 match end {
                     Some(end) if is_if_end(registry, &end.name) => {
-                        return Ok(Node::If { branches, otherwise: Some(body), line });
+                        return Ok(Node::If { branches, otherwise: Some(body) });
                     }
                     Some(end) => {
                         return Err(ViewCompilationException::new(
@@ -872,7 +868,12 @@ mod tests {
         assert_eq!(error.message, "Unclosed @if directive. Did you forget an @endif?");
 
         let error = parse_err("@foreach($a as $b)\n@endif");
+        assert_eq!(error.line, 2);
+        assert_eq!(error.message, "Unexpected @endif directive.");
+
+        let error = parse_err("@foreach($a as $b)\nx");
         assert_eq!(error.line, 1);
+        assert_eq!(error.message, "Unclosed @foreach directive. Did you forget an @endforeach?");
 
         let error = parse_err("one\ntwo\n@endforeach");
         assert_eq!(error.line, 3);

@@ -313,10 +313,16 @@ impl Pluralizer {
         Self::match_case(&SINGULAR.inflect(value), value)
     }
 
-    /// Determine if the given word is one of Laravel's uncountable words.
+    /// Determine if the given word is uncountable: one of Laravel's
+    /// uncountable words or one of the inflector's uninflected words
+    /// ("sheep", "news", "equipment", ...).
     pub fn uncountable(value: &str) -> bool {
+        static UNINFLECTED: LazyLock<Regex> = LazyLock::new(|| {
+            Regex::new(&format!("(?i)^(?:{})$", UNINFLECTED_DEFAULT.join("|")))
+                .expect("valid uninflected patterns")
+        });
         let lower = value.to_lowercase();
-        UNCOUNTABLE.read().unwrap().iter().any(|w| *w == lower)
+        UNCOUNTABLE.read().unwrap().contains(&lower) || UNINFLECTED.is_match(value)
     }
 
     /// Register an additional word that should never be pluralized.
@@ -496,6 +502,9 @@ mod tests {
         assert_eq!(Pluralizer::plural("50%", 2), "50%");
         assert_eq!(Pluralizer::plural("", 2), "");
         assert_eq!(Pluralizer::plural("related", 2), "related");
+        assert!(Pluralizer::uncountable("sheep"));
+        assert!(Pluralizer::uncountable("Equipment"));
+        assert!(!Pluralizer::uncountable("user"));
         Pluralizer::add_uncountable("laravel");
         assert_eq!(Pluralizer::plural("laravel", 2), "laravel");
     }

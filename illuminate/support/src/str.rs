@@ -11,7 +11,7 @@
 //!
 //! Methods that accept a regular expression (`match_`, `is_match`,
 //! `replace_matches`, ...) take PHP-style patterns such as `/foo (.*)/i`;
-//! see the [`preg`](crate::preg) module for the supported syntax.
+//! see the [`preg`] module for the supported syntax.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -213,10 +213,8 @@ impl Str {
     /// Remove the first matching needle from the start of the subject.
     pub fn chop_start_any(subject: &str, needles: &[&str]) -> String {
         for needle in needles {
-            if !needle.is_empty() {
-                if let Some(rest) = subject.strip_prefix(needle) {
-                    return rest.to_string();
-                }
+            if let Some(rest) = subject.strip_prefix(needle).filter(|_| !needle.is_empty()) {
+                return rest.to_string();
             }
         }
         subject.to_string()
@@ -236,10 +234,8 @@ impl Str {
     /// Remove the first matching needle from the end of the subject.
     pub fn chop_end_any(subject: &str, needles: &[&str]) -> String {
         for needle in needles {
-            if !needle.is_empty() {
-                if let Some(rest) = subject.strip_suffix(needle) {
-                    return rest.to_string();
-                }
+            if let Some(rest) = subject.strip_suffix(needle).filter(|_| !needle.is_empty()) {
+                return rest.to_string();
             }
         }
         subject.to_string()
@@ -1142,6 +1138,8 @@ impl Str {
     /// Return the given ULIDs, in order, then fall back to new ones.
     pub fn create_ulids_using_sequence(sequence: Vec<ulid::Ulid>) {
         let mut sequence = sequence.into_iter();
+        // `Ulid::default()` is the nil ULID, so a fresh one must be generated.
+        #[allow(clippy::unwrap_or_default)]
         Self::create_ulids_using(move || sequence.next().unwrap_or_else(ulid::Ulid::new));
     }
 
@@ -1465,7 +1463,7 @@ impl Str {
         if pairs.is_empty() {
             return subject.to_string();
         }
-        pairs.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        pairs.sort_by_key(|pair| std::cmp::Reverse(pair.0.len()));
         let mut out = String::with_capacity(subject.len());
         let mut rest = subject;
         'outer: while !rest.is_empty() {

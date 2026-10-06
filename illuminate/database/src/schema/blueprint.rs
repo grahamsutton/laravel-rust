@@ -570,17 +570,32 @@ pub(crate) struct Shared {
 
 impl Shared {
     fn create_index_name(&self, kind: &str, columns: &[String]) -> String {
-        let index = format!("{}{}_{}_{kind}", self.index_prefix, self.table, columns.join("_")).to_lowercase();
+        let index = format!(
+            "{}{}_{}_{kind}",
+            self.index_prefix,
+            self.table,
+            columns.join("_")
+        )
+        .to_lowercase();
         index.replace(['-', '.'], "_")
     }
 
     fn add_command(&self, attributes: CommandAttributes) -> CommandDefinition {
         let command = CommandDefinition::new(attributes);
-        self.state.lock().unwrap().commands.push(Command::Command(command.clone()));
+        self.state
+            .lock()
+            .unwrap()
+            .commands
+            .push(Command::Command(command.clone()));
         command
     }
 
-    fn index_command(&self, kind: &str, columns: Vec<Ident>, name: Option<String>) -> CommandDefinition {
+    fn index_command(
+        &self,
+        kind: &str,
+        columns: Vec<Ident>,
+        name: Option<String>,
+    ) -> CommandDefinition {
         let names: Vec<String> = columns.iter().map(|c| c.value().to_string()).collect();
         let index = name.unwrap_or_else(|| self.create_index_name(kind, &names));
         self.add_command(CommandAttributes {
@@ -632,7 +647,9 @@ pub struct Blueprint {
 
 impl std::fmt::Debug for Blueprint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Blueprint").field("table", &self.shared.table).finish()
+        f.debug_struct("Blueprint")
+            .field("table", &self.shared.table)
+            .finish()
     }
 }
 
@@ -764,6 +781,7 @@ impl Blueprint {
     }
 
     /// Indicate that the table should be dropped.
+    #[allow(clippy::should_implement_trait)]
     pub fn drop(&mut self) {
         self.named("drop");
     }
@@ -793,7 +811,11 @@ impl Blueprint {
 
     /// Indicate that the given columns should be dropped.
     pub fn drop_column(&mut self, columns: impl super::IntoColumnNames) {
-        let columns = columns.into_column_names().into_iter().map(Ident::Name).collect();
+        let columns = columns
+            .into_column_names()
+            .into_iter()
+            .map(Ident::Name)
+            .collect();
         self.add_command(CommandAttributes {
             name: "dropColumn".into(),
             columns,
@@ -816,7 +838,12 @@ impl Blueprint {
         });
     }
 
-    fn drop_index_command(&mut self, command: &str, kind: &str, index: super::IndexName) -> CommandDefinition {
+    fn drop_index_command(
+        &mut self,
+        command: &str,
+        kind: &str,
+        index: super::IndexName,
+    ) -> CommandDefinition {
         let (columns, name) = match index {
             super::IndexName::Name(name) => (Vec::new(), name),
             super::IndexName::Columns(columns) => {
@@ -905,37 +932,75 @@ impl Blueprint {
 
     /// Specify the primary key(s) for the table.
     pub fn primary(&mut self, columns: impl super::IntoColumnNames) -> IndexDefinition {
-        let columns = columns.into_column_names().into_iter().map(Ident::Name).collect();
+        let columns = columns
+            .into_column_names()
+            .into_iter()
+            .map(Ident::Name)
+            .collect();
         IndexDefinition(self.shared.index_command("primary", columns, None))
     }
 
     /// Specify a unique index for the table.
     pub fn unique(&mut self, columns: impl super::IntoColumnNames) -> IndexDefinition {
-        let columns = columns.into_column_names().into_iter().map(Ident::Name).collect();
+        let columns = columns
+            .into_column_names()
+            .into_iter()
+            .map(Ident::Name)
+            .collect();
         IndexDefinition(self.shared.index_command("unique", columns, None))
     }
 
     /// Specify a named unique index for the table.
-    pub fn unique_named(&mut self, columns: impl super::IntoColumnNames, name: &str) -> IndexDefinition {
-        let columns = columns.into_column_names().into_iter().map(Ident::Name).collect();
-        IndexDefinition(self.shared.index_command("unique", columns, Some(name.to_string())))
+    pub fn unique_named(
+        &mut self,
+        columns: impl super::IntoColumnNames,
+        name: &str,
+    ) -> IndexDefinition {
+        let columns = columns
+            .into_column_names()
+            .into_iter()
+            .map(Ident::Name)
+            .collect();
+        IndexDefinition(
+            self.shared
+                .index_command("unique", columns, Some(name.to_string())),
+        )
     }
 
     /// Specify an index for the table.
     pub fn index(&mut self, columns: impl super::IntoColumnNames) -> IndexDefinition {
-        let columns = columns.into_column_names().into_iter().map(Ident::Name).collect();
+        let columns = columns
+            .into_column_names()
+            .into_iter()
+            .map(Ident::Name)
+            .collect();
         IndexDefinition(self.shared.index_command("index", columns, None))
     }
 
     /// Specify a named index for the table.
-    pub fn index_named(&mut self, columns: impl super::IntoColumnNames, name: &str) -> IndexDefinition {
-        let columns = columns.into_column_names().into_iter().map(Ident::Name).collect();
-        IndexDefinition(self.shared.index_command("index", columns, Some(name.to_string())))
+    pub fn index_named(
+        &mut self,
+        columns: impl super::IntoColumnNames,
+        name: &str,
+    ) -> IndexDefinition {
+        let columns = columns
+            .into_column_names()
+            .into_iter()
+            .map(Ident::Name)
+            .collect();
+        IndexDefinition(
+            self.shared
+                .index_command("index", columns, Some(name.to_string())),
+        )
     }
 
     /// Specify a fulltext index for the table (MySQL / PostgreSQL).
     pub fn fulltext(&mut self, columns: impl super::IntoColumnNames) -> IndexDefinition {
-        let columns = columns.into_column_names().into_iter().map(Ident::Name).collect();
+        let columns = columns
+            .into_column_names()
+            .into_iter()
+            .map(Ident::Name)
+            .collect();
         IndexDefinition(self.shared.index_command("fulltext", columns, None))
     }
 
@@ -954,8 +1019,13 @@ impl Blueprint {
     }
 
     /// Specify a named foreign key for the table.
-    pub fn foreign_named(&mut self, columns: impl super::IntoColumnNames, name: &str) -> ForeignKeyDefinition {
-        self.shared.foreign(columns.into_column_names(), Some(name.to_string()))
+    pub fn foreign_named(
+        &mut self,
+        columns: impl super::IntoColumnNames,
+        name: &str,
+    ) -> ForeignKeyDefinition {
+        self.shared
+            .foreign(columns.into_column_names(), Some(name.to_string()))
     }
 
     // ------------------------------------------------------------------
@@ -963,7 +1033,12 @@ impl Blueprint {
     // ------------------------------------------------------------------
 
     /// Add a new column to the blueprint.
-    pub fn add_column(&mut self, kind: &str, name: &str, configure: impl FnOnce(&mut ColumnAttributes)) -> ColumnDefinition {
+    pub fn add_column(
+        &mut self,
+        kind: &str,
+        name: &str,
+        configure: impl FnOnce(&mut ColumnAttributes),
+    ) -> ColumnDefinition {
         let mut attributes = ColumnAttributes {
             kind: kind.to_string(),
             name: name.to_string(),
@@ -1047,7 +1122,13 @@ impl Blueprint {
         self.integer_column("bigInteger", column, true, true)
     }
 
-    fn integer_column(&mut self, kind: &str, column: &str, auto_increment: bool, unsigned: bool) -> ColumnDefinition {
+    fn integer_column(
+        &mut self,
+        kind: &str,
+        column: &str,
+        auto_increment: bool,
+        unsigned: bool,
+    ) -> ColumnDefinition {
         self.add_column(kind, column, |c| {
             c.auto_increment = auto_increment;
             c.unsigned = unsigned;
@@ -1184,7 +1265,11 @@ impl Blueprint {
     }
 
     /// Create a new enum column with the allowed values.
-    pub fn enum_(&mut self, column: &str, allowed: impl super::IntoColumnNames) -> ColumnDefinition {
+    pub fn enum_(
+        &mut self,
+        column: &str,
+        allowed: impl super::IntoColumnNames,
+    ) -> ColumnDefinition {
         let allowed = allowed.into_column_names();
         self.add_column("enum", column, |c| c.allowed = allowed)
     }
@@ -1406,7 +1491,11 @@ impl Blueprint {
                 .into_iter()
                 .map(|command| match command {
                     Command::Column(column) => {
-                        let name = if column.attributes.lock().unwrap().change { "change" } else { "add" };
+                        let name = if column.attributes.lock().unwrap().change {
+                            "change"
+                        } else {
+                            "add"
+                        };
                         Command::Command(CommandDefinition::new(CommandAttributes {
                             name: name.into(),
                             column: Some(column),
@@ -1456,7 +1545,11 @@ impl Blueprint {
                             "index" => "dropIndex",
                             _ => "dropFullText",
                         };
-                        self.drop_index_command(command, kind, super::IndexName::Columns(vec![attributes.name.clone()]));
+                        self.drop_index_command(
+                            command,
+                            kind,
+                            super::IndexName::Columns(vec![attributes.name.clone()]),
+                        );
                     }
                     IndexFlag::No => continue,
                 }
@@ -1499,19 +1592,23 @@ impl Blueprint {
             if ALTER.contains(&name.as_str()) {
                 last_was_alter = true;
             } else if last_was_alter {
-                commands.push(Command::Command(CommandDefinition::new(CommandAttributes {
-                    name: "alter".into(),
-                    ..Default::default()
-                })));
+                commands.push(Command::Command(CommandDefinition::new(
+                    CommandAttributes {
+                        name: "alter".into(),
+                        ..Default::default()
+                    },
+                )));
                 last_was_alter = false;
             }
             commands.push(command);
         }
         if last_was_alter {
-            commands.push(Command::Command(CommandDefinition::new(CommandAttributes {
-                name: "alter".into(),
-                ..Default::default()
-            })));
+            commands.push(Command::Command(CommandDefinition::new(
+                CommandAttributes {
+                    name: "alter".into(),
+                    ..Default::default()
+                },
+            )));
         }
         state.commands = commands;
     }
@@ -1525,10 +1622,14 @@ impl Blueprint {
 
     /// Get the raw SQL statements for the blueprint.
     pub fn to_sql(&mut self, grammar: &SchemaGrammar) -> Result<Vec<String>> {
-        self.to_sql_with_state(grammar, None)
+        self.compile_with_state(grammar, None)
     }
 
-    pub(crate) fn to_sql_with_state(&mut self, grammar: &SchemaGrammar, mut state: Option<TableState>) -> Result<Vec<String>> {
+    pub(crate) fn compile_with_state(
+        &mut self,
+        grammar: &SchemaGrammar,
+        mut state: Option<TableState>,
+    ) -> Result<Vec<String>> {
         self.add_implied_commands(grammar);
         if self.needs_state(grammar) && state.is_none() {
             anyhow::bail!(crate::error::UnsupportedOperation(
@@ -1566,17 +1667,27 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            vec!["users_email_unique", "users_account_id_created_at_index", "users_user_id_foreign"]
+            vec![
+                "users_email_unique",
+                "users_account_id_created_at_index",
+                "users_user_id_foreign"
+            ]
         );
 
         let table = Blueprint::with_prefix("geo.users", "prefix_");
-        assert_eq!(table.shared.create_index_name("index", &["a".into()]), "prefix_geo_users_a_index");
+        assert_eq!(
+            table.shared.create_index_name("index", &["a".into()]),
+            "prefix_geo_users_a_index"
+        );
     }
 
     #[test]
     fn constrained_guesses_the_table() {
         let mut table = Blueprint::new("posts");
-        let foreign = table.foreign_id("user_id").constrained().cascade_on_delete();
+        let foreign = table
+            .foreign_id("user_id")
+            .constrained()
+            .cascade_on_delete();
         let attributes = foreign.attributes();
         assert_eq!(attributes.on.as_deref(), Some("users"));
         assert_eq!(attributes.references, vec!["id"]);

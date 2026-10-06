@@ -172,7 +172,9 @@ fn create_sqlite_pool(config: &Value) -> Result<Pool, sqlx::Error> {
     let foreign_keys = config
         .get("foreign_key_constraints")
         .map(|v| match v {
-            Value::String(s) => matches!(s.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes"),
+            Value::String(s) => {
+                matches!(s.to_ascii_lowercase().as_str(), "1" | "true" | "on" | "yes")
+            }
             other => other.truthy(),
         })
         .unwrap_or(false);
@@ -181,15 +183,15 @@ fn create_sqlite_pool(config: &Value) -> Result<Pool, sqlx::Error> {
     if let Some(timeout) = config.get("busy_timeout").and_then(|v| v.to_i64_lossy()) {
         options = options.busy_timeout(Duration::from_millis(timeout.max(0) as u64));
     }
-    if let Some(mode) = config_str(config, "journal_mode") {
-        if let Ok(mode) = SqliteJournalMode::from_str(&mode) {
-            options = options.journal_mode(mode);
-        }
+    if let Some(mode) = config_str(config, "journal_mode")
+        && let Ok(mode) = SqliteJournalMode::from_str(&mode)
+    {
+        options = options.journal_mode(mode);
     }
-    if let Some(mode) = config_str(config, "synchronous") {
-        if let Ok(mode) = SqliteSynchronous::from_str(&mode) {
-            options = options.synchronous(mode);
-        }
+    if let Some(mode) = config_str(config, "synchronous")
+        && let Ok(mode) = SqliteSynchronous::from_str(&mode)
+    {
+        options = options.synchronous(mode);
     }
 
     let pool = if memory {
@@ -308,20 +310,18 @@ fn create_postgres_pool(config: &Value) -> Result<Pool, sqlx::Error> {
             if let Some(database) = config_str(config, "database") {
                 options = options.database(&database);
             }
-            if let Some(mode) = config_str(config, "sslmode") {
-                if let Ok(mode) = sqlx::postgres::PgSslMode::from_str(&mode) {
-                    options = options.ssl_mode(mode);
-                }
+            if let Some(mode) = config_str(config, "sslmode")
+                && let Ok(mode) = sqlx::postgres::PgSslMode::from_str(&mode)
+            {
+                options = options.ssl_mode(mode);
             }
             options
         }
     };
 
     // Values are bound client-side, which requires standard conforming strings.
-    let mut settings: Vec<(String, String)> = vec![(
-        "standard_conforming_strings".into(),
-        "on".into(),
-    )];
+    let mut settings: Vec<(String, String)> =
+        vec![("standard_conforming_strings".into(), "on".into())];
     match config.get("search_path").or_else(|| config.get("schema")) {
         Some(Value::Array(paths)) => settings.push((
             "search_path".into(),
@@ -379,10 +379,10 @@ pub(crate) fn quote_literal(driver: Driver, value: &Value) -> Result<String, Str
 }
 
 fn number_literal(n: &Number) -> String {
-    if let Some(f) = n.as_f64().filter(|_| n.is_f64()) {
-        if f.is_finite() {
-            return format!("{f}");
-        }
+    if let Some(f) = n.as_f64().filter(|_| n.is_f64())
+        && f.is_finite()
+    {
+        return format!("{f}");
     }
     n.to_string()
 }
@@ -390,7 +390,9 @@ fn number_literal(n: &Number) -> String {
 /// Quote a string literal for the given driver.
 pub(crate) fn quote_string(driver: Driver, value: &str) -> Result<String, String> {
     if value.contains('\0') {
-        return Err("Strings with null bytes cannot be escaped. Use the binary escape option.".into());
+        return Err(
+            "Strings with null bytes cannot be escaped. Use the binary escape option.".into(),
+        );
     }
     Ok(match driver {
         Driver::Postgres => {
@@ -440,12 +442,13 @@ pub(crate) fn interpolate(
 
         if let Some(q) = quote {
             out.push(ch);
-            if ch == '\\' && q == '\'' {
-                if let Some(n) = next {
-                    out.push(n);
-                    i += 2;
-                    continue;
-                }
+            if ch == '\\'
+                && q == '\''
+                && let Some(n) = next
+            {
+                out.push(n);
+                i += 2;
+                continue;
             }
             if ch == q {
                 if next == Some(q) {
@@ -551,7 +554,10 @@ where
     })
 }
 
-pub(crate) fn sqlite_unprepared<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
+pub(crate) fn sqlite_unprepared<'a, E>(
+    executor: E,
+    sql: &'a str,
+) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
 where
     E: Executor<'a, Database = Sqlite> + 'a,
 {
@@ -564,7 +570,10 @@ where
     })
 }
 
-pub(crate) fn mysql_fetch<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Vec<Value>, sqlx::Error>>
+pub(crate) fn mysql_fetch<'a, E>(
+    executor: E,
+    sql: &'a str,
+) -> BoxFuture<'a, Result<Vec<Value>, sqlx::Error>>
 where
     E: Executor<'a, Database = MySql> + 'a,
 {
@@ -574,7 +583,10 @@ where
     })
 }
 
-pub(crate) fn mysql_execute<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
+pub(crate) fn mysql_execute<'a, E>(
+    executor: E,
+    sql: &'a str,
+) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
 where
     E: Executor<'a, Database = MySql> + 'a,
 {
@@ -587,7 +599,10 @@ where
     })
 }
 
-pub(crate) fn postgres_fetch<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Vec<Value>, sqlx::Error>>
+pub(crate) fn postgres_fetch<'a, E>(
+    executor: E,
+    sql: &'a str,
+) -> BoxFuture<'a, Result<Vec<Value>, sqlx::Error>>
 where
     E: Executor<'a, Database = Postgres> + 'a,
 {
@@ -597,7 +612,10 @@ where
     })
 }
 
-pub(crate) fn postgres_execute<'a, E>(executor: E, sql: &'a str) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
+pub(crate) fn postgres_execute<'a, E>(
+    executor: E,
+    sql: &'a str,
+) -> BoxFuture<'a, Result<Affected, sqlx::Error>>
 where
     E: Executor<'a, Database = Postgres> + 'a,
 {
@@ -632,7 +650,10 @@ fn bytes_value(bytes: Vec<u8>) -> Value {
 pub(crate) fn decode_sqlite_row(row: &SqliteRow) -> Value {
     let mut map = Map::new();
     for column in row.columns() {
-        map.insert(column.name().to_string(), decode_sqlite_value(row, column.ordinal()));
+        map.insert(
+            column.name().to_string(),
+            decode_sqlite_value(row, column.ordinal()),
+        );
     }
     Value::Object(map)
 }
@@ -739,10 +760,27 @@ fn decode_text_value(kind: &str, bytes: &[u8], postgres: bool) -> Value {
 
     let integer = matches!(
         kind,
-        "INT2" | "INT4" | "INT8" | "OID" | "SMALLINT" | "INT" | "INTEGER" | "BIGINT" | "TINYINT"
-            | "MEDIUMINT" | "YEAR" | "BOOLEAN" | "SMALLSERIAL" | "SERIAL" | "BIGSERIAL"
-    ) || (kind.ends_with("INT UNSIGNED") || kind.starts_with("TINYINT") || kind.starts_with("SMALLINT")
-        || kind.starts_with("MEDIUMINT") || kind.starts_with("BIGINT") || kind.starts_with("INT "));
+        "INT2"
+            | "INT4"
+            | "INT8"
+            | "OID"
+            | "SMALLINT"
+            | "INT"
+            | "INTEGER"
+            | "BIGINT"
+            | "TINYINT"
+            | "MEDIUMINT"
+            | "YEAR"
+            | "BOOLEAN"
+            | "SMALLSERIAL"
+            | "SERIAL"
+            | "BIGSERIAL"
+    ) || (kind.ends_with("INT UNSIGNED")
+        || kind.starts_with("TINYINT")
+        || kind.starts_with("SMALLINT")
+        || kind.starts_with("MEDIUMINT")
+        || kind.starts_with("BIGINT")
+        || kind.starts_with("INT "));
 
     if postgres && kind == "BOOL" {
         return Value::Bool(text == "t" || text == "true");
@@ -755,26 +793,25 @@ fn decode_text_value(kind: &str, bytes: &[u8], postgres: bool) -> Value {
             return Value::from(u);
         }
     }
-    if matches!(kind, "FLOAT4" | "FLOAT8" | "FLOAT" | "DOUBLE" | "REAL")
+    if (matches!(kind, "FLOAT4" | "FLOAT8" | "FLOAT" | "DOUBLE" | "REAL")
         || kind.starts_with("FLOAT")
-        || kind.starts_with("DOUBLE")
+        || kind.starts_with("DOUBLE"))
+        && let Ok(f) = text.parse::<f64>()
     {
-        if let Ok(f) = text.parse::<f64>() {
-            return float_value(f);
-        }
+        return float_value(f);
     }
-    if postgres && kind == "BYTEA" {
-        if let Some(hex) = text.strip_prefix("\\x") {
-            if let Some(bytes) = decode_hex(hex) {
-                return bytes_value(bytes);
-            }
-        }
+    if postgres
+        && kind == "BYTEA"
+        && let Some(hex) = text.strip_prefix("\\x")
+        && let Some(bytes) = decode_hex(hex)
+    {
+        return bytes_value(bytes);
     }
     Value::String(text.to_string())
 }
 
 fn decode_hex(hex: &str) -> Option<Vec<u8>> {
-    if hex.len() % 2 != 0 {
+    if !hex.len().is_multiple_of(2) {
         return None;
     }
     (0..hex.len())
@@ -798,16 +835,28 @@ mod tests {
 
     #[test]
     fn strings_are_quoted_per_driver() {
-        assert_eq!(quote_string(Driver::Sqlite, "O'Brien").unwrap(), "'O''Brien'");
-        assert_eq!(quote_string(Driver::Postgres, "O'Brien").unwrap(), "'O''Brien'");
-        assert_eq!(quote_string(Driver::Postgres, "a\\'b").unwrap(), "E'a\\\\''b'");
+        assert_eq!(
+            quote_string(Driver::Sqlite, "O'Brien").unwrap(),
+            "'O''Brien'"
+        );
+        assert_eq!(
+            quote_string(Driver::Postgres, "O'Brien").unwrap(),
+            "'O''Brien'"
+        );
+        assert_eq!(
+            quote_string(Driver::Postgres, "a\\'b").unwrap(),
+            "E'a\\\\''b'"
+        );
         assert_eq!(quote_string(Driver::MySql, "a\\'b").unwrap(), "'a\\\\''b'");
         assert!(quote_string(Driver::MySql, "a\0b").is_err());
     }
 
     #[test]
     fn literals_are_typed_per_driver() {
-        assert_eq!(quote_literal(Driver::Postgres, &json!(true)).unwrap(), "true");
+        assert_eq!(
+            quote_literal(Driver::Postgres, &json!(true)).unwrap(),
+            "true"
+        );
         assert_eq!(quote_literal(Driver::MySql, &json!(true)).unwrap(), "1");
         assert_eq!(quote_literal(Driver::Postgres, &json!(5)).unwrap(), "'5'");
         assert_eq!(quote_literal(Driver::MySql, &json!(5)).unwrap(), "5");
@@ -828,10 +877,18 @@ mod tests {
             true,
         )
         .unwrap();
-        assert_eq!(out, "select * from \"a?\" where x = 1 and y = '?' and z = 'b'");
+        assert_eq!(
+            out,
+            "select * from \"a?\" where x = 1 and y = '?' and z = 'b'"
+        );
 
-        let out = interpolate("a ?? b and c = ?", &[json!(1)], |v| quote_literal(Driver::Postgres, v), true)
-            .unwrap();
+        let out = interpolate(
+            "a ?? b and c = ?",
+            &[json!(1)],
+            |v| quote_literal(Driver::Postgres, v),
+            true,
+        )
+        .unwrap();
         assert_eq!(out, "a ? b and c = '1'");
     }
 

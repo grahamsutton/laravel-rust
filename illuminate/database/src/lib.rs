@@ -49,18 +49,22 @@ pub use connection::{Connection, QueryExecuted, QueryListener, QueryLog};
 pub use de::{from_row, from_value};
 pub use driver::Driver;
 pub use error::{
-    MultipleColumnsSelectedException, MultipleRecordsFoundException, QueryException, RecordNotFoundException,
-    RecordsNotFoundException, UnsupportedOperation,
+    MultipleColumnsSelectedException, MultipleRecordsFoundException, QueryException,
+    RecordNotFoundException, RecordsNotFoundException, UnsupportedOperation,
 };
-pub use expression::{Expression, Ident, IntoBindings, IntoColumns, IntoRecord, IntoRecords, Operand, Record, raw};
+pub use expression::{
+    Expression, Ident, IntoBindings, IntoColumns, IntoRecord, IntoRecords, Operand, Record, raw,
+};
 pub use facade::DB;
 pub use manager::{DatabaseManager, DatabaseServiceProvider};
 pub use migrations::{
-    DatabaseMigrationRepository, MigrateOptions, Migration, MigrationEvent, MigrationRegistry, MigrationStatus,
-    Migrator, RollbackOptions,
+    DatabaseMigrationRepository, MigrateOptions, Migration, MigrationEvent, MigrationRegistry,
+    MigrationStatus, Migrator, RollbackOptions,
 };
 pub use query::{Builder, JoinClause, QueryGrammar};
-pub use schema::{Blueprint, ColumnDefinition, ForeignKeyDefinition, Schema, SchemaBuilder, SchemaGrammar};
+pub use schema::{
+    Blueprint, ColumnDefinition, ForeignKeyDefinition, Schema, SchemaBuilder, SchemaGrammar,
+};
 pub use seeder::{Seeder, SeederRegistry};
 
 /// Re-exported for implementing [`Migration`] and [`Seeder`].

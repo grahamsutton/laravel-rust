@@ -2,14 +2,22 @@
 
 use illuminate_support::{Result, Value, ValueExt};
 
-use super::blueprint::{Blueprint, ColumnAttributes, ColumnDefault, CommandAttributes, CommandDefinition};
+use super::blueprint::{
+    Blueprint, ColumnAttributes, ColumnDefault, CommandAttributes, CommandDefinition,
+};
 use super::state::TableState;
 use crate::driver::Driver;
 use crate::error::UnsupportedOperation;
 use crate::expression::{Expression, Ident};
 use crate::query::QueryGrammar;
 
-const SERIALS: [&str; 5] = ["bigInteger", "integer", "mediumInteger", "smallInteger", "tinyInteger"];
+const SERIALS: [&str; 5] = [
+    "bigInteger",
+    "integer",
+    "mediumInteger",
+    "smallInteger",
+    "tinyInteger",
+];
 
 fn unsupported<T>(message: &str) -> Result<T> {
     Err(UnsupportedOperation(message.to_string()).into())
@@ -85,11 +93,19 @@ impl SchemaGrammar {
     }
 
     fn columnize(&self, columns: &[Ident]) -> String {
-        columns.iter().map(|c| self.wrap_ident(c)).collect::<Vec<_>>().join(", ")
+        columns
+            .iter()
+            .map(|c| self.wrap_ident(c))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     fn columnize_str(&self, columns: &[String]) -> String {
-        columns.iter().map(|c| self.wrap(c)).collect::<Vec<_>>().join(", ")
+        columns
+            .iter()
+            .map(|c| self.wrap(c))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     fn quote_string(&self, value: &str) -> String {
@@ -97,7 +113,11 @@ impl SchemaGrammar {
     }
 
     fn quote_strings(&self, values: &[String]) -> String {
-        values.iter().map(|v| self.quote_string(v)).collect::<Vec<_>>().join(", ")
+        values
+            .iter()
+            .map(|v| self.quote_string(v))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     /// Format a value as a column default.
@@ -105,7 +125,9 @@ impl SchemaGrammar {
         match value {
             ColumnDefault::Raw(expression) => expression.value().to_string(),
             ColumnDefault::Value(Value::Bool(b)) => format!("'{}'", *b as i32),
-            ColumnDefault::Value(value) => format!("'{}'", value.to_string_lossy().replace('\'', "''")),
+            ColumnDefault::Value(value) => {
+                format!("'{}'", value.to_string_lossy().replace('\'', "''"))
+            }
         }
     }
 
@@ -157,11 +179,15 @@ impl SchemaGrammar {
             "dropUnique" => one(self.compile_drop_unique(table, &attributes)),
             "dropIndex" => one(self.compile_drop_index(table, &attributes)),
             "dropFullText" => match self.driver {
-                Driver::Sqlite => unsupported("This database driver does not support fulltext index removal."),
+                Driver::Sqlite => {
+                    unsupported("This database driver does not support fulltext index removal.")
+                }
                 _ => one(self.compile_drop_index(table, &attributes)),
             },
             "dropForeign" => self.compile_drop_foreign(table, &attributes),
-            "rename" => one(self.compile_rename(table, attributes.to.as_deref().unwrap_or_default())),
+            "rename" => {
+                one(self.compile_rename(table, attributes.to.as_deref().unwrap_or_default()))
+            }
             "renameColumn" => one(format!(
                 "alter table {} rename column {} to {}",
                 self.wrap_table(table),
@@ -169,8 +195,14 @@ impl SchemaGrammar {
                 self.wrap(attributes.to.as_deref().unwrap_or_default())
             )),
             "renameIndex" => self.compile_rename_index(table, &attributes, state),
-            "tableComment" => Ok(self.compile_table_comment(table, &attributes).into_iter().collect()),
-            "comment" => Ok(self.compile_column_comment(table, &attributes).into_iter().collect()),
+            "tableComment" => Ok(self
+                .compile_table_comment(table, &attributes)
+                .into_iter()
+                .collect()),
+            "comment" => Ok(self
+                .compile_column_comment(table, &attributes)
+                .into_iter()
+                .collect()),
             "autoIncrementStartingValues" => Ok(self
                 .compile_auto_increment_starting_values(table, &attributes)
                 .into_iter()
@@ -185,7 +217,11 @@ impl SchemaGrammar {
 
     fn compile_create(&self, blueprint: &Blueprint) -> Result<String> {
         let table = blueprint.get_table();
-        let create = if blueprint.temporary { "create temporary" } else { "create" };
+        let create = if blueprint.temporary {
+            "create temporary"
+        } else {
+            "create"
+        };
         let mut columns = self.get_columns(blueprint);
 
         match self.driver {
@@ -198,7 +234,12 @@ impl SchemaGrammar {
                 let primary = blueprint
                     .commands_named("primary")
                     .first()
-                    .map(|p| format!(", primary key ({})", self.columnize(&p.attributes().columns)))
+                    .map(|p| {
+                        format!(
+                            ", primary key ({})",
+                            self.columnize(&p.attributes().columns)
+                        )
+                    })
                     .unwrap_or_default();
                 Ok(format!(
                     "{create} table {} ({}{foreign_keys}{primary})",
@@ -211,16 +252,28 @@ impl SchemaGrammar {
                     let attributes = primary.attributes();
                     columns.push(format!(
                         "primary key {}({})",
-                        attributes.algorithm.map(|a| format!("using {a}")).unwrap_or_default(),
+                        attributes
+                            .algorithm
+                            .map(|a| format!("using {a}"))
+                            .unwrap_or_default(),
                         self.columnize(&attributes.columns)
                     ));
                     primary.lock().should_be_skipped = true;
                 }
-                let mut sql = format!("{create} table {} ({})", self.wrap_table(table), columns.join(", "));
-                if let Some(charset) = blueprint.charset.clone().or_else(|| self.config("charset")) {
+                let mut sql = format!(
+                    "{create} table {} ({})",
+                    self.wrap_table(table),
+                    columns.join(", ")
+                );
+                if let Some(charset) = blueprint.charset.clone().or_else(|| self.config("charset"))
+                {
                     sql.push_str(&format!(" default character set {charset}"));
                 }
-                if let Some(collation) = blueprint.collation.clone().or_else(|| self.config("collation")) {
+                if let Some(collation) = blueprint
+                    .collation
+                    .clone()
+                    .or_else(|| self.config("collation"))
+                {
                     sql.push_str(&format!(" collate '{collation}'"));
                 }
                 if let Some(engine) = blueprint.engine.clone().or_else(|| self.config("engine")) {
@@ -261,14 +314,22 @@ impl SchemaGrammar {
         }
     }
 
-    fn compile_change(&self, blueprint: &Blueprint, column: &ColumnAttributes) -> Result<Vec<String>> {
+    fn compile_change(
+        &self,
+        blueprint: &Blueprint,
+        column: &ColumnAttributes,
+    ) -> Result<Vec<String>> {
         let table = self.wrap_table(blueprint.get_table());
         match self.driver {
             // SQLite rebuilds the table in the `alter` command.
             Driver::Sqlite => Ok(Vec::new()),
             Driver::MySql | Driver::MariaDb => {
                 let column = self.with_type_defaults(column);
-                let sql = format!("alter table {table} modify {} {}", self.wrap(&column.name), self.get_type(&column));
+                let sql = format!(
+                    "alter table {table} modify {} {}",
+                    self.wrap(&column.name),
+                    self.get_type(&column)
+                );
                 Ok(vec![self.add_modifiers(sql, blueprint, &column)])
             }
             Driver::Postgres => {
@@ -277,7 +338,11 @@ impl SchemaGrammar {
                     "type {}{}{}",
                     self.get_type(&column),
                     self.modify_collate(&column),
-                    column.using.as_ref().map(|u| format!(" using {u}")).unwrap_or_default()
+                    column
+                        .using
+                        .as_ref()
+                        .map(|u| format!(" using {u}"))
+                        .unwrap_or_default()
                 )];
                 changes.push(if column.nullable.unwrap_or(false) {
                     "drop not null".to_string()
@@ -328,7 +393,11 @@ impl SchemaGrammar {
                     .full_type_definition
                     .clone()
                     .unwrap_or_else(|| self.get_type(&column));
-                self.add_modifiers(format!("{} {kind}", self.wrap(&column.name)), blueprint, &column)
+                self.add_modifiers(
+                    format!("{} {kind}", self.wrap(&column.name)),
+                    blueprint,
+                    &column,
+                )
             })
             .collect();
 
@@ -340,7 +409,11 @@ impl SchemaGrammar {
         let wrapped = self.wrap_table(table);
         let column_names = column_names.join(", ");
 
-        let foreign_keys: String = state.foreign_keys.iter().map(|f| self.sqlite_foreign_key(f)).collect();
+        let foreign_keys: String = state
+            .foreign_keys
+            .iter()
+            .map(|f| self.sqlite_foreign_key(f))
+            .collect();
         let primary = if auto_increment_column.is_some() {
             String::new()
         } else {
@@ -368,7 +441,11 @@ impl SchemaGrammar {
             self.wrap_table(&table_name)
         ));
         for index in &state.indexes {
-            if index.index.as_deref().is_some_and(|name| name.starts_with("sqlite_")) {
+            if index
+                .index
+                .as_deref()
+                .is_some_and(|name| name.starts_with("sqlite_"))
+            {
                 continue;
             }
             let sql = match index.name.as_str() {
@@ -385,16 +462,30 @@ impl SchemaGrammar {
 
     fn compile_rename(&self, from: &str, to: &str) -> String {
         match self.driver {
-            Driver::MySql | Driver::MariaDb => format!("rename table {} to {}", self.wrap_table(from), self.wrap_table(to)),
-            _ => format!("alter table {} rename to {}", self.wrap_table(from), self.wrap_table(to)),
+            Driver::MySql | Driver::MariaDb => format!(
+                "rename table {} to {}",
+                self.wrap_table(from),
+                self.wrap_table(to)
+            ),
+            _ => format!(
+                "alter table {} rename to {}",
+                self.wrap_table(from),
+                self.wrap_table(to)
+            ),
         }
     }
 
     fn compile_table_comment(&self, table: &str, command: &CommandAttributes) -> Option<String> {
         let comment = command.comment.as_deref()?.replace('\'', "''");
         match self.driver {
-            Driver::MySql | Driver::MariaDb => Some(format!("alter table {} comment = '{comment}'", self.wrap_table(table))),
-            Driver::Postgres => Some(format!("comment on table {} is '{comment}'", self.wrap_table(table))),
+            Driver::MySql | Driver::MariaDb => Some(format!(
+                "alter table {} comment = '{comment}'",
+                self.wrap_table(table)
+            )),
+            Driver::Postgres => Some(format!(
+                "comment on table {} is '{comment}'",
+                self.wrap_table(table)
+            )),
             Driver::Sqlite => None,
         }
     }
@@ -415,13 +506,18 @@ impl SchemaGrammar {
         ))
     }
 
-    fn compile_auto_increment_starting_values(&self, table: &str, command: &CommandAttributes) -> Option<String> {
+    fn compile_auto_increment_starting_values(
+        &self,
+        table: &str,
+        command: &CommandAttributes,
+    ) -> Option<String> {
         let column = command.column.as_ref()?.attributes();
         let value = column.starting_value.filter(|_| column.auto_increment)?;
         match self.driver {
-            Driver::MySql | Driver::MariaDb => {
-                Some(format!("alter table {} auto_increment = {value}", self.wrap_table(table)))
-            }
+            Driver::MySql | Driver::MariaDb => Some(format!(
+                "alter table {} auto_increment = {value}",
+                self.wrap_table(table)
+            )),
             Driver::Postgres => Some(format!(
                 "select setval(pg_get_serial_sequence({}, {}), {value}, false)",
                 self.quote_string(&self.wrap_table(table)),
@@ -446,9 +542,16 @@ impl SchemaGrammar {
             Driver::MySql | Driver::MariaDb => vec![format!(
                 "alter table {} add primary key {}({columns})",
                 self.wrap_table(table),
-                command.algorithm.as_ref().map(|a| format!("using {a}")).unwrap_or_default()
+                command
+                    .algorithm
+                    .as_ref()
+                    .map(|a| format!("using {a}"))
+                    .unwrap_or_default()
             )],
-            Driver::Postgres => vec![format!("alter table {} add primary key ({columns})", self.wrap_table(table))],
+            Driver::Postgres => vec![format!(
+                "alter table {} add primary key ({columns})",
+                self.wrap_table(table)
+            )],
         })
     }
 
@@ -460,7 +563,9 @@ impl SchemaGrammar {
                 let (schema, name) = Self::parse_schema_and_table(table);
                 vec![format!(
                     "create unique index {}{index} on {} ({columns})",
-                    schema.map(|s| format!("{}.", self.wrap_value(&s))).unwrap_or_default(),
+                    schema
+                        .map(|s| format!("{}.", self.wrap_value(&s)))
+                        .unwrap_or_default(),
                     self.wrap_table(&name)
                 )]
             }
@@ -471,11 +576,17 @@ impl SchemaGrammar {
                     self.wrap_table(table)
                 );
                 if let Some(deferrable) = command.deferrable {
-                    sql.push_str(if deferrable { " deferrable" } else { " not deferrable" });
-                    if deferrable {
-                        if let Some(immediate) = command.initially_immediate {
-                            sql.push_str(if immediate { " initially immediate" } else { " initially deferred" });
-                        }
+                    sql.push_str(if deferrable {
+                        " deferrable"
+                    } else {
+                        " not deferrable"
+                    });
+                    if deferrable && let Some(immediate) = command.initially_immediate {
+                        sql.push_str(if immediate {
+                            " initially immediate"
+                        } else {
+                            " initially deferred"
+                        });
                     }
                 }
                 vec![sql]
@@ -488,7 +599,11 @@ impl SchemaGrammar {
             "alter table {} add {kind} {}{}({})",
             self.wrap_table(table),
             self.wrap(&Self::index_name(command)),
-            command.algorithm.as_ref().map(|a| format!(" using {a}")).unwrap_or_default(),
+            command
+                .algorithm
+                .as_ref()
+                .map(|a| format!(" using {a}"))
+                .unwrap_or_default(),
             self.columnize(&command.columns)
         )
     }
@@ -501,7 +616,9 @@ impl SchemaGrammar {
                 let (schema, name) = Self::parse_schema_and_table(table);
                 format!(
                     "create index {}{index} on {} ({columns})",
-                    schema.map(|s| format!("{}.", self.wrap_value(&s))).unwrap_or_default(),
+                    schema
+                        .map(|s| format!("{}.", self.wrap_value(&s)))
+                        .unwrap_or_default(),
                     self.wrap_table(&name)
                 )
             }
@@ -510,21 +627,33 @@ impl SchemaGrammar {
                 "create index {}{index} on {}{} ({columns})",
                 if command.online { "concurrently " } else { "" },
                 self.wrap_table(table),
-                command.algorithm.as_ref().map(|a| format!(" using {a}")).unwrap_or_default()
+                command
+                    .algorithm
+                    .as_ref()
+                    .map(|a| format!(" using {a}"))
+                    .unwrap_or_default()
             ),
         }
     }
 
     fn compile_fulltext(&self, table: &str, command: &CommandAttributes) -> Result<String> {
         match self.driver {
-            Driver::Sqlite => unsupported("This database driver does not support fulltext index creation."),
+            Driver::Sqlite => {
+                unsupported("This database driver does not support fulltext index creation.")
+            }
             Driver::MySql | Driver::MariaDb => Ok(self.mysql_key(table, command, "fulltext")),
             Driver::Postgres => {
                 let language = command.language.clone().unwrap_or_else(|| "english".into());
                 let columns = command
                     .columns
                     .iter()
-                    .map(|c| format!("to_tsvector({}, {})", self.quote_string(&language), self.wrap_ident(c)))
+                    .map(|c| {
+                        format!(
+                            "to_tsvector({}, {})",
+                            self.quote_string(&language),
+                            self.wrap_ident(c)
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(" || ");
                 Ok(format!(
@@ -558,11 +687,17 @@ impl SchemaGrammar {
         }
         if self.driver == Driver::Postgres {
             if let Some(deferrable) = command.deferrable {
-                sql.push_str(if deferrable { " deferrable" } else { " not deferrable" });
-                if deferrable {
-                    if let Some(immediate) = command.initially_immediate {
-                        sql.push_str(if immediate { " initially immediate" } else { " initially deferred" });
-                    }
+                sql.push_str(if deferrable {
+                    " deferrable"
+                } else {
+                    " not deferrable"
+                });
+                if deferrable && let Some(immediate) = command.initially_immediate {
+                    sql.push_str(if immediate {
+                        " initially immediate"
+                    } else {
+                        " initially deferred"
+                    });
                 }
             }
             if command.not_valid {
@@ -574,7 +709,11 @@ impl SchemaGrammar {
 
     fn compile_drop_column(&self, table: &str, command: &CommandAttributes) -> Vec<String> {
         let wrapped = self.wrap_table(table);
-        let columns: Vec<String> = command.column_names().iter().map(|c| self.wrap(c)).collect();
+        let columns: Vec<String> = command
+            .column_names()
+            .iter()
+            .map(|c| self.wrap(c))
+            .collect();
         match self.driver {
             Driver::Sqlite => columns
                 .iter()
@@ -582,11 +721,19 @@ impl SchemaGrammar {
                 .collect(),
             Driver::MySql | Driver::MariaDb => vec![format!(
                 "alter table {wrapped} {}",
-                columns.iter().map(|c| format!("drop {c}")).collect::<Vec<_>>().join(", ")
+                columns
+                    .iter()
+                    .map(|c| format!("drop {c}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )],
             Driver::Postgres => vec![format!(
                 "alter table {wrapped} {}",
-                columns.iter().map(|c| format!("drop column {c}")).collect::<Vec<_>>().join(", ")
+                columns
+                    .iter()
+                    .map(|c| format!("drop column {c}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )],
         }
     }
@@ -594,7 +741,10 @@ impl SchemaGrammar {
     fn compile_drop_primary(&self, table: &str) -> Vec<String> {
         match self.driver {
             Driver::Sqlite => Vec::new(),
-            Driver::MySql | Driver::MariaDb => vec![format!("alter table {} drop primary key", self.wrap_table(table))],
+            Driver::MySql | Driver::MariaDb => vec![format!(
+                "alter table {} drop primary key",
+                self.wrap_table(table)
+            )],
             Driver::Postgres => {
                 let (_, name) = Self::parse_schema_and_table(table);
                 vec![format!(
@@ -624,20 +774,30 @@ impl SchemaGrammar {
                 let (schema, _) = Self::parse_schema_and_table(table);
                 format!(
                     "drop index {}{index}",
-                    schema.map(|s| format!("{}.", self.wrap_value(&s))).unwrap_or_default()
+                    schema
+                        .map(|s| format!("{}.", self.wrap_value(&s)))
+                        .unwrap_or_default()
                 )
             }
-            Driver::MySql | Driver::MariaDb => format!("alter table {} drop index {index}", self.wrap_table(table)),
+            Driver::MySql | Driver::MariaDb => {
+                format!("alter table {} drop index {index}", self.wrap_table(table))
+            }
             Driver::Postgres => format!("drop index {index}"),
         }
     }
 
-    fn compile_drop_foreign(&self, table: &str, command: &CommandAttributes) -> Result<Vec<String>> {
+    fn compile_drop_foreign(
+        &self,
+        table: &str,
+        command: &CommandAttributes,
+    ) -> Result<Vec<String>> {
         let index = self.wrap(&Self::index_name(command));
         match self.driver {
             Driver::Sqlite => {
                 if command.columns.is_empty() {
-                    return unsupported("This database driver does not support dropping foreign keys by name.");
+                    return unsupported(
+                        "This database driver does not support dropping foreign keys by name.",
+                    );
                 }
                 Ok(Vec::new())
             }
@@ -667,10 +827,16 @@ impl SchemaGrammar {
                 self.wrap(&from),
                 self.wrap(&to)
             )]),
-            Driver::Postgres => Ok(vec![format!("alter index {} rename to {}", self.wrap(&from), self.wrap(&to))]),
+            Driver::Postgres => Ok(vec![format!(
+                "alter index {} rename to {}",
+                self.wrap(&from),
+                self.wrap(&to)
+            )]),
             Driver::Sqlite => {
                 let Some(state) = state else {
-                    return unsupported("Renaming an index on SQLite requires inspecting the table.");
+                    return unsupported(
+                        "Renaming an index on SQLite requires inspecting the table.",
+                    );
                 };
                 if state.primary.as_ref().and_then(|p| p.index.as_deref()) == Some(from.as_str()) {
                     return unsupported("SQLite does not support altering primary keys.");
@@ -727,7 +893,9 @@ impl SchemaGrammar {
     fn with_type_defaults(&self, column: &ColumnAttributes) -> ColumnAttributes {
         let mut column = column.clone();
         let current = match (self.driver, column.precision) {
-            (Driver::MySql | Driver::MariaDb, Some(p)) if p > 0 => format!("CURRENT_TIMESTAMP({p})"),
+            (Driver::MySql | Driver::MariaDb, Some(p)) if p > 0 => {
+                format!("CURRENT_TIMESTAMP({p})")
+            }
             _ => "CURRENT_TIMESTAMP".to_string(),
         };
         match column.kind.as_str() {
@@ -771,9 +939,8 @@ impl SchemaGrammar {
             Driver::Sqlite => match kind {
                 "char" | "string" | "uuid" | "ipAddress" | "macAddress" => "varchar".into(),
                 "tinyText" | "text" | "mediumText" | "longText" => "text".into(),
-                "integer" | "bigInteger" | "mediumInteger" | "tinyInteger" | "smallInteger" | "year" => {
-                    "integer".into()
-                }
+                "integer" | "bigInteger" | "mediumInteger" | "tinyInteger" | "smallInteger"
+                | "year" => "integer".into(),
                 "float" => "float".into(),
                 "double" => "double".into(),
                 "decimal" => "numeric".into(),
@@ -783,8 +950,26 @@ impl SchemaGrammar {
                     column.name,
                     self.quote_strings(&column.allowed)
                 ),
-                "json" => if self.config.get("use_native_json").is_some_and(|v| v.truthy()) { "json" } else { "text" }.into(),
-                "jsonb" => if self.config.get("use_native_jsonb").is_some_and(|v| v.truthy()) { "jsonb" } else { "text" }.into(),
+                "json" => if self
+                    .config
+                    .get("use_native_json")
+                    .is_some_and(|v| v.truthy())
+                {
+                    "json"
+                } else {
+                    "text"
+                }
+                .into(),
+                "jsonb" => if self
+                    .config
+                    .get("use_native_jsonb")
+                    .is_some_and(|v| v.truthy())
+                {
+                    "jsonb"
+                } else {
+                    "text"
+                }
+                .into(),
                 "date" => "date".into(),
                 "dateTime" | "dateTimeTz" | "timestamp" | "timestampTz" => "datetime".into(),
                 "time" | "timeTz" => "time".into(),
@@ -808,7 +993,11 @@ impl SchemaGrammar {
                     _ => "float".into(),
                 },
                 "double" => "double".into(),
-                "decimal" => format!("decimal({}, {})", column.total.unwrap_or(8), column.places.unwrap_or(2)),
+                "decimal" => format!(
+                    "decimal({}, {})",
+                    column.total.unwrap_or(8),
+                    column.places.unwrap_or(2)
+                ),
                 "boolean" => "tinyint(1)".into(),
                 "enum" => format!("enum({})", self.quote_strings(&column.allowed)),
                 "set" => format!("set({})", self.quote_strings(&column.allowed)),
@@ -832,13 +1021,19 @@ impl SchemaGrammar {
                     Some(length) => format!("varbinary({length})"),
                     None => "blob".into(),
                 },
-                "uuid" => if self.driver == Driver::MariaDb { "uuid" } else { "char(36)" }.into(),
+                "uuid" => if self.driver == Driver::MariaDb {
+                    "uuid"
+                } else {
+                    "char(36)"
+                }
+                .into(),
                 "ipAddress" => "varchar(45)".into(),
                 "macAddress" => "varchar(17)".into(),
                 other => other.to_string(),
             },
             Driver::Postgres => {
-                let serial = column.auto_increment && column.generated_as.is_none() && !column.change;
+                let serial =
+                    column.auto_increment && column.generated_as.is_none() && !column.change;
                 match kind {
                     "char" => match column.length {
                         Some(length) => format!("char({length})"),
@@ -850,15 +1045,26 @@ impl SchemaGrammar {
                     },
                     "tinyText" => "varchar(255)".into(),
                     "text" | "mediumText" | "longText" => "text".into(),
-                    "integer" | "mediumInteger" | "year" => if serial && kind != "year" { "serial" } else { "integer" }.into(),
+                    "integer" | "mediumInteger" | "year" => if serial && kind != "year" {
+                        "serial"
+                    } else {
+                        "integer"
+                    }
+                    .into(),
                     "bigInteger" => if serial { "bigserial" } else { "bigint" }.into(),
-                    "smallInteger" | "tinyInteger" => if serial { "smallserial" } else { "smallint" }.into(),
+                    "smallInteger" | "tinyInteger" => {
+                        if serial { "smallserial" } else { "smallint" }.into()
+                    }
                     "float" => match column.precision {
                         Some(p) if p > 0 => format!("float({p})"),
                         _ => "float".into(),
                     },
                     "double" => "double precision".into(),
-                    "decimal" => format!("decimal({}, {})", column.total.unwrap_or(8), column.places.unwrap_or(2)),
+                    "decimal" => format!(
+                        "decimal({}, {})",
+                        column.total.unwrap_or(8),
+                        column.places.unwrap_or(2)
+                    ),
                     "boolean" => "boolean".into(),
                     "enum" => format!(
                         "varchar(255) check (\"{}\" in ({}))",
@@ -869,13 +1075,25 @@ impl SchemaGrammar {
                     "jsonb" => "jsonb".into(),
                     "date" => "date".into(),
                     "dateTime" | "timestamp" => {
-                        format!("timestamp{} without time zone", Self::precision_suffix(column.precision))
+                        format!(
+                            "timestamp{} without time zone",
+                            Self::precision_suffix(column.precision)
+                        )
                     }
                     "dateTimeTz" | "timestampTz" => {
-                        format!("timestamp{} with time zone", Self::precision_suffix(column.precision))
+                        format!(
+                            "timestamp{} with time zone",
+                            Self::precision_suffix(column.precision)
+                        )
                     }
-                    "time" => format!("time{} without time zone", Self::precision_suffix(column.precision)),
-                    "timeTz" => format!("time{} with time zone", Self::precision_suffix(column.precision)),
+                    "time" => format!(
+                        "time{} without time zone",
+                        Self::precision_suffix(column.precision)
+                    ),
+                    "timeTz" => format!(
+                        "time{} with time zone",
+                        Self::precision_suffix(column.precision)
+                    ),
                     "binary" => "bytea".into(),
                     "uuid" => "uuid".into(),
                     "ipAddress" => "inet".into(),
@@ -886,7 +1104,12 @@ impl SchemaGrammar {
         }
     }
 
-    fn add_modifiers(&self, mut sql: String, blueprint: &Blueprint, column: &ColumnAttributes) -> String {
+    fn add_modifiers(
+        &self,
+        mut sql: String,
+        blueprint: &Blueprint,
+        column: &ColumnAttributes,
+    ) -> String {
         let generated = column.virtual_as.is_some() || column.stored_as.is_some();
         match self.driver {
             Driver::Sqlite => {
@@ -930,7 +1153,11 @@ impl SchemaGrammar {
                     sql.push_str(&format!(" as ({expression}) stored"));
                 }
                 if !generated {
-                    sql.push_str(if column.nullable.unwrap_or(false) { " null" } else { " not null" });
+                    sql.push_str(if column.nullable.unwrap_or(false) {
+                        " null"
+                    } else {
+                        " not null"
+                    });
                 } else if column.nullable == Some(false) {
                     sql.push_str(" not null");
                 }
@@ -946,7 +1173,11 @@ impl SchemaGrammar {
                 if SERIALS.contains(&column.kind.as_str()) && column.auto_increment {
                     let primary_elsewhere = blueprint.has_command("primary")
                         || (column.change && column.primary.is_none());
-                    sql.push_str(if primary_elsewhere { " auto_increment" } else { " auto_increment primary key" });
+                    sql.push_str(if primary_elsewhere {
+                        " auto_increment"
+                    } else {
+                        " auto_increment primary key"
+                    });
                 }
                 if let Some(comment) = &column.comment {
                     sql.push_str(&format!(" comment '{}'", add_slashes(comment)));
@@ -960,7 +1191,11 @@ impl SchemaGrammar {
             }
             Driver::Postgres => {
                 sql.push_str(&self.modify_collate(column));
-                sql.push_str(if column.nullable.unwrap_or(false) { " null" } else { " not null" });
+                sql.push_str(if column.nullable.unwrap_or(false) {
+                    " null"
+                } else {
+                    " not null"
+                });
                 if let Some(default) = &column.default {
                     sql.push_str(&format!(" default {}", self.get_default_value(default)));
                 }
@@ -987,7 +1222,9 @@ impl SchemaGrammar {
 
     fn modify_collate(&self, column: &ColumnAttributes) -> String {
         match &column.collation {
-            Some(collation) if self.driver == Driver::Postgres => format!(" collate {}", self.wrap_value(collation)),
+            Some(collation) if self.driver == Driver::Postgres => {
+                format!(" collate {}", self.wrap_value(collation))
+            }
             Some(collation) => format!(" collate '{collation}'"),
             None => String::new(),
         }
@@ -997,8 +1234,16 @@ impl SchemaGrammar {
         let generated = column.generated_as.as_ref()?;
         Some(format!(
             " generated {} as identity{}",
-            if column.always { "always" } else { "by default" },
-            if generated.is_empty() { String::new() } else { format!(" ({generated})") }
+            if column.always {
+                "always"
+            } else {
+                "by default"
+            },
+            if generated.is_empty() {
+                String::new()
+            } else {
+                format!(" ({generated})")
+            }
         ))
     }
 
@@ -1016,12 +1261,16 @@ impl SchemaGrammar {
             ),
             Driver::MySql | Driver::MariaDb => format!(
                 "select exists (select 1 from information_schema.tables where table_schema = {} and table_name = {} and table_type in ('BASE TABLE', 'SYSTEM VERSIONED')) as `exists`",
-                schema.map(|s| self.quote_string(s)).unwrap_or_else(|| "schema()".into()),
+                schema
+                    .map(|s| self.quote_string(s))
+                    .unwrap_or_else(|| "schema()".into()),
                 self.quote_string(table)
             ),
             Driver::Postgres => format!(
                 "select exists (select 1 from pg_class c, pg_namespace n where n.nspname = {} and c.relname = {} and c.relkind in ('r', 'p') and n.oid = c.relnamespace)",
-                schema.map(|s| self.quote_string(s)).unwrap_or_else(|| "current_schema()".into()),
+                schema
+                    .map(|s| self.quote_string(s))
+                    .unwrap_or_else(|| "current_schema()".into()),
                 self.quote_string(table)
             ),
         }
@@ -1055,13 +1304,17 @@ impl SchemaGrammar {
             ),
             Driver::MySql | Driver::MariaDb => format!(
                 "select column_name as `name`, data_type as `type_name`, column_type as `type`, collation_name as `collation`, is_nullable as `nullable`, column_default as `default`, column_comment as `comment`, generation_expression as `expression`, extra as `extra` from information_schema.columns where table_schema = {} and table_name = {} order by ordinal_position asc",
-                schema.map(|s| self.quote_string(s)).unwrap_or_else(|| "schema()".into()),
+                schema
+                    .map(|s| self.quote_string(s))
+                    .unwrap_or_else(|| "schema()".into()),
                 self.quote_string(table)
             ),
             Driver::Postgres => format!(
                 "select a.attname as name, t.typname as type_name, format_type(a.atttypid, a.atttypmod) as type, (select tc.collcollate from pg_catalog.pg_collation tc where tc.oid = a.attcollation) as collation, not a.attnotnull as nullable, (select pg_get_expr(adbin, adrelid) from pg_attrdef where c.oid = pg_attrdef.adrelid and pg_attrdef.adnum = a.attnum) as default, a.attgenerated as generated, col_description(c.oid, a.attnum) as comment from pg_attribute a, pg_class c, pg_type t, pg_namespace n where c.relname = {} and n.nspname = {} and a.attnum > 0 and a.attrelid = c.oid and a.atttypid = t.oid and n.oid = c.relnamespace order by a.attnum",
                 self.quote_string(table),
-                schema.map(|s| self.quote_string(s)).unwrap_or_else(|| "current_schema()".into())
+                schema
+                    .map(|s| self.quote_string(s))
+                    .unwrap_or_else(|| "current_schema()".into())
             ),
         }
     }
@@ -1078,13 +1331,17 @@ impl SchemaGrammar {
             }
             Driver::MySql | Driver::MariaDb => format!(
                 "select index_name as `name`, group_concat(column_name order by seq_in_index) as `columns`, index_type as `type`, not non_unique as `unique` from information_schema.statistics where table_schema = {} and table_name = {} group by index_name, index_type, non_unique",
-                schema.map(|s| self.quote_string(s)).unwrap_or_else(|| "schema()".into()),
+                schema
+                    .map(|s| self.quote_string(s))
+                    .unwrap_or_else(|| "schema()".into()),
                 self.quote_string(table)
             ),
             Driver::Postgres => format!(
                 "select ic.relname as name, string_agg(a.attname, ',' order by indseq.ord) as columns, am.amname as \"type\", i.indisunique as \"unique\", i.indisprimary as \"primary\" from pg_index i join pg_class tc on tc.oid = i.indrelid join pg_namespace tn on tn.oid = tc.relnamespace join pg_class ic on ic.oid = i.indexrelid join pg_am am on am.oid = ic.relam join lateral unnest(i.indkey) with ordinality as indseq(num, ord) on true left join pg_attribute a on a.attrelid = i.indrelid and a.attnum = indseq.num where tc.relname = {} and tn.nspname = {} group by ic.relname, am.amname, i.indisunique, i.indisprimary",
                 self.quote_string(table),
-                schema.map(|s| self.quote_string(s)).unwrap_or_else(|| "current_schema()".into())
+                schema
+                    .map(|s| self.quote_string(s))
+                    .unwrap_or_else(|| "current_schema()".into())
             ),
         }
     }
@@ -1101,13 +1358,17 @@ impl SchemaGrammar {
             }
             Driver::MySql | Driver::MariaDb => format!(
                 "select kc.constraint_name as `name`, group_concat(kc.column_name order by kc.ordinal_position) as `columns`, kc.referenced_table_schema as `foreign_schema`, kc.referenced_table_name as `foreign_table`, group_concat(kc.referenced_column_name order by kc.ordinal_position) as `foreign_columns`, rc.update_rule as `on_update`, rc.delete_rule as `on_delete` from information_schema.key_column_usage kc join information_schema.referential_constraints rc on kc.constraint_schema = rc.constraint_schema and kc.constraint_name = rc.constraint_name where kc.table_schema = {} and kc.table_name = {} and kc.referenced_table_name is not null group by kc.constraint_name, kc.referenced_table_schema, kc.referenced_table_name, rc.update_rule, rc.delete_rule",
-                schema.map(|s| self.quote_string(s)).unwrap_or_else(|| "schema()".into()),
+                schema
+                    .map(|s| self.quote_string(s))
+                    .unwrap_or_else(|| "schema()".into()),
                 self.quote_string(table)
             ),
             Driver::Postgres => format!(
                 "select c.conname as name, string_agg(la.attname, ',' order by conseq.ord) as columns, fn.nspname as foreign_schema, fc.relname as foreign_table, string_agg(fa.attname, ',' order by conseq.ord) as foreign_columns, c.confupdtype as on_update, c.confdeltype as on_delete from pg_constraint c join pg_class tc on c.conrelid = tc.oid join pg_namespace tn on tn.oid = tc.relnamespace join pg_class fc on c.confrelid = fc.oid join pg_namespace fn on fn.oid = fc.relnamespace join lateral unnest(c.conkey) with ordinality as conseq(num, ord) on true join pg_attribute la on la.attrelid = c.conrelid and la.attnum = conseq.num join pg_attribute fa on fa.attrelid = c.confrelid and fa.attnum = c.confkey[conseq.ord] where c.contype = 'f' and tc.relname = {} and tn.nspname = {} group by c.conname, fn.nspname, fc.relname, c.confupdtype, c.confdeltype",
                 self.quote_string(table),
-                schema.map(|s| self.quote_string(s)).unwrap_or_else(|| "current_schema()".into())
+                schema
+                    .map(|s| self.quote_string(s))
+                    .unwrap_or_else(|| "current_schema()".into())
             ),
         }
     }
@@ -1151,7 +1412,12 @@ impl SchemaGrammar {
     fn escape_names(&self, names: &[String]) -> Vec<String> {
         names
             .iter()
-            .map(|name| name.split('.').map(|s| self.wrap_value(s)).collect::<Vec<_>>().join("."))
+            .map(|name| {
+                name.split('.')
+                    .map(|s| self.wrap_value(s))
+                    .collect::<Vec<_>>()
+                    .join(".")
+            })
             .collect()
     }
 }

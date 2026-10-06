@@ -18,6 +18,7 @@ illuminate-cookie.workspace = true
 illuminate-hashing.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+indexmap.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 hmac.workspace = true

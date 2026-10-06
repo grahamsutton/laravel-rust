@@ -83,7 +83,10 @@ pub async fn run_seeder(seeder: &dyn Seeder, output: Option<SeederOutput>) -> Re
 async fn invoke(seeder: &dyn Seeder, key: String, silent: bool) -> Result<()> {
     let name = seeder.name();
     let context = context();
-    let output = context.as_ref().and_then(|c| c.output.clone()).filter(|_| !silent);
+    let output = context
+        .as_ref()
+        .and_then(|c| c.output.clone())
+        .filter(|_| !silent);
     if let Some(output) = &output {
         output(&SeederEvent::Running { name: name.clone() });
     }
@@ -158,7 +161,10 @@ impl SeederRegistry {
     pub fn resolve(&self, name: &str) -> Option<Box<dyn Seeder>> {
         let seeders = self.seeders.read().unwrap();
         let short = Str::class_basename(&name.replace('\\', "::"));
-        seeders.get(name).or_else(|| seeders.get(&short)).map(|factory| factory())
+        seeders
+            .get(name)
+            .or_else(|| seeders.get(&short))
+            .map(|factory| factory())
     }
 
     /// Determine if a seeder is registered under the name.

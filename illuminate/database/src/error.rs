@@ -72,10 +72,10 @@ impl QueryException {
     /// Determine if the query failed because of a unique constraint
     /// violation (Laravel's `UniqueConstraintViolationException`).
     pub fn is_unique_constraint_violation(&self) -> bool {
-        if let Some(error) = database_error(self.source.as_ref()) {
-            if error.is_unique_violation() {
-                return true;
-            }
+        if let Some(error) = database_error(self.source.as_ref())
+            && error.is_unique_violation()
+        {
+            return true;
         }
         let message = self.message.to_lowercase();
         message.contains("unique constraint failed")
@@ -271,7 +271,9 @@ mod tests {
 
     #[test]
     fn concurrency_errors_are_detected() {
-        assert!(caused_by_concurrency_error("SQLSTATE[40001]: Deadlock found when trying to get lock"));
+        assert!(caused_by_concurrency_error(
+            "SQLSTATE[40001]: Deadlock found when trying to get lock"
+        ));
         assert!(!caused_by_concurrency_error("syntax error"));
     }
 
@@ -285,6 +287,9 @@ mod tests {
             RecordsNotFoundException.to_string(),
             "No records found for the given query."
         );
-        assert_eq!(MultipleRecordsFoundException::new(3).to_string(), "3 records were found.");
+        assert_eq!(
+            MultipleRecordsFoundException::new(3).to_string(),
+            "3 records were found."
+        );
     }
 }

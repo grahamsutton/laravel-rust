@@ -1116,10 +1116,9 @@ mod tests {
         assert_eq!(call(users(), "pluck", vec!["name".into()]).to_json(), json!(["Taylor", "Abigail", "James"]));
         assert_eq!(call(users(), "sum", vec!["age".into()]), ViewValue::Int(105));
         assert_eq!(call(users(), "avg", vec!["age".into()]), ViewValue::Int(35));
-        assert_eq!(
-            call(call(users(), "sortBy", vec!["age".into()]), "pluck", vec!["name".into()]).to_json(),
-            json!({"1": "Abigail", "2": "James", "0": "Taylor"})
-        );
+        let sorted = call(users(), "sortBy", vec!["age".into()]);
+        assert_eq!(call(sorted.clone(), "keys", vec![]).to_json(), json!([1, 2, 0]));
+        assert_eq!(call(sorted, "pluck", vec!["name".into()]).to_json(), json!(["Abigail", "James", "Taylor"]));
         assert_eq!(call(users(), "where", vec!["team".into(), "core".into()]).count(), 2);
         assert_eq!(call(users(), "firstWhere", vec!["age".into(), ">".into(), 36.into()]).get("name"), Some("Taylor".into()));
         assert_eq!(call(users(), "groupBy", vec!["team".into()]).get("core").unwrap().count(), 2);

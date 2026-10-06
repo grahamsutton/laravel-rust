@@ -77,7 +77,11 @@ impl JoinClause {
     }
 
     fn nested_on(mut self, callback: impl FnOnce(JoinClause) -> JoinClause, boolean: &str) -> Self {
-        let nested = callback(JoinClause::new(&self.query, self.kind.clone(), self.table.clone()));
+        let nested = callback(JoinClause::new(
+            &self.query,
+            self.kind.clone(),
+            self.table.clone(),
+        ));
         if !nested.query.wheres.is_empty() {
             let bindings = nested.query.bindings.where_.clone();
             self.query.wheres.push(Where {
@@ -98,7 +102,12 @@ impl JoinClause {
     }
 
     /// Add a "where" clause with an operator to the join.
-    pub fn where_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         let (column, value) = (column.into(), value.into());
         self.map(|q| q.where_op(column, operator, value))
     }
@@ -110,7 +119,12 @@ impl JoinClause {
     }
 
     /// Add an "or where" clause with an operator to the join.
-    pub fn or_where_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         let (column, value) = (column.into(), value.into());
         self.map(|q| q.or_where_op(column, operator, value))
     }
@@ -143,7 +157,12 @@ impl JoinClause {
     }
 
     /// Add a "where column" clause to the join.
-    pub fn where_column(self, first: impl Into<Ident>, operator: &str, second: impl Into<Ident>) -> Self {
+    pub fn where_column(
+        self,
+        first: impl Into<Ident>,
+        operator: &str,
+        second: impl Into<Ident>,
+    ) -> Self {
         let (first, second) = (first.into(), second.into());
         self.map(|q| q.where_column_op(first, operator, second))
     }

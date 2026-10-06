@@ -722,7 +722,7 @@ fn spell_below_thousand(n: u64) -> String {
     if rest > 0 {
         if rest < 20 {
             words.push(ONES[rest as usize].to_string());
-        } else if rest % 10 == 0 {
+        } else if rest.is_multiple_of(10) {
             words.push(TENS[(rest / 10) as usize].to_string());
         } else {
             words.push(format!("{}-{}", TENS[(rest / 10) as usize], ONES[(rest % 10) as usize]));

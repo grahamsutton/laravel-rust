@@ -151,6 +151,131 @@ impl MessageBag {
     pub fn is_not_empty(&self) -> bool {
         self.any()
     }
+
+    /// Merge another bag's messages into this one (alias of `merge`).
+    pub fn add_message_bag(&mut self, other: &MessageBag) -> &mut Self {
+        self.merge(other)
+    }
+
+    /// Determine if messages exist for all of the given keys.
+    pub fn has_all(&self, keys: &[&str]) -> bool {
+        !keys.is_empty() && keys.iter().all(|k| self.has(k))
+    }
+
+    /// Get the first message for the given key, formatted. `:message` and
+    /// `:key` are replaced in the format.
+    ///
+    /// ```
+    /// use illuminate_support::MessageBag;
+    ///
+    /// let errors = MessageBag::from([("email", "The email field is required.")]);
+    /// assert_eq!(
+    ///     errors.first_with_format("email", "<p>:message</p>").as_deref(),
+    ///     Some("<p>The email field is required.</p>")
+    /// );
+    /// ```
+    pub fn first_with_format(&self, key: &str, format: &str) -> Option<String> {
+        self.get_with_format(key, format).into_iter().next()
+    }
+
+    /// Get all of the messages for the given key, formatted.
+    pub fn get_with_format(&self, key: &str, format: &str) -> Vec<String> {
+        if let Some(messages) = self.messages.get(key) {
+            return messages.iter().map(|m| apply_format(m, format, key)).collect();
+        }
+        if key.contains('*') {
+            return self
+                .messages
+                .iter()
+                .filter(|(k, _)| Str::is(key, k))
+                .flat_map(|(k, m)| m.iter().map(move |message| apply_format(message, format, k)))
+                .collect();
+        }
+        Vec::new()
+    }
+
+    /// Get every message in the bag, formatted.
+    pub fn all_with_format(&self, format: &str) -> Vec<String> {
+        self.messages
+            .iter()
+            .flat_map(|(k, m)| m.iter().map(move |message| apply_format(message, format, k)))
+            .collect()
+    }
+
+    /// Get the messages matching a wildcard key, keyed by their own keys.
+    ///
+    /// ```
+    /// use illuminate_support::MessageBag;
+    ///
+    /// let errors = MessageBag::from([("email.0", "Invalid."), ("email.1", "Taken."), ("name", "Required.")]);
+    /// let matching = errors.get_matching("email.*");
+    /// assert_eq!(matching.keys().collect::<Vec<_>>(), vec!["email.0", "email.1"]);
+    /// ```
+    pub fn get_matching(&self, pattern: &str) -> IndexMap<String, Vec<String>> {
+        self.messages
+            .iter()
+            .filter(|(k, _)| Str::is(pattern, k))
+            .map(|(k, m)| (k.clone(), m.clone()))
+            .collect()
+    }
+
+    /// Get every unique message in the bag.
+    ///
+    /// ```
+    /// use illuminate_support::MessageBag;
+    ///
+    /// let errors = MessageBag::from([("a", "Required."), ("b", "Required."), ("c", "Invalid.")]);
+    /// assert_eq!(errors.unique(), vec!["Required.", "Invalid."]);
+    /// ```
+    pub fn unique(&self) -> Vec<&str> {
+        let mut unique: Vec<&str> = Vec::new();
+        for message in self.all() {
+            if !unique.contains(&message) {
+                unique.push(message);
+            }
+        }
+        unique
+    }
+
+    /// Alias of `messages`.
+    pub fn get_messages(&self) -> &IndexMap<String, Vec<String>> {
+        &self.messages
+    }
+
+    /// Get the bag itself (for parity with Laravel's `MessageProvider`).
+    pub fn get_message_bag(&self) -> &MessageBag {
+        self
+    }
+
+    /// Convert the bag to its JSON representation.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(&self.messages).unwrap_or_default()
+    }
+
+    /// Convert the bag to pretty-printed JSON.
+    pub fn to_pretty_json(&self) -> String {
+        serde_json::to_string_pretty(&self.messages).unwrap_or_default()
+    }
+
+    /// Run the callback over each message, replacing it with the result.
+    pub fn transform(&mut self, mut callback: impl FnMut(&str, &str) -> String) -> &mut Self {
+        for (key, messages) in self.messages.iter_mut() {
+            for message in messages.iter_mut() {
+                *message = callback(message, key);
+            }
+        }
+        self
+    }
+}
+
+fn apply_format(message: &str, format: &str, key: &str) -> String {
+    format.replace(":message", message).replace(":key", key)
+}
+
+impl From<IndexMap<String, Vec<String>>> for MessageBag {
+    fn from(messages: IndexMap<String, Vec<String>>) -> Self {
+        MessageBag::from_map(messages)
+    }
 }
 
 impl std::fmt::Display for MessageBag {
@@ -191,5 +316,49 @@ impl<K: Into<String>, V: Into<String>> From<Vec<(K, V)>> for MessageBag {
             bag.add(key, message);
         }
         bag
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn it_adds_and_reads_messages() {
+        let mut bag = MessageBag::new();
+        bag.add("email", "Required.").add("email", "Required.").add("email", "Invalid.");
+        bag.add_if(false, "name", "Never added.");
+        assert_eq!(bag.get("email"), vec!["Required.", "Invalid."]);
+        assert_eq!(bag.count(), 2);
+        assert!(bag.missing("name"));
+        assert!(bag.has_all(&["email"]));
+        assert!(!bag.has_all(&["email", "name"]));
+        assert!(!bag.has_all(&[]));
+        assert_eq!(bag.first_any(), Some("Required."));
+        assert_eq!(bag.to_json(), r#"{"email":["Required.","Invalid."]}"#);
+    }
+
+    #[test]
+    fn it_formats_messages() {
+        let bag = MessageBag::from([("email", "Required."), ("name", "Too short.")]);
+        assert_eq!(bag.first_with_format("email", ":key - :message").as_deref(), Some("email - Required."));
+        assert_eq!(bag.get_with_format("name", "<li>:message</li>"), vec!["<li>Too short.</li>"]);
+        assert_eq!(bag.all_with_format("[:message]"), vec!["[Required.]", "[Too short.]"]);
+        assert_eq!(bag.get_with_format("missing", ":message"), Vec::<String>::new());
+    }
+
+    #[test]
+    fn it_merges_and_transforms() {
+        let mut bag = MessageBag::from([("email", "Required.")]);
+        let other = MessageBag::from([("email", "Required."), ("name", "Required.")]);
+        bag.add_message_bag(&other);
+        assert_eq!(bag.count(), 2);
+        assert_eq!(bag.unique(), vec!["Required."]);
+        bag.transform(|message, key| format!("{key}: {message}"));
+        assert_eq!(bag.first("name"), Some("name: Required."));
+        assert_eq!(bag.get_message_bag().keys(), vec!["email", "name"]);
+        let wildcard = MessageBag::from([("items.0.name", "Required."), ("items.1.name", "Invalid.")]);
+        assert_eq!(wildcard.get("items.*.name"), vec!["Required.", "Invalid."]);
+        assert!(wildcard.has("items.*"));
     }
 }

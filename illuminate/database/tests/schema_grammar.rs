@@ -44,27 +44,37 @@ fn basic_create_tables() {
     };
     assert_eq!(
         sql(&sqlite(), &mut create(build)),
-        vec!["create table \"users\" (\"id\" integer primary key autoincrement not null, \"email\" varchar not null)"]
+        vec![
+            "create table \"users\" (\"id\" integer primary key autoincrement not null, \"email\" varchar not null)"
+        ]
     );
     assert_eq!(
         sql(&mysql(), &mut create(build)),
-        vec!["create table `users` (`id` int unsigned not null auto_increment primary key, `email` varchar(255) not null)"]
+        vec![
+            "create table `users` (`id` int unsigned not null auto_increment primary key, `email` varchar(255) not null)"
+        ]
     );
     assert_eq!(
         sql(&pgsql(), &mut create(build)),
-        vec!["create table \"users\" (\"id\" serial not null primary key, \"email\" varchar(255) not null)"]
+        vec![
+            "create table \"users\" (\"id\" serial not null primary key, \"email\" varchar(255) not null)"
+        ]
     );
 }
 
 #[test]
 fn mysql_create_uses_charset_collation_and_engine() {
-    let grammar = mysql_with(json!({"charset": "utf8mb4", "collation": "utf8mb4_unicode_ci", "engine": "InnoDB"}));
+    let grammar = mysql_with(
+        json!({"charset": "utf8mb4", "collation": "utf8mb4_unicode_ci", "engine": "InnoDB"}),
+    );
     let mut blueprint = create(|t| {
         t.id();
     });
     assert_eq!(
         sql(&grammar, &mut blueprint),
-        vec!["create table `users` (`id` bigint unsigned not null auto_increment primary key) default character set utf8mb4 collate 'utf8mb4_unicode_ci' engine = InnoDB"]
+        vec![
+            "create table `users` (`id` bigint unsigned not null auto_increment primary key) default character set utf8mb4 collate 'utf8mb4_unicode_ci' engine = InnoDB"
+        ]
     );
 
     let mut blueprint = create(|t| {
@@ -75,7 +85,9 @@ fn mysql_create_uses_charset_collation_and_engine() {
     blueprint.engine("MyISAM");
     assert_eq!(
         sql(&mysql(), &mut blueprint),
-        vec!["create table `users` (`id` bigint unsigned not null auto_increment primary key) default character set utf8 collate 'utf8_bin' engine = MyISAM"]
+        vec![
+            "create table `users` (`id` bigint unsigned not null auto_increment primary key) default character set utf8 collate 'utf8_bin' engine = MyISAM"
+        ]
     );
 }
 
@@ -101,15 +113,21 @@ fn ids_and_timestamps() {
     };
     assert_eq!(
         sql(&sqlite(), &mut create(build)),
-        vec!["create table \"users\" (\"id\" integer primary key autoincrement not null, \"created_at\" datetime, \"updated_at\" datetime, \"deleted_at\" datetime, \"remember_token\" varchar)"]
+        vec![
+            "create table \"users\" (\"id\" integer primary key autoincrement not null, \"created_at\" datetime, \"updated_at\" datetime, \"deleted_at\" datetime, \"remember_token\" varchar)"
+        ]
     );
     assert_eq!(
         sql(&mysql(), &mut create(build)),
-        vec!["create table `users` (`id` bigint unsigned not null auto_increment primary key, `created_at` timestamp null, `updated_at` timestamp null, `deleted_at` timestamp null, `remember_token` varchar(100) null)"]
+        vec![
+            "create table `users` (`id` bigint unsigned not null auto_increment primary key, `created_at` timestamp null, `updated_at` timestamp null, `deleted_at` timestamp null, `remember_token` varchar(100) null)"
+        ]
     );
     assert_eq!(
         sql(&pgsql(), &mut create(build)),
-        vec!["create table \"users\" (\"id\" bigserial not null primary key, \"created_at\" timestamp(0) without time zone null, \"updated_at\" timestamp(0) without time zone null, \"deleted_at\" timestamp(0) without time zone null, \"remember_token\" varchar(100) null)"]
+        vec![
+            "create table \"users\" (\"id\" bigserial not null primary key, \"created_at\" timestamp(0) without time zone null, \"updated_at\" timestamp(0) without time zone null, \"deleted_at\" timestamp(0) without time zone null, \"remember_token\" varchar(100) null)"
+        ]
     );
 }
 
@@ -186,9 +204,14 @@ fn defaults_and_modifiers() {
     let build = |t: &mut Blueprint| {
         t.string("name").nullable().default("O'Reilly");
         t.boolean("active").default(true);
-        t.integer("votes").unsigned().default(0).comment("It's votes");
+        t.integer("votes")
+            .unsigned()
+            .default(0)
+            .comment("It's votes");
         t.timestamp("created_at").use_current();
-        t.timestamp("updated_at").use_current().use_current_on_update();
+        t.timestamp("updated_at")
+            .use_current()
+            .use_current_on_update();
         t.string("status").default(Expression::new("'draft'"));
     };
     assert_eq!(
@@ -265,11 +288,15 @@ fn composite_primary_keys() {
     };
     assert_eq!(
         sql(&sqlite(), &mut create(build)),
-        vec!["create table \"users\" (\"a\" varchar not null, \"b\" varchar not null, primary key (\"a\", \"b\"))"]
+        vec![
+            "create table \"users\" (\"a\" varchar not null, \"b\" varchar not null, primary key (\"a\", \"b\"))"
+        ]
     );
     assert_eq!(
         sql(&mysql(), &mut create(build)),
-        vec!["create table `users` (`a` varchar(255) not null, `b` varchar(255) not null, primary key (`a`, `b`))"]
+        vec![
+            "create table `users` (`a` varchar(255) not null, `b` varchar(255) not null, primary key (`a`, `b`))"
+        ]
     );
     assert_eq!(
         sql(&pgsql(), &mut create(build)),
@@ -286,7 +313,11 @@ fn foreign_keys() {
         t.id();
         t.foreign_id("user_id").constrained().cascade_on_delete();
         t.unsigned_big_integer("team_id").nullable();
-        t.foreign("team_id").references("id").on("teams").null_on_delete().cascade_on_update();
+        t.foreign("team_id")
+            .references("id")
+            .on("teams")
+            .null_on_delete()
+            .cascade_on_update();
     };
     let mut blueprint = Blueprint::creating("posts");
     build(&mut blueprint);
@@ -385,14 +416,23 @@ fn dropping_tables_and_columns() {
     assert_eq!(sql(&sqlite(), &mut blueprint), vec!["drop table \"users\""]);
     let mut blueprint = Blueprint::new("users");
     blueprint.drop_if_exists();
-    assert_eq!(sql(&mysql(), &mut blueprint), vec!["drop table if exists `users`"]);
+    assert_eq!(
+        sql(&mysql(), &mut blueprint),
+        vec!["drop table if exists `users`"]
+    );
 
     let build = |t: &mut Blueprint| t.drop_column(["foo", "bar"]);
     assert_eq!(
         sql(&sqlite(), &mut alter(build)),
-        vec!["alter table \"users\" drop column \"foo\"", "alter table \"users\" drop column \"bar\""]
+        vec![
+            "alter table \"users\" drop column \"foo\"",
+            "alter table \"users\" drop column \"bar\""
+        ]
     );
-    assert_eq!(sql(&mysql(), &mut alter(build)), vec!["alter table `users` drop `foo`, drop `bar`"]);
+    assert_eq!(
+        sql(&mysql(), &mut alter(build)),
+        vec!["alter table `users` drop `foo`, drop `bar`"]
+    );
     assert_eq!(
         sql(&pgsql(), &mut alter(build)),
         vec!["alter table \"users\" drop column \"foo\", drop column \"bar\""]
@@ -407,17 +447,38 @@ fn dropping_tables_and_columns() {
 #[test]
 fn renaming() {
     let build = |t: &mut Blueprint| t.rename("people");
-    assert_eq!(sql(&sqlite(), &mut alter(build)), vec!["alter table \"users\" rename to \"people\""]);
-    assert_eq!(sql(&mysql(), &mut alter(build)), vec!["rename table `users` to `people`"]);
-    assert_eq!(sql(&pgsql(), &mut alter(build)), vec!["alter table \"users\" rename to \"people\""]);
+    assert_eq!(
+        sql(&sqlite(), &mut alter(build)),
+        vec!["alter table \"users\" rename to \"people\""]
+    );
+    assert_eq!(
+        sql(&mysql(), &mut alter(build)),
+        vec!["rename table `users` to `people`"]
+    );
+    assert_eq!(
+        sql(&pgsql(), &mut alter(build)),
+        vec!["alter table \"users\" rename to \"people\""]
+    );
 
     let build = |t: &mut Blueprint| t.rename_column("from", "to");
-    assert_eq!(sql(&sqlite(), &mut alter(build)), vec!["alter table \"users\" rename column \"from\" to \"to\""]);
-    assert_eq!(sql(&mysql(), &mut alter(build)), vec!["alter table `users` rename column `from` to `to`"]);
+    assert_eq!(
+        sql(&sqlite(), &mut alter(build)),
+        vec!["alter table \"users\" rename column \"from\" to \"to\""]
+    );
+    assert_eq!(
+        sql(&mysql(), &mut alter(build)),
+        vec!["alter table `users` rename column `from` to `to`"]
+    );
 
     let build = |t: &mut Blueprint| t.rename_index("foo", "bar");
-    assert_eq!(sql(&mysql(), &mut alter(build)), vec!["alter table `users` rename index `foo` to `bar`"]);
-    assert_eq!(sql(&pgsql(), &mut alter(build)), vec!["alter index \"foo\" rename to \"bar\""]);
+    assert_eq!(
+        sql(&mysql(), &mut alter(build)),
+        vec!["alter table `users` rename index `foo` to `bar`"]
+    );
+    assert_eq!(
+        sql(&pgsql(), &mut alter(build)),
+        vec!["alter index \"foo\" rename to \"bar\""]
+    );
 }
 
 #[test]
@@ -453,7 +514,10 @@ fn dropping_indexes() {
     };
     assert_eq!(
         sql(&sqlite(), &mut alter(build)),
-        vec!["drop index \"users_email_unique\"", "drop index \"users_name_index\""]
+        vec![
+            "drop index \"users_email_unique\"",
+            "drop index \"users_name_index\""
+        ]
     );
 }
 
@@ -488,7 +552,9 @@ fn fulltext_indexes() {
     );
     assert_eq!(
         sql(&pgsql(), &mut alter(build)),
-        vec!["create index \"users_body_fulltext\" on \"users\" using gin ((to_tsvector('english', \"body\")))"]
+        vec![
+            "create index \"users_body_fulltext\" on \"users\" using gin ((to_tsvector('english', \"body\")))"
+        ]
     );
     assert!(alter(build).to_sql(&sqlite()).is_err());
 }
@@ -600,12 +666,24 @@ fn introspection_queries() {
         mysql().compile_table_exists(None, "users"),
         "select exists (select 1 from information_schema.tables where table_schema = schema() and table_name = 'users' and table_type in ('BASE TABLE', 'SYSTEM VERSIONED')) as `exists`"
     );
-    assert_eq!(sqlite().compile_enable_foreign_key_constraints(), "pragma foreign_keys = 1");
-    assert_eq!(mysql().compile_disable_foreign_key_constraints(), "SET FOREIGN_KEY_CHECKS=0;");
-    assert_eq!(pgsql().compile_disable_foreign_key_constraints(), "SET CONSTRAINTS ALL DEFERRED;");
+    assert_eq!(
+        sqlite().compile_enable_foreign_key_constraints(),
+        "pragma foreign_keys = 1"
+    );
+    assert_eq!(
+        mysql().compile_disable_foreign_key_constraints(),
+        "SET FOREIGN_KEY_CHECKS=0;"
+    );
+    assert_eq!(
+        pgsql().compile_disable_foreign_key_constraints(),
+        "SET CONSTRAINTS ALL DEFERRED;"
+    );
     assert_eq!(
         pgsql().compile_drop_all_tables(&["public.users".into(), "posts".into()]),
         "drop table \"public\".\"users\", \"posts\" cascade"
     );
-    assert_eq!(mysql().compile_drop_all_tables(&["users".into()]), "drop table `users`");
+    assert_eq!(
+        mysql().compile_drop_all_tables(&["users".into()]),
+        "drop table `users`"
+    );
 }

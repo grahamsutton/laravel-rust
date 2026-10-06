@@ -47,7 +47,8 @@ pub struct QueryExecuted {
 impl QueryExecuted {
     /// Get the SQL with the bindings substituted in, for debugging.
     pub fn to_raw_sql(&self) -> String {
-        QueryGrammar::new(self.driver, "").substitute_bindings_into_raw_sql(&self.sql, &self.bindings)
+        QueryGrammar::new(self.driver, "")
+            .substitute_bindings_into_raw_sql(&self.sql, &self.bindings)
     }
 }
 
@@ -124,8 +125,12 @@ impl RawConnection {
 
     async fn commit(&mut self) -> Result<(), sqlx::Error> {
         match self {
-            RawConnection::Sqlite(c) => <Sqlite as Database>::TransactionManager::commit(&mut **c).await,
-            RawConnection::MySql(c) => <MySql as Database>::TransactionManager::commit(&mut **c).await,
+            RawConnection::Sqlite(c) => {
+                <Sqlite as Database>::TransactionManager::commit(&mut **c).await
+            }
+            RawConnection::MySql(c) => {
+                <MySql as Database>::TransactionManager::commit(&mut **c).await
+            }
             RawConnection::Postgres(c) => {
                 <Postgres as Database>::TransactionManager::commit(&mut **c).await
             }
@@ -137,7 +142,9 @@ impl RawConnection {
             RawConnection::Sqlite(c) => {
                 <Sqlite as Database>::TransactionManager::rollback(&mut **c).await
             }
-            RawConnection::MySql(c) => <MySql as Database>::TransactionManager::rollback(&mut **c).await,
+            RawConnection::MySql(c) => {
+                <MySql as Database>::TransactionManager::rollback(&mut **c).await
+            }
             RawConnection::Postgres(c) => {
                 <Postgres as Database>::TransactionManager::rollback(&mut **c).await
             }
@@ -198,16 +205,29 @@ impl Connection {
     }
 
     pub(crate) fn with_listeners(name: String, config: Value, listeners: Listeners) -> Self {
-        let driver_name = config.get("driver").map(|d| d.to_string_lossy()).unwrap_or_default();
+        let driver_name = config
+            .get("driver")
+            .map(|d| d.to_string_lossy())
+            .unwrap_or_default();
         let (driver, config_error) = match Driver::from_name(&driver_name) {
             Some(driver) => (driver, None),
             None if driver_name.is_empty() && config.is_null() => (
                 Driver::Sqlite,
                 Some(format!("Database connection [{name}] not configured.")),
             ),
-            None => (Driver::Sqlite, Some(format!("Unsupported driver [{driver_name}]."))),
+            None if driver_name.is_empty() => (
+                Driver::Sqlite,
+                Some("A driver must be specified.".to_string()),
+            ),
+            None => (
+                Driver::Sqlite,
+                Some(format!("Unsupported driver [{driver_name}].")),
+            ),
         };
-        let prefix = config.get("prefix").map(|p| p.to_string_lossy()).unwrap_or_default();
+        let prefix = config
+            .get("prefix")
+            .map(|p| p.to_string_lossy())
+            .unwrap_or_default();
 
         Self {
             inner: Arc::new(Inner {
@@ -291,7 +311,11 @@ impl Connection {
 
     /// Get the schema grammar used by the connection.
     pub fn schema_grammar(&self) -> SchemaGrammar {
-        SchemaGrammar::new(self.inner.driver, self.get_table_prefix(), self.inner.config.clone())
+        SchemaGrammar::new(
+            self.inner.driver,
+            self.get_table_prefix(),
+            self.inner.config.clone(),
+        )
     }
 
     /// Get a schema builder instance for the connection.
@@ -330,7 +354,9 @@ impl Connection {
 
     /// Escape a value for safe SQL embedding (used by `to_raw_sql`).
     pub fn escape(&self, value: &Value) -> Result<String> {
-        self.query_grammar().escape(value).map_err(|e| anyhow::anyhow!(e))
+        self.query_grammar()
+            .escape(value)
+            .map_err(|e| anyhow::anyhow!(e))
     }
 
     // ------------------------------------------------------------------
@@ -365,7 +391,11 @@ impl Connection {
     }
 
     /// Run a select statement and return a single result.
-    pub async fn select_one(&self, query: &str, bindings: impl IntoBindings) -> Result<Option<Value>> {
+    pub async fn select_one(
+        &self,
+        query: &str,
+        bindings: impl IntoBindings,
+    ) -> Result<Option<Value>> {
         Ok(self.select(query, bindings).await?.into_iter().next())
     }
 
@@ -376,7 +406,11 @@ impl Connection {
                 if map.len() > 1 {
                     return Err(MultipleColumnsSelectedException.into());
                 }
-                Ok(map.into_iter().next().map(|(_, v)| v).unwrap_or(Value::Null))
+                Ok(map
+                    .into_iter()
+                    .next()
+                    .map(|(_, v)| v)
+                    .unwrap_or(Value::Null))
             }
             _ => Ok(Value::Null),
         }
@@ -416,7 +450,11 @@ impl Connection {
     }
 
     /// Run an SQL statement and get the number of rows affected.
-    pub async fn affecting_statement(&self, query: &str, bindings: impl IntoBindings) -> Result<u64> {
+    pub async fn affecting_statement(
+        &self,
+        query: &str,
+        bindings: impl IntoBindings,
+    ) -> Result<u64> {
         let bindings = bindings.into_bindings();
         if self.pretending() {
             self.log_query(query, bindings, None);
@@ -434,7 +472,12 @@ impl Connection {
     }
 
     /// Run an insert statement and return the auto-incrementing id it created.
-    pub(crate) async fn insert_get_id(&self, query: &str, bindings: Vec<Value>, sequence: &str) -> Result<i64> {
+    pub(crate) async fn insert_get_id(
+        &self,
+        query: &str,
+        bindings: Vec<Value>,
+        sequence: &str,
+    ) -> Result<i64> {
         if self.pretending() {
             self.log_query(query, bindings, None);
             return Ok(0);
@@ -543,7 +586,9 @@ impl Connection {
         if let Some(transaction) = self.current_transaction() {
             let mut connection = transaction.connection.lock().await;
             return Ok(match &mut *connection {
-                RawConnection::Sqlite(c) => driver::sqlite_execute(&mut **c, query, bindings).await?,
+                RawConnection::Sqlite(c) => {
+                    driver::sqlite_execute(&mut **c, query, bindings).await?
+                }
                 RawConnection::MySql(c) => driver::mysql_execute(&mut **c, &sql).await?,
                 RawConnection::Postgres(c) => driver::postgres_execute(&mut **c, &sql).await?,
             });
@@ -588,7 +633,9 @@ impl Connection {
     /// Reconnect to the database.
     pub async fn reconnect(&self) -> Result<()> {
         self.disconnect().await;
-        self.pool().map(|_| ()).map_err(|e| anyhow::anyhow!(e.to_string()))
+        self.pool()
+            .map(|_| ())
+            .map_err(|e| anyhow::anyhow!(e.to_string()))
     }
 
     // ------------------------------------------------------------------
@@ -666,7 +713,11 @@ impl Connection {
 
     /// Execute a closure within a transaction, retrying it up to `attempts`
     /// times when it fails because of a deadlock.
-    pub async fn transaction_with_attempts<F, Fut, T>(&self, attempts: usize, mut callback: F) -> Result<T>
+    pub async fn transaction_with_attempts<F, Fut, T>(
+        &self,
+        attempts: usize,
+        mut callback: F,
+    ) -> Result<T>
     where
         F: FnMut() -> Fut,
         Fut: Future<Output = Result<T>>,
@@ -740,14 +791,20 @@ impl Connection {
         match self.current_transaction() {
             Some(handle) if handle.level() > 0 => {
                 let level = handle.level();
-                handle.after_commit.lock().unwrap().push((level, Box::new(callback)));
+                handle
+                    .after_commit
+                    .lock()
+                    .unwrap()
+                    .push((level, Box::new(callback)));
             }
             _ => callback(),
         }
     }
 
     async fn start_transaction(&self) -> Result<Arc<TransactionHandle>> {
-        let pool = self.pool().map_err(|e| self.query_exception("begin transaction", Vec::new(), e))?;
+        let pool = self
+            .pool()
+            .map_err(|e| self.query_exception("begin transaction", Vec::new(), e))?;
         let mut connection = pool
             .acquire()
             .await
@@ -852,7 +909,9 @@ impl Connection {
 
         let result = callback().await;
 
-        self.inner.pretending.store(was_pretending, Ordering::SeqCst);
+        self.inner
+            .pretending
+            .store(was_pretending, Ordering::SeqCst);
         let log = std::mem::replace(&mut *self.inner.query_log.lock().unwrap(), previous_log);
         self.inner.logging.store(logging, Ordering::SeqCst);
 
@@ -887,17 +946,26 @@ impl Connection {
 
         if self.inner.logging.load(Ordering::SeqCst) {
             let query = if self.pretending() {
-                self.query_grammar().substitute_bindings_into_raw_sql(query, &bindings)
+                self.query_grammar()
+                    .substitute_bindings_into_raw_sql(query, &bindings)
             } else {
                 query.to_string()
             };
-            self.inner.query_log.lock().unwrap().push(QueryLog { query, bindings, time });
+            self.inner.query_log.lock().unwrap().push(QueryLog {
+                query,
+                bindings,
+                time,
+            });
         }
     }
 
     /// Register a database query listener.
     pub fn listen(&self, callback: impl Fn(&QueryExecuted) + Send + Sync + 'static) {
-        self.inner.listeners.write().unwrap().push(Arc::new(callback));
+        self.inner
+            .listeners
+            .write()
+            .unwrap()
+            .push(Arc::new(callback));
     }
 
     /// Enable the query log on the connection.

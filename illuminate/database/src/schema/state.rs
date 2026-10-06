@@ -98,7 +98,8 @@ impl TableState {
             "change" => {
                 if let Some(column) = &command.column {
                     let column = column.attributes();
-                    if let Some(existing) = self.columns.iter_mut().find(|c| c.name == column.name) {
+                    if let Some(existing) = self.columns.iter_mut().find(|c| c.name == column.name)
+                    {
                         *existing = column;
                     }
                 }

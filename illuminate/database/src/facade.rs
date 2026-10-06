@@ -102,7 +102,9 @@ impl DB {
 
     /// Run an SQL statement and get the number of rows affected.
     pub async fn affecting_statement(query: &str, bindings: impl IntoBindings) -> Result<u64> {
-        Self::default_connection().affecting_statement(query, bindings).await
+        Self::default_connection()
+            .affecting_statement(query, bindings)
+            .await
     }
 
     /// Run a raw, unprepared query against the database.

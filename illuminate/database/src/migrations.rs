@@ -36,9 +36,9 @@ use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
-use indexmap::IndexMap;
 use illuminate_container::try_app;
 use illuminate_support::{Result, Value, ValueExt, json};
+use indexmap::IndexMap;
 
 use crate::connection::Connection;
 use crate::manager::DatabaseManager;
@@ -188,7 +188,10 @@ pub enum MigrationEvent {
     /// An informational line ("Running migrations.", "Nothing to migrate.", ...).
     Info(String),
     /// A migration is about to run.
-    Started { name: String, method: MigrationMethod },
+    Started {
+        name: String,
+        method: MigrationMethod,
+    },
     /// A migration finished (or failed, or was skipped).
     Finished {
         name: String,
@@ -248,12 +251,24 @@ impl MigrationEvent {
 }
 
 /// Render a two-column task line: `  name ........ 3.21ms DONE`.
-pub fn render_task(description: &str, duration_ms: Option<f64>, status: &str, width: usize) -> String {
-    let run_time = duration_ms.map(format_run_time).map(|t| format!(" {t}")).unwrap_or_default();
+pub fn render_task(
+    description: &str,
+    duration_ms: Option<f64>,
+    status: &str,
+    width: usize,
+) -> String {
+    let run_time = duration_ms
+        .map(format_run_time)
+        .map(|t| format!(" {t}"))
+        .unwrap_or_default();
     let width = width.min(150);
     let used = description.chars().count() + run_time.chars().count() + 10;
     let dots = width.saturating_sub(used);
-    let status = if status.is_empty() { String::new() } else { format!(" {status}") };
+    let status = if status.is_empty() {
+        String::new()
+    } else {
+        format!(" {status}")
+    };
     format!("  {description} {}{run_time}{status}", ".".repeat(dots))
 }
 
@@ -338,14 +353,22 @@ impl DatabaseMigrationRepository {
     }
 
     fn query(&self) -> Builder {
-        self.get_connection().table(self.table.as_str()).use_write_pdo()
+        self.get_connection()
+            .table(self.table.as_str())
+            .use_write_pdo()
     }
 
     fn records(rows: impl IntoIterator<Item = Value>) -> Vec<MigrationRecord> {
         rows.into_iter()
             .map(|row| MigrationRecord {
-                migration: row.get("migration").map(|m| m.to_string_lossy()).unwrap_or_default(),
-                batch: row.get("batch").and_then(|b| b.to_i64_lossy()).unwrap_or_default(),
+                migration: row
+                    .get("migration")
+                    .map(|m| m.to_string_lossy())
+                    .unwrap_or_default(),
+                batch: row
+                    .get("batch")
+                    .and_then(|b| b.to_i64_lossy())
+                    .unwrap_or_default(),
             })
             .collect()
     }
@@ -444,12 +467,18 @@ impl DatabaseMigrationRepository {
 
     /// Determine if the migration repository exists.
     pub async fn repository_exists(&self) -> Result<bool> {
-        self.get_connection().get_schema_builder().has_table(&self.table).await
+        self.get_connection()
+            .get_schema_builder()
+            .has_table(&self.table)
+            .await
     }
 
     /// Delete the migration repository table.
     pub async fn delete_repository(&self) -> Result<()> {
-        self.get_connection().get_schema_builder().drop(&self.table).await
+        self.get_connection()
+            .get_schema_builder()
+            .drop(&self.table)
+            .await
     }
 }
 
@@ -541,7 +570,10 @@ impl Migrator {
 
     /// The names of every known migration, sorted.
     pub fn migration_names(&self) -> Vec<String> {
-        self.migrations.iter().map(|(name, _)| name.clone()).collect()
+        self.migrations
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect()
     }
 
     fn find(&self, name: &str) -> Option<MigrationRef> {
@@ -600,7 +632,8 @@ impl Migrator {
         let mut names = Vec::new();
         for (name, migration) in pending {
             if options.pretend {
-                self.pretend_to_run(&name, &migration, MigrationMethod::Up).await?;
+                self.pretend_to_run(&name, &migration, MigrationMethod::Up)
+                    .await?;
                 names.push(name);
                 continue;
             }
@@ -613,7 +646,8 @@ impl Migrator {
                 });
                 continue;
             }
-            self.run_migration(&name, &migration, MigrationMethod::Up).await?;
+            self.run_migration(&name, &migration, MigrationMethod::Up)
+                .await?;
             self.repository.log(&name, batch).await?;
             names.push(name);
             if options.step {
@@ -652,9 +686,11 @@ impl Migrator {
                 continue;
             };
             if pretend {
-                self.pretend_to_run(&name, &migration, MigrationMethod::Down).await?;
+                self.pretend_to_run(&name, &migration, MigrationMethod::Down)
+                    .await?;
             } else {
-                self.run_migration(&name, &migration, MigrationMethod::Down).await?;
+                self.run_migration(&name, &migration, MigrationMethod::Down)
+                    .await?;
                 self.repository.delete(&name).await?;
             }
             rolled_back.push(name);
@@ -697,7 +733,11 @@ impl Migrator {
 
     /// Drop every table and run all migrations (`migrate:fresh`).
     pub async fn fresh(&self, options: MigrateOptions) -> Result<Vec<String>> {
-        self.repository.get_connection().get_schema_builder().drop_all_tables().await?;
+        self.repository
+            .get_connection()
+            .get_schema_builder()
+            .drop_all_tables()
+            .await?;
         self.write(MigrationEvent::Info("Dropping all tables.".into()));
         self.run(options).await
     }
@@ -727,7 +767,12 @@ impl Migrator {
             .unwrap_or_else(|| self.manager.get_default_connection())
     }
 
-    async fn run_migration(&self, name: &str, migration: &MigrationRef, method: MigrationMethod) -> Result<()> {
+    async fn run_migration(
+        &self,
+        name: &str,
+        migration: &MigrationRef,
+        method: MigrationMethod,
+    ) -> Result<()> {
         let connection_name = self.connection_for(migration);
         let connection = self.manager.connection(&connection_name);
         self.write(MigrationEvent::Started {
@@ -752,7 +797,9 @@ impl Migrator {
             }
         };
 
-        let result = if connection.schema_grammar().supports_schema_transactions() && migration.within_transaction() {
+        let result = if connection.schema_grammar().supports_schema_transactions()
+            && migration.within_transaction()
+        {
             connection.transaction(run).await
         } else {
             run().await
@@ -772,7 +819,12 @@ impl Migrator {
         result
     }
 
-    async fn pretend_to_run(&self, name: &str, migration: &MigrationRef, method: MigrationMethod) -> Result<()> {
+    async fn pretend_to_run(
+        &self,
+        name: &str,
+        migration: &MigrationRef,
+        method: MigrationMethod,
+    ) -> Result<()> {
         let connection_name = self.connection_for(migration);
         let connection = self.manager.connection(&connection_name);
         let manager = self.manager.clone();

@@ -272,7 +272,7 @@ impl Arr {
     pub fn last(array: &Value) -> Value {
         match array {
             Value::Array(items) => items.last().cloned().unwrap_or(Value::Null),
-            Value::Object(map) => map.values().last().cloned().unwrap_or(Value::Null),
+            Value::Object(map) => map.values().next_back().cloned().unwrap_or(Value::Null),
             _ => Value::Null,
         }
     }

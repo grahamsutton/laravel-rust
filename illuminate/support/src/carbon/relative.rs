@@ -179,10 +179,8 @@ pub(crate) fn parse(expression: &str, base: Carbon) -> Option<Carbon> {
                         -1 => date.previous(day),
                         _ => this_weekday(date, day),
                     };
-                } else if let Some(unit) = unit(target) {
-                    offsets.push((unit, direction));
                 } else {
-                    return None;
+                    offsets.push((unit(target)?, direction));
                 }
                 i += 2;
                 continue;

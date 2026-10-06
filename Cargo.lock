@@ -971,6 +971,7 @@ dependencies = [
  "illuminate-http",
  "illuminate-session",
  "illuminate-support",
+ "indexmap",
  "serde",
  "serde_json",
  "sha1",
@@ -1065,13 +1066,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "chrono",
  "futures",
  "illuminate-config",
  "illuminate-container",
  "illuminate-support",
  "indexmap",
- "percent-encoding",
  "regex",
  "serde",
  "serde_json",
@@ -1079,7 +1078,6 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
- "url",
 ]
 
 [[package]]
@@ -1166,6 +1164,7 @@ dependencies = [
  "illuminate-session",
  "illuminate-support",
  "illuminate-translation",
+ "illuminate-validation",
  "indexmap",
  "mime_guess",
  "rand 0.9.5",
@@ -1274,6 +1273,25 @@ dependencies = [
 [[package]]
 name = "illuminate-queue"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "hex",
+ "illuminate-cache",
+ "illuminate-config",
+ "illuminate-container",
+ "illuminate-http",
+ "illuminate-support",
+ "indexmap",
+ "inventory",
+ "md-5",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
 
 [[package]]
 name = "illuminate-routing"
@@ -1366,6 +1384,7 @@ dependencies = [
  "chrono-tz",
  "illuminate-container",
  "illuminate-http",
+ "illuminate-routing",
  "illuminate-support",
  "indexmap",
  "mime_guess",
@@ -1457,6 +1476,7 @@ dependencies = [
  "async-trait",
  "illuminate-cache",
  "illuminate-config",
+ "illuminate-console",
  "illuminate-container",
  "illuminate-cookie",
  "illuminate-encryption",
@@ -1473,6 +1493,7 @@ dependencies = [
  "illuminate-session",
  "illuminate-support",
  "illuminate-translation",
+ "illuminate-validation",
  "inventory",
  "serde",
  "serde_json",

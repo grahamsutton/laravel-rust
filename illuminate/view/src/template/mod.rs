@@ -38,7 +38,6 @@ pub(crate) enum Node {
     If {
         branches: Vec<Branch>,
         otherwise: Option<Vec<Node>>,
-        line: usize,
     },
     /// `@switch`
     Switch {

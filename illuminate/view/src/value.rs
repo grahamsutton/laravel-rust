@@ -958,7 +958,89 @@ impl From<ViewValue> for Value {
 }
 
 /// The data handed to a view: variable names mapped to values.
-pub type ViewData = IndexMap<String, ViewValue>;
+///
+/// `ViewData` dereferences to an `IndexMap<String, ViewValue>`, so all of
+/// the map methods (`insert`, `get`, `iter`, ...) are available.
+#[derive(Clone, Default)]
+pub struct ViewData(IndexMap<String, ViewValue>);
+
+impl ViewData {
+    /// Create empty view data.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create empty view data with room for `capacity` entries.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self(IndexMap::with_capacity(capacity))
+    }
+
+    /// Unwrap the underlying map.
+    pub fn into_inner(self) -> IndexMap<String, ViewValue> {
+        self.0
+    }
+
+    /// The data as JSON.
+    pub fn to_json(&self) -> Value {
+        Value::Object(self.0.iter().map(|(k, v)| (k.clone(), v.to_json())).collect())
+    }
+}
+
+impl std::ops::Deref for ViewData {
+    type Target = IndexMap<String, ViewValue>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for ViewData {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl fmt::Debug for ViewData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl FromIterator<(String, ViewValue)> for ViewData {
+    fn from_iter<T: IntoIterator<Item = (String, ViewValue)>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
+impl IntoIterator for ViewData {
+    type Item = (String, ViewValue);
+    type IntoIter = indexmap::map::IntoIter<String, ViewValue>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a ViewData {
+    type Item = (&'a String, &'a ViewValue);
+    type IntoIter = indexmap::map::Iter<'a, String, ViewValue>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+
+impl From<IndexMap<String, ViewValue>> for ViewData {
+    fn from(map: IndexMap<String, ViewValue>) -> Self {
+        Self(map)
+    }
+}
+
+impl From<ViewData> for ViewValue {
+    fn from(data: ViewData) -> Self {
+        ViewValue::map(data.0.into_iter().map(|(k, v)| (ArrayKey::new(&k), v)))
+    }
+}
 
 /// Build view data from name / value pairs.
 ///

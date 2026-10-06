@@ -13,22 +13,70 @@ use super::grammar::{QueryGrammar, UpsertColumn};
 use super::join::JoinClause;
 use crate::connection::Connection;
 use crate::de::from_value;
-use crate::error::{MultipleRecordsFoundException, RecordNotFoundException, RecordsNotFoundException};
+use crate::error::{
+    MultipleRecordsFoundException, RecordNotFoundException, RecordsNotFoundException,
+};
 use crate::expression::{
-    Expression, Ident, IntoBindings, IntoColumns, IntoRecord, IntoRecords, Operand, Record, to_binding,
+    Expression, Ident, IntoBindings, IntoColumns, IntoRecord, IntoRecords, Operand, Record,
+    to_binding,
 };
 
 /// The operators every grammar understands.
 const OPERATORS: &[&str] = &[
-    "=", "<", ">", "<=", ">=", "<>", "!=", "<=>", "like", "like binary", "not like", "ilike", "&", "|",
-    "^", "<<", ">>", "&~", "is", "is not", "rlike", "not rlike", "regexp", "not regexp", "~", "~*", "!~",
-    "!~*", "similar to", "not similar to", "not ilike", "~~*", "!~~*",
+    "=",
+    "<",
+    ">",
+    "<=",
+    ">=",
+    "<>",
+    "!=",
+    "<=>",
+    "like",
+    "like binary",
+    "not like",
+    "ilike",
+    "&",
+    "|",
+    "^",
+    "<<",
+    ">>",
+    "&~",
+    "is",
+    "is not",
+    "rlike",
+    "not rlike",
+    "regexp",
+    "not regexp",
+    "~",
+    "~*",
+    "!~",
+    "!~*",
+    "similar to",
+    "not similar to",
+    "not ilike",
+    "~~*",
+    "!~~*",
 ];
 
 /// Operators only understood by PostgreSQL.
 const POSTGRES_OPERATORS: &[&str] = &[
-    "between", "#", "<<=", ">>=", "&&", "@>", "<@", "?", "?|", "?&", "||", "-", "@?", "@@", "#-",
-    "is distinct from", "is not distinct from",
+    "between",
+    "#",
+    "<<=",
+    ">>=",
+    "&&",
+    "@>",
+    "<@",
+    "?",
+    "?|",
+    "?&",
+    "||",
+    "-",
+    "@?",
+    "@@",
+    "#-",
+    "is distinct from",
+    "is not distinct from",
 ];
 
 /// Bitwise operators.
@@ -63,7 +111,7 @@ impl<F: FnOnce(Builder) -> Builder> IntoQuery for F {
 /// A sub-query: a query builder, a closure building one, or raw SQL.
 pub enum SubQuery {
     /// A query builder.
-    Query(Builder),
+    Query(Box<Builder>),
     /// Raw SQL with its bindings.
     Raw(String, Vec<Value>),
 }
@@ -76,7 +124,7 @@ pub trait IntoSubQuery {
 
 impl<T: IntoQuery> IntoSubQuery for T {
     fn into_sub_query(self, parent: &Builder) -> SubQuery {
-        SubQuery::Query(self.into_query(parent))
+        SubQuery::Query(Box::new(self.into_query(parent)))
     }
 }
 
@@ -148,19 +196,19 @@ impl WhereInValues for Value {
 
 impl WhereInValues for Builder {
     fn into_in_values(self, _parent: &Builder) -> InValues {
-        InValues::Query(SubQuery::Query(self))
+        InValues::Query(SubQuery::Query(Box::new(self)))
     }
 }
 
 impl WhereInValues for &Builder {
     fn into_in_values(self, _parent: &Builder) -> InValues {
-        InValues::Query(SubQuery::Query(self.clone()))
+        InValues::Query(SubQuery::Query(Box::new(self.clone())))
     }
 }
 
 impl<F: FnOnce(Builder) -> Builder> WhereInValues for F {
     fn into_in_values(self, parent: &Builder) -> InValues {
-        InValues::Query(SubQuery::Query(self(parent.for_sub_query())))
+        InValues::Query(SubQuery::Query(Box::new(self(parent.for_sub_query()))))
     }
 }
 
@@ -187,7 +235,11 @@ impl<T: Into<Operand>> BetweenValues<Operand> for Vec<T> {
     fn bounds(self) -> (Operand, Operand) {
         let mut items: Vec<Operand> = self.into_iter().map(Into::into).collect();
         let max = items.pop().unwrap_or(Operand::Value(Value::Null));
-        let min = if items.is_empty() { max.clone() } else { items.remove(0) };
+        let min = if items.is_empty() {
+            max.clone()
+        } else {
+            items.remove(0)
+        };
         (min, max)
     }
 }
@@ -463,7 +515,11 @@ impl Builder {
     }
 
     /// Add an inner join with complex conditions built by a closure.
-    pub fn join_with(self, table: impl Into<Ident>, callback: impl FnOnce(JoinClause) -> JoinClause) -> Self {
+    pub fn join_with(
+        self,
+        table: impl Into<Ident>,
+        callback: impl FnOnce(JoinClause) -> JoinClause,
+    ) -> Self {
         let join = callback(JoinClause::new(&self, "inner", table));
         self.push_join(join)
     }
@@ -492,7 +548,11 @@ impl Builder {
     }
 
     /// Add a left join with complex conditions built by a closure.
-    pub fn left_join_with(self, table: impl Into<Ident>, callback: impl FnOnce(JoinClause) -> JoinClause) -> Self {
+    pub fn left_join_with(
+        self,
+        table: impl Into<Ident>,
+        callback: impl FnOnce(JoinClause) -> JoinClause,
+    ) -> Self {
         let join = callback(JoinClause::new(&self, "left", table));
         self.push_join(join)
     }
@@ -521,7 +581,11 @@ impl Builder {
     }
 
     /// Add a right join with complex conditions built by a closure.
-    pub fn right_join_with(self, table: impl Into<Ident>, callback: impl FnOnce(JoinClause) -> JoinClause) -> Self {
+    pub fn right_join_with(
+        self,
+        table: impl Into<Ident>,
+        callback: impl FnOnce(JoinClause) -> JoinClause,
+    ) -> Self {
         let join = callback(JoinClause::new(&self, "right", table));
         self.push_join(join)
     }
@@ -644,7 +708,13 @@ impl Builder {
     }
 
     /// The general "where" used by every basic comparison.
-    pub fn add_where(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>, boolean: &str) -> Self {
+    pub fn add_where(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+        boolean: &str,
+    ) -> Self {
         let column = column.into();
         let mut operator = operator.to_string();
         let mut value = value.into();
@@ -665,15 +735,15 @@ impl Builder {
 
         let mut this = self;
 
-        if let (Ident::Name(name), Operand::Value(Value::Bool(b))) = (&column, &value) {
-            if name.contains("->") {
-                let kind = WhereKind::JsonBoolean {
-                    column: name.clone(),
-                    operator,
-                    value: *b,
-                };
-                return this.push_where(boolean, kind);
-            }
+        if let (Ident::Name(name), Operand::Value(Value::Bool(b))) = (&column, &value)
+            && name.contains("->")
+        {
+            let kind = WhereKind::JsonBoolean {
+                column: name.clone(),
+                operator,
+                value: *b,
+            };
+            return this.push_where(boolean, kind);
         }
 
         let kind = if operator == "<=>" {
@@ -706,7 +776,12 @@ impl Builder {
     }
 
     /// Add a where clause with an operator: `where "votes" > ?`.
-    pub fn where_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_where(column, operator, value, "and")
     }
 
@@ -716,7 +791,12 @@ impl Builder {
     }
 
     /// Add an "or where" clause with an operator.
-    pub fn or_where_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_where(column, operator, value, "or")
     }
 
@@ -777,7 +857,11 @@ impl Builder {
     }
 
     /// Add a nested where statement to the query.
-    pub fn add_nested_where(self, callback: impl FnOnce(Builder) -> Builder, boolean: &str) -> Self {
+    pub fn add_nested_where(
+        self,
+        callback: impl FnOnce(Builder) -> Builder,
+        boolean: &str,
+    ) -> Self {
         let nested = callback(self.for_nested_where());
         self.add_nested_where_query(nested, boolean)
     }
@@ -790,7 +874,9 @@ impl Builder {
         if let Some(error) = &query.error {
             self.error.get_or_insert(error.clone());
         }
-        self.bindings.where_.extend(query.bindings.where_.iter().cloned());
+        self.bindings
+            .where_
+            .extend(query.bindings.where_.iter().cloned());
         self.push_where(
             boolean,
             WhereKind::Nested {
@@ -799,7 +885,13 @@ impl Builder {
         )
     }
 
-    pub(crate) fn add_where_column(self, first: Ident, operator: &str, second: Ident, boolean: &str) -> Self {
+    pub(crate) fn add_where_column(
+        self,
+        first: Ident,
+        operator: &str,
+        second: Ident,
+        boolean: &str,
+    ) -> Self {
         let (operator, second) = if self.is_valid_operator(operator) {
             (operator.to_string(), second)
         } else {
@@ -821,7 +913,12 @@ impl Builder {
     }
 
     /// Add a "where" clause comparing two columns with an operator.
-    pub fn where_column_op(self, first: impl Into<Ident>, operator: &str, second: impl Into<Ident>) -> Self {
+    pub fn where_column_op(
+        self,
+        first: impl Into<Ident>,
+        operator: &str,
+        second: impl Into<Ident>,
+    ) -> Self {
         self.add_where_column(first.into(), operator, second.into(), "and")
     }
 
@@ -831,24 +928,45 @@ impl Builder {
     }
 
     /// Add an "or where" clause comparing two columns with an operator.
-    pub fn or_where_column_op(self, first: impl Into<Ident>, operator: &str, second: impl Into<Ident>) -> Self {
+    pub fn or_where_column_op(
+        self,
+        first: impl Into<Ident>,
+        operator: &str,
+        second: impl Into<Ident>,
+    ) -> Self {
         self.add_where_column(first.into(), operator, second.into(), "or")
     }
 
     /// Add a raw where clause to the query.
     pub fn where_raw(mut self, sql: &str, bindings: impl IntoBindings) -> Self {
         self.bindings.where_.extend(bindings.into_bindings());
-        self.push_where("and", WhereKind::Raw { sql: sql.to_string() })
+        self.push_where(
+            "and",
+            WhereKind::Raw {
+                sql: sql.to_string(),
+            },
+        )
     }
 
     /// Add a raw "or where" clause to the query.
     pub fn or_where_raw(mut self, sql: &str, bindings: impl IntoBindings) -> Self {
         self.bindings.where_.extend(bindings.into_bindings());
-        self.push_where("or", WhereKind::Raw { sql: sql.to_string() })
+        self.push_where(
+            "or",
+            WhereKind::Raw {
+                sql: sql.to_string(),
+            },
+        )
     }
 
     /// Add a "where in" clause with full control over its boolean / negation.
-    pub fn add_where_in(mut self, column: impl Into<Ident>, values: impl WhereInValues, boolean: &str, not: bool) -> Self {
+    pub fn add_where_in(
+        mut self,
+        column: impl Into<Ident>,
+        values: impl WhereInValues,
+        boolean: &str,
+        not: bool,
+    ) -> Self {
         let column = column.into();
         let values = match values.into_in_values(&self) {
             InValues::List(values) => values,
@@ -872,7 +990,14 @@ impl Builder {
                 self.bindings.where_.push(value.clone());
             }
         }
-        self.push_where(boolean, WhereKind::In { column, values, not })
+        self.push_where(
+            boolean,
+            WhereKind::In {
+                column,
+                values,
+                not,
+            },
+        )
     }
 
     /// Add a "where in" clause: values, a query, or a closure building a sub-query.
@@ -917,7 +1042,11 @@ impl Builder {
     }
 
     /// Add a "where in raw" clause for integer values (inlined into the SQL).
-    pub fn where_integer_in_raw(self, column: impl Into<Ident>, values: impl IntoIterator<Item = impl Into<Value>>) -> Self {
+    pub fn where_integer_in_raw(
+        self,
+        column: impl Into<Ident>,
+        values: impl IntoIterator<Item = impl Into<Value>>,
+    ) -> Self {
         self.add_where_integer_in_raw(column, values, "and", false)
     }
 
@@ -979,7 +1108,13 @@ impl Builder {
         self.add_where_nulls(columns, "or", true)
     }
 
-    fn add_where_between(mut self, column: Ident, values: impl BetweenValues<Operand>, boolean: &str, not: bool) -> Self {
+    fn add_where_between(
+        mut self,
+        column: Ident,
+        values: impl BetweenValues<Operand>,
+        boolean: &str,
+        not: bool,
+    ) -> Self {
         let (min, max) = values.bounds();
         self.bind_where(&min);
         self.bind_where(&max);
@@ -995,26 +1130,48 @@ impl Builder {
     }
 
     /// Add a "where between" clause: `where_between("votes", [1, 100])`.
-    pub fn where_between(self, column: impl Into<Ident>, values: impl BetweenValues<Operand>) -> Self {
+    pub fn where_between(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Operand>,
+    ) -> Self {
         self.add_where_between(column.into(), values, "and", false)
     }
 
     /// Add an "or where between" clause.
-    pub fn or_where_between(self, column: impl Into<Ident>, values: impl BetweenValues<Operand>) -> Self {
+    pub fn or_where_between(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Operand>,
+    ) -> Self {
         self.add_where_between(column.into(), values, "or", false)
     }
 
     /// Add a "where not between" clause.
-    pub fn where_not_between(self, column: impl Into<Ident>, values: impl BetweenValues<Operand>) -> Self {
+    pub fn where_not_between(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Operand>,
+    ) -> Self {
         self.add_where_between(column.into(), values, "and", true)
     }
 
     /// Add an "or where not between" clause.
-    pub fn or_where_not_between(self, column: impl Into<Ident>, values: impl BetweenValues<Operand>) -> Self {
+    pub fn or_where_not_between(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Operand>,
+    ) -> Self {
         self.add_where_between(column.into(), values, "or", true)
     }
 
-    fn add_where_between_columns(self, column: Ident, values: impl BetweenValues<Ident>, boolean: &str, not: bool) -> Self {
+    fn add_where_between_columns(
+        self,
+        column: Ident,
+        values: impl BetweenValues<Ident>,
+        boolean: &str,
+        not: bool,
+    ) -> Self {
         let (min, max) = values.bounds();
         self.push_where(
             boolean,
@@ -1028,22 +1185,38 @@ impl Builder {
     }
 
     /// Add a "where between columns" clause: `where_between_columns("weight", ["min", "max"])`.
-    pub fn where_between_columns(self, column: impl Into<Ident>, values: impl BetweenValues<Ident>) -> Self {
+    pub fn where_between_columns(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Ident>,
+    ) -> Self {
         self.add_where_between_columns(column.into(), values, "and", false)
     }
 
     /// Add an "or where between columns" clause.
-    pub fn or_where_between_columns(self, column: impl Into<Ident>, values: impl BetweenValues<Ident>) -> Self {
+    pub fn or_where_between_columns(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Ident>,
+    ) -> Self {
         self.add_where_between_columns(column.into(), values, "or", false)
     }
 
     /// Add a "where not between columns" clause.
-    pub fn where_not_between_columns(self, column: impl Into<Ident>, values: impl BetweenValues<Ident>) -> Self {
+    pub fn where_not_between_columns(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Ident>,
+    ) -> Self {
         self.add_where_between_columns(column.into(), values, "and", true)
     }
 
     /// Add an "or where not between columns" clause.
-    pub fn or_where_not_between_columns(self, column: impl Into<Ident>, values: impl BetweenValues<Ident>) -> Self {
+    pub fn or_where_not_between_columns(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Ident>,
+    ) -> Self {
         self.add_where_between_columns(column.into(), values, "or", true)
     }
 
@@ -1090,7 +1263,12 @@ impl Builder {
     }
 
     /// Add a "where date" clause with an operator.
-    pub fn where_date_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_date_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Date, column, operator, value, "and")
     }
 
@@ -1100,7 +1278,12 @@ impl Builder {
     }
 
     /// Add an "or where date" clause with an operator.
-    pub fn or_where_date_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_date_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Date, column, operator, value, "or")
     }
 
@@ -1110,7 +1293,12 @@ impl Builder {
     }
 
     /// Add a "where time" clause with an operator.
-    pub fn where_time_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_time_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Time, column, operator, value, "and")
     }
 
@@ -1120,7 +1308,12 @@ impl Builder {
     }
 
     /// Add an "or where time" clause with an operator.
-    pub fn or_where_time_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_time_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Time, column, operator, value, "or")
     }
 
@@ -1130,7 +1323,12 @@ impl Builder {
     }
 
     /// Add a "where day" clause with an operator.
-    pub fn where_day_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_day_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Day, column, operator, value, "and")
     }
 
@@ -1140,7 +1338,12 @@ impl Builder {
     }
 
     /// Add an "or where day" clause with an operator.
-    pub fn or_where_day_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_day_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Day, column, operator, value, "or")
     }
 
@@ -1150,7 +1353,12 @@ impl Builder {
     }
 
     /// Add a "where month" clause with an operator.
-    pub fn where_month_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_month_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Month, column, operator, value, "and")
     }
 
@@ -1160,7 +1368,12 @@ impl Builder {
     }
 
     /// Add an "or where month" clause with an operator.
-    pub fn or_where_month_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_month_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Month, column, operator, value, "or")
     }
 
@@ -1170,7 +1383,12 @@ impl Builder {
     }
 
     /// Add a "where year" clause with an operator.
-    pub fn where_year_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_year_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Year, column, operator, value, "and")
     }
 
@@ -1180,7 +1398,12 @@ impl Builder {
     }
 
     /// Add an "or where year" clause with an operator.
-    pub fn or_where_year_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_year_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_date_where(DatePart::Year, column, operator, value, "or")
     }
 
@@ -1220,7 +1443,13 @@ impl Builder {
         self.add_where_exists(query, "or", true)
     }
 
-    fn add_where_sub(mut self, column: impl Into<Ident>, operator: &str, query: impl IntoQuery, boolean: &str) -> Self {
+    fn add_where_sub(
+        mut self,
+        column: impl Into<Ident>,
+        operator: &str,
+        query: impl IntoQuery,
+        boolean: &str,
+    ) -> Self {
         let query = query.into_query(&self);
         if let Some(error) = &query.error {
             self.error.get_or_insert(error.clone());
@@ -1238,18 +1467,33 @@ impl Builder {
 
     /// Compare a column against the result of a sub-query:
     /// `where "price" > (select avg("price") from ...)`.
-    pub fn where_sub(self, column: impl Into<Ident>, operator: &str, query: impl IntoQuery) -> Self {
+    pub fn where_sub(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        query: impl IntoQuery,
+    ) -> Self {
         self.add_where_sub(column, operator, query, "and")
     }
 
     /// Compare a column against the result of a sub-query with "or".
-    pub fn or_where_sub(self, column: impl Into<Ident>, operator: &str, query: impl IntoQuery) -> Self {
+    pub fn or_where_sub(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        query: impl IntoQuery,
+    ) -> Self {
         self.add_where_sub(column, operator, query, "or")
     }
 
     /// Compare the result of a sub-query against a value:
     /// `where (select ...) = ?`.
-    pub fn where_sub_value(mut self, query: impl IntoQuery, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_sub_value(
+        mut self,
+        query: impl IntoQuery,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         let query = query.into_query(&self);
         let sql = match query.try_to_sql() {
             Ok(sql) => sql,
@@ -1270,7 +1514,9 @@ impl Builder {
     ) -> Self {
         let value = value.into();
         if let Operand::Value(v) = &value {
-            let prepared = self.get_grammar().prepare_where_like_binding(v, case_sensitive);
+            let prepared = self
+                .get_grammar()
+                .prepare_where_like_binding(v, case_sensitive);
             self.bindings.where_.push(prepared);
         }
         self.push_where(
@@ -1290,7 +1536,11 @@ impl Builder {
     }
 
     /// Add a case-sensitive "where like" clause.
-    pub fn where_like_case_sensitive(self, column: impl Into<Ident>, value: impl Into<Operand>) -> Self {
+    pub fn where_like_case_sensitive(
+        self,
+        column: impl Into<Ident>,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_where_like(column, value, true, "and", false)
     }
 
@@ -1332,36 +1582,72 @@ impl Builder {
     }
 
     /// Add a "where" clause matching if *any* of the columns match.
-    pub fn where_any(self, columns: impl IntoColumns, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_any(
+        self,
+        columns: impl IntoColumns,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_where_any(columns, operator, value, "or", "and")
     }
 
     /// Add an "or where" clause matching if any of the columns match.
-    pub fn or_where_any(self, columns: impl IntoColumns, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_any(
+        self,
+        columns: impl IntoColumns,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_where_any(columns, operator, value, "or", "or")
     }
 
     /// Add a "where" clause matching if *all* of the columns match.
-    pub fn where_all(self, columns: impl IntoColumns, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_all(
+        self,
+        columns: impl IntoColumns,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_where_any(columns, operator, value, "and", "and")
     }
 
     /// Add an "or where" clause matching if all of the columns match.
-    pub fn or_where_all(self, columns: impl IntoColumns, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_all(
+        self,
+        columns: impl IntoColumns,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_where_any(columns, operator, value, "and", "or")
     }
 
     /// Add a "where" clause matching if *none* of the columns match.
-    pub fn where_none(self, columns: impl IntoColumns, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_none(
+        self,
+        columns: impl IntoColumns,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_where_any(columns, operator, value, "or", "and not")
     }
 
     /// Add an "or where" clause matching if none of the columns match.
-    pub fn or_where_none(self, columns: impl IntoColumns, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_where_none(
+        self,
+        columns: impl IntoColumns,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_where_any(columns, operator, value, "or", "or not")
     }
 
-    fn add_where_json_contains(mut self, column: &str, value: impl Into<Operand>, boolean: &str, not: bool) -> Self {
+    fn add_where_json_contains(
+        mut self,
+        column: &str,
+        value: impl Into<Operand>,
+        boolean: &str,
+        not: bool,
+    ) -> Self {
         let value = value.into();
         if let Operand::Value(v) = &value {
             let prepared = self.get_grammar().prepare_binding_for_json_contains(v);
@@ -1425,7 +1711,12 @@ impl Builder {
     }
 
     /// Add a "where JSON length" clause with an operator.
-    pub fn where_json_length_op(mut self, column: &str, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn where_json_length_op(
+        mut self,
+        column: &str,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         let value = value.into();
         self.bind_where(&value);
         self.push_where(
@@ -1444,10 +1735,19 @@ impl Builder {
     }
 
     /// Add a full text "where" clause with options.
-    pub fn where_fulltext_with(mut self, columns: impl IntoColumns, value: impl Into<Operand>, options: FullTextOptions) -> Self {
+    pub fn where_fulltext_with(
+        mut self,
+        columns: impl IntoColumns,
+        value: impl Into<Operand>,
+        options: FullTextOptions,
+    ) -> Self {
         let value = value.into();
         self.bind_where(&value);
-        let columns = columns.into_columns().iter().map(|c| c.value().to_string()).collect();
+        let columns = columns
+            .into_columns()
+            .iter()
+            .map(|c| c.value().to_string())
+            .collect();
         self.push_where(
             "and",
             WhereKind::FullText {
@@ -1459,10 +1759,18 @@ impl Builder {
     }
 
     /// Add an "or where" full text clause.
-    pub fn or_where_fulltext(mut self, columns: impl IntoColumns, value: impl Into<Operand>) -> Self {
+    pub fn or_where_fulltext(
+        mut self,
+        columns: impl IntoColumns,
+        value: impl Into<Operand>,
+    ) -> Self {
         let value = value.into();
         self.bind_where(&value);
-        let columns = columns.into_columns().iter().map(|c| c.value().to_string()).collect();
+        let columns = columns
+            .into_columns()
+            .iter()
+            .map(|c| c.value().to_string())
+            .collect();
         self.push_where(
             "or",
             WhereKind::FullText {
@@ -1506,7 +1814,13 @@ impl Builder {
     }
 
     /// Add a "having" clause with full control over its boolean.
-    pub fn add_having(mut self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>, boolean: &str) -> Self {
+    pub fn add_having(
+        mut self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+        boolean: &str,
+    ) -> Self {
         let mut operator = operator.to_string();
         let mut value = value.into();
         if !self.is_valid_operator(&operator) {
@@ -1539,7 +1853,12 @@ impl Builder {
     }
 
     /// Add a "having" clause with an operator: `having_op("account_id", ">", 100)`.
-    pub fn having_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn having_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_having(column, operator, value, "and")
     }
 
@@ -1549,7 +1868,12 @@ impl Builder {
     }
 
     /// Add an "or having" clause with an operator.
-    pub fn or_having_op(self, column: impl Into<Ident>, operator: &str, value: impl Into<Operand>) -> Self {
+    pub fn or_having_op(
+        self,
+        column: impl Into<Ident>,
+        operator: &str,
+        value: impl Into<Operand>,
+    ) -> Self {
         self.add_having(column, operator, value, "or")
     }
 
@@ -1559,7 +1883,9 @@ impl Builder {
         if nested.havings.is_empty() {
             return self;
         }
-        self.bindings.having.extend(nested.bindings.having.iter().cloned());
+        self.bindings
+            .having
+            .extend(nested.bindings.having.iter().cloned());
         self.push_having(
             "and",
             HavingKind::Nested {
@@ -1584,7 +1910,13 @@ impl Builder {
         self
     }
 
-    fn add_having_between(mut self, column: Ident, values: impl BetweenValues<Operand>, boolean: &str, not: bool) -> Self {
+    fn add_having_between(
+        mut self,
+        column: Ident,
+        values: impl BetweenValues<Operand>,
+        boolean: &str,
+        not: bool,
+    ) -> Self {
         let (min, max) = values.bounds();
         for value in [&min, &max] {
             if let Operand::Value(v) = value {
@@ -1603,30 +1935,52 @@ impl Builder {
     }
 
     /// Add a "having between" clause.
-    pub fn having_between(self, column: impl Into<Ident>, values: impl BetweenValues<Operand>) -> Self {
+    pub fn having_between(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Operand>,
+    ) -> Self {
         self.add_having_between(column.into(), values, "and", false)
     }
 
     /// Add a "having not between" clause.
-    pub fn having_not_between(self, column: impl Into<Ident>, values: impl BetweenValues<Operand>) -> Self {
+    pub fn having_not_between(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Operand>,
+    ) -> Self {
         self.add_having_between(column.into(), values, "and", true)
     }
 
     /// Add an "or having between" clause.
-    pub fn or_having_between(self, column: impl Into<Ident>, values: impl BetweenValues<Operand>) -> Self {
+    pub fn or_having_between(
+        self,
+        column: impl Into<Ident>,
+        values: impl BetweenValues<Operand>,
+    ) -> Self {
         self.add_having_between(column.into(), values, "or", false)
     }
 
     /// Add a raw "having" clause.
     pub fn having_raw(mut self, sql: &str, bindings: impl IntoBindings) -> Self {
         self.bindings.having.extend(bindings.into_bindings());
-        self.push_having("and", HavingKind::Raw { sql: sql.to_string() })
+        self.push_having(
+            "and",
+            HavingKind::Raw {
+                sql: sql.to_string(),
+            },
+        )
     }
 
     /// Add a raw "or having" clause.
     pub fn or_having_raw(mut self, sql: &str, bindings: impl IntoBindings) -> Self {
         self.bindings.having.extend(bindings.into_bindings());
-        self.push_having("or", HavingKind::Raw { sql: sql.to_string() })
+        self.push_having(
+            "or",
+            HavingKind::Raw {
+                sql: sql.to_string(),
+            },
+        )
     }
 
     // ------------------------------------------------------------------
@@ -1708,7 +2062,9 @@ impl Builder {
         } else {
             self.bindings.union_order.extend(bindings.into_bindings());
         }
-        self.push_order(Order::Raw { sql: sql.to_string() })
+        self.push_order(Order::Raw {
+            sql: sql.to_string(),
+        })
     }
 
     /// Remove all existing orders.
@@ -1764,7 +2120,8 @@ impl Builder {
     }
 
     fn remove_existing_orders_for(mut self, column: &str) -> Self {
-        self.orders.retain(|order| order.column_name() != Some(column));
+        self.orders
+            .retain(|order| order.column_name() != Some(column));
         self
     }
 
@@ -1781,7 +2138,12 @@ impl Builder {
     }
 
     /// Constrain the query to the previous "page" of results before a given ID.
-    pub fn for_page_before_id(self, per_page: i64, last_id: impl Into<Value>, column: &str) -> Self {
+    pub fn for_page_before_id(
+        self,
+        per_page: i64,
+        last_id: impl Into<Value>,
+        column: &str,
+    ) -> Self {
         let last_id = last_id.into();
         let query = self.remove_existing_orders_for(column);
         let query = if last_id.is_null() {
@@ -1794,12 +2156,20 @@ impl Builder {
 
     /// Get the "limit" value from the query (or the union limit).
     pub fn get_limit(&self) -> Option<i64> {
-        if self.unions.is_empty() { self.limit } else { self.union_limit }
+        if self.unions.is_empty() {
+            self.limit
+        } else {
+            self.union_limit
+        }
     }
 
     /// Get the "offset" value from the query (or the union offset).
     pub fn get_offset(&self) -> Option<i64> {
-        if self.unions.is_empty() { self.offset } else { self.union_offset }
+        if self.unions.is_empty() {
+            self.offset
+        } else {
+            self.union_offset
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1954,7 +2324,9 @@ impl Builder {
 
     fn ensure_valid(&self) -> Result<()> {
         if let Some(error) = &self.error {
-            bail!(illuminate_support::error::InvalidArgumentException::new(error.clone()));
+            bail!(illuminate_support::error::InvalidArgumentException::new(
+                error.clone()
+            ));
         }
         Ok(())
     }
@@ -2039,7 +2411,10 @@ impl Builder {
 
     /// Execute a query for a single record by ID.
     pub async fn find(&self, id: impl Into<Value>) -> Result<Option<Value>> {
-        self.clone().where_op("id", "=", Operand::Value(to_binding(id))).first().await
+        self.clone()
+            .where_op("id", "=", Operand::Value(to_binding(id)))
+            .first()
+            .await
     }
 
     /// Execute a query for a single record by ID, deserialized into `T`.
@@ -2049,7 +2424,11 @@ impl Builder {
 
     fn first_column(row: Value) -> Value {
         match row {
-            Value::Object(map) => map.into_iter().next().map(|(_, v)| v).unwrap_or(Value::Null),
+            Value::Object(map) => map
+                .into_iter()
+                .next()
+                .map(|(_, v)| v)
+                .unwrap_or(Value::Null),
             _ => Value::Null,
         }
     }
@@ -2064,7 +2443,10 @@ impl Builder {
     }
 
     /// Get a single column's value from the first result, deserialized into `T`.
-    pub async fn value_as<T: DeserializeOwned>(&self, column: impl Into<Ident>) -> Result<Option<T>> {
+    pub async fn value_as<T: DeserializeOwned>(
+        &self,
+        column: impl Into<Ident>,
+    ) -> Result<Option<T>> {
         match self.value(column).await? {
             None | Some(Value::Null) => Ok(None),
             Some(value) => from_value(value).map(Some),
@@ -2105,7 +2487,11 @@ impl Builder {
     }
 
     /// Get the values of a given column, keyed by another column.
-    pub async fn pluck_with_key(&self, column: impl Into<Ident>, key: impl Into<Ident>) -> Result<IndexMap<String, Value>> {
+    pub async fn pluck_with_key(
+        &self,
+        column: impl Into<Ident>,
+        key: impl Into<Ident>,
+    ) -> Result<IndexMap<String, Value>> {
         let (column, key) = (column.into(), key.into());
         let mut query = self.clone();
         if query.columns.is_none() {
@@ -2117,7 +2503,10 @@ impl Builder {
         Ok(rows
             .into_iter()
             .map(|row| {
-                let key = row.get(&key_name).map(|k| k.to_string_lossy()).unwrap_or_default();
+                let key = row
+                    .get(&key_name)
+                    .map(|k| k.to_string_lossy())
+                    .unwrap_or_default();
                 (key, row.get(&name).cloned().unwrap_or(Value::Null))
             })
             .collect())
@@ -2153,12 +2542,20 @@ impl Builder {
 
     /// Retrieve the "count" result of the query.
     pub async fn count(&self) -> Result<i64> {
-        Ok(self.aggregate("count", vec![Ident::from("*")]).await?.to_i64_lossy().unwrap_or(0))
+        Ok(self
+            .aggregate("count", vec![Ident::from("*")])
+            .await?
+            .to_i64_lossy()
+            .unwrap_or(0))
     }
 
     /// Retrieve the "count" of a specific column.
     pub async fn count_column(&self, column: impl Into<Ident>) -> Result<i64> {
-        Ok(self.aggregate("count", vec![column.into()]).await?.to_i64_lossy().unwrap_or(0))
+        Ok(self
+            .aggregate("count", vec![column.into()])
+            .await?
+            .to_i64_lossy()
+            .unwrap_or(0))
     }
 
     /// Retrieve the minimum value of a given column.
@@ -2174,7 +2571,11 @@ impl Builder {
     /// Retrieve the sum of the values of a given column (`0` when empty).
     pub async fn sum(&self, column: impl Into<Ident>) -> Result<Value> {
         let result = self.aggregate("sum", vec![column.into()]).await?;
-        Ok(if result.is_null() { Value::from(0) } else { numeric(result) })
+        Ok(if result.is_null() {
+            Value::from(0)
+        } else {
+            numeric(result)
+        })
     }
 
     /// Retrieve the average of the values of a given column.
@@ -2237,7 +2638,9 @@ impl Builder {
             } else {
                 &[BindingType::UnionOrder]
             };
-            let mut query = self.clone_without(without).clone_without_bindings(without_bindings);
+            let mut query = self
+                .clone_without(without)
+                .clone_without_bindings(without_bindings);
             query.aggregate = Some(Aggregate {
                 function: "count".into(),
                 columns: vec![Ident::from("*")],
@@ -2248,7 +2651,11 @@ impl Builder {
             query
         };
         let rows = query.get().await?;
-        Ok(rows.first().map(aggregate_value).and_then(|v| v.to_i64_lossy()).unwrap_or(0))
+        Ok(rows
+            .first()
+            .map(aggregate_value)
+            .and_then(|v| v.to_i64_lossy())
+            .unwrap_or(0))
     }
 
     // ------------------------------------------------------------------
@@ -2359,7 +2766,8 @@ impl Builder {
         F: FnMut(Collection<Value>, i64) -> Fut,
         Fut: Future<Output = Result<bool>>,
     {
-        self.chunk_by_id_column(count, "id", None, false, callback).await
+        self.chunk_by_id_column(count, "id", None, false, callback)
+            .await
     }
 
     /// Chunk the results by comparing IDs in descending order.
@@ -2368,7 +2776,8 @@ impl Builder {
         F: FnMut(Collection<Value>, i64) -> Fut,
         Fut: Future<Output = Result<bool>>,
     {
-        self.chunk_by_id_column(count, "id", None, true, callback).await
+        self.chunk_by_id_column(count, "id", None, true, callback)
+            .await
     }
 
     /// Chunk the results by comparing a given column (read from the results
@@ -2464,7 +2873,9 @@ impl Builder {
             return Ok(true);
         }
         let sql = self.get_grammar().compile_insert(self, &records);
-        self.connection.insert(&sql, Self::record_bindings(&records)).await
+        self.connection
+            .insert(&sql, Self::record_bindings(&records))
+            .await
     }
 
     /// Insert new records into the database while ignoring errors (duplicates).
@@ -2474,7 +2885,9 @@ impl Builder {
             return Ok(0);
         }
         let sql = self.get_grammar().compile_insert_or_ignore(self, &records);
-        self.connection.affecting_statement(&sql, Self::record_bindings(&records)).await
+        self.connection
+            .affecting_statement(&sql, Self::record_bindings(&records))
+            .await
     }
 
     /// Insert a new record and get the value of its auto-incrementing `id`.
@@ -2483,9 +2896,15 @@ impl Builder {
     }
 
     /// Insert a new record and get the value of the given sequence / key column.
-    pub async fn insert_get_id_with_sequence(&self, values: impl IntoRecord, sequence: &str) -> Result<i64> {
+    pub async fn insert_get_id_with_sequence(
+        &self,
+        values: impl IntoRecord,
+        sequence: &str,
+    ) -> Result<i64> {
         let records = vec![values.into_record()];
-        let sql = self.get_grammar().compile_insert_get_id(self, &records, sequence);
+        let sql = self
+            .get_grammar()
+            .compile_insert_get_id(self, &records, sequence);
         self.connection
             .insert_get_id(&sql, Self::record_bindings(&records), sequence)
             .await
@@ -2497,17 +2916,25 @@ impl Builder {
         let (sql, bindings) = this.create_sub(query);
         this.ensure_valid()?;
         let columns: Vec<String> = columns.iter().map(|c| c.to_string()).collect();
-        let sql = self.get_grammar().compile_insert_using(self, &columns, &sql);
+        let sql = self
+            .get_grammar()
+            .compile_insert_using(self, &columns, &sql);
         self.connection.affecting_statement(&sql, bindings).await
     }
 
     /// Insert new records into the table using a sub-query, ignoring errors.
-    pub async fn insert_or_ignore_using(&self, columns: &[&str], query: impl IntoSubQuery) -> Result<u64> {
+    pub async fn insert_or_ignore_using(
+        &self,
+        columns: &[&str],
+        query: impl IntoSubQuery,
+    ) -> Result<u64> {
         let mut this = self.clone();
         let (sql, bindings) = this.create_sub(query);
         this.ensure_valid()?;
         let columns: Vec<String> = columns.iter().map(|c| c.to_string()).collect();
-        let sql = self.get_grammar().compile_insert_or_ignore_using(self, &columns, &sql);
+        let sql = self
+            .get_grammar()
+            .compile_insert_or_ignore_using(self, &columns, &sql);
         self.connection.affecting_statement(&sql, bindings).await
     }
 
@@ -2515,8 +2942,18 @@ impl Builder {
     ///
     /// `update` lists the columns to update when a record already exists;
     /// `None` updates every inserted column.
-    pub async fn upsert(&self, values: impl IntoRecords, unique_by: &[&str], update: Option<&[&str]>) -> Result<u64> {
-        let update = update.map(|columns| columns.iter().map(|c| UpsertColumn::Column(c.to_string())).collect());
+    pub async fn upsert(
+        &self,
+        values: impl IntoRecords,
+        unique_by: &[&str],
+        update: Option<&[&str]>,
+    ) -> Result<u64> {
+        let update = update.map(|columns| {
+            columns
+                .iter()
+                .map(|c| UpsertColumn::Column(c.to_string()))
+                .collect()
+        });
         self.upsert_with(values, unique_by, update).await
     }
 
@@ -2553,7 +2990,9 @@ impl Builder {
             }
         }
         let unique_by: Vec<String> = unique_by.iter().map(|c| c.to_string()).collect();
-        let sql = self.get_grammar().compile_upsert(self, &records, &unique_by, &update);
+        let sql = self
+            .get_grammar()
+            .compile_upsert(self, &records, &unique_by, &update);
         self.connection.affecting_statement(&sql, bindings).await
     }
 
@@ -2568,7 +3007,11 @@ impl Builder {
     }
 
     /// Insert or update a record matching the attributes, and fill it with values.
-    pub async fn update_or_insert(&self, attributes: impl IntoRecord, values: impl IntoRecord) -> Result<bool> {
+    pub async fn update_or_insert(
+        &self,
+        attributes: impl IntoRecord,
+        values: impl IntoRecord,
+    ) -> Result<bool> {
         let attributes = attributes.into_record();
         let values = values.into_record();
         let query = self.clone().where_map(attributes.clone());
@@ -2588,16 +3031,22 @@ impl Builder {
         Ok(query.limit(1).update(values).await? > 0)
     }
 
-    fn increments(&self, columns: Vec<(String, Value)>, extra: Record, sign: &str, method: &str) -> Result<Record> {
+    fn increments(
+        &self,
+        columns: Vec<(String, Value)>,
+        extra: Record,
+        sign: &str,
+        method: &str,
+    ) -> Result<Record> {
         let grammar = self.get_grammar();
         let mut record = Record::new();
         for (column, amount) in columns {
             let amount = match &amount {
                 Value::Number(n) => n.to_string(),
                 Value::String(s) if s.trim().parse::<f64>().is_ok() => s.trim().to_string(),
-                _ => bail!(illuminate_support::error::InvalidArgumentException::new(format!(
-                    "Non-numeric value passed to {method} method."
-                ))),
+                _ => bail!(illuminate_support::error::InvalidArgumentException::new(
+                    format!("Non-numeric value passed to {method} method.")
+                )),
             };
             let expression = format!("{} {sign} {amount}", grammar.wrap_str(&column));
             record.push((column, Operand::Raw(Expression::new(expression))));
@@ -2608,18 +3057,31 @@ impl Builder {
 
     /// Increment a column's value by a given amount.
     pub async fn increment(&self, column: &str, amount: impl Into<Value>) -> Result<u64> {
-        self.increment_each_with(vec![(column.to_string(), amount.into())], Vec::<(String, Operand)>::new())
-            .await
+        self.increment_each_with(
+            vec![(column.to_string(), amount.into())],
+            Vec::<(String, Operand)>::new(),
+        )
+        .await
     }
 
     /// Increment a column's value, updating extra columns at the same time.
-    pub async fn increment_with(&self, column: &str, amount: impl Into<Value>, extra: impl IntoRecord) -> Result<u64> {
-        self.increment_each_with(vec![(column.to_string(), amount.into())], extra).await
+    pub async fn increment_with(
+        &self,
+        column: &str,
+        amount: impl Into<Value>,
+        extra: impl IntoRecord,
+    ) -> Result<u64> {
+        self.increment_each_with(vec![(column.to_string(), amount.into())], extra)
+            .await
     }
 
     /// Increment the given columns by the given amounts.
-    pub async fn increment_each(&self, columns: impl IntoIterator<Item = (impl Into<String>, impl Into<Value>)>) -> Result<u64> {
-        self.increment_each_with(columns, Vec::<(String, Operand)>::new()).await
+    pub async fn increment_each(
+        &self,
+        columns: impl IntoIterator<Item = (impl Into<String>, impl Into<Value>)>,
+    ) -> Result<u64> {
+        self.increment_each_with(columns, Vec::<(String, Operand)>::new())
+            .await
     }
 
     /// Increment the given columns, updating extra columns at the same time.
@@ -2628,25 +3090,41 @@ impl Builder {
         columns: impl IntoIterator<Item = (impl Into<String>, impl Into<Value>)>,
         extra: impl IntoRecord,
     ) -> Result<u64> {
-        let columns = columns.into_iter().map(|(c, a)| (c.into(), a.into())).collect();
+        let columns = columns
+            .into_iter()
+            .map(|(c, a)| (c.into(), a.into()))
+            .collect();
         let record = self.increments(columns, extra.into_record(), "+", "increment")?;
         self.update(record).await
     }
 
     /// Decrement a column's value by a given amount.
     pub async fn decrement(&self, column: &str, amount: impl Into<Value>) -> Result<u64> {
-        self.decrement_each_with(vec![(column.to_string(), amount.into())], Vec::<(String, Operand)>::new())
-            .await
+        self.decrement_each_with(
+            vec![(column.to_string(), amount.into())],
+            Vec::<(String, Operand)>::new(),
+        )
+        .await
     }
 
     /// Decrement a column's value, updating extra columns at the same time.
-    pub async fn decrement_with(&self, column: &str, amount: impl Into<Value>, extra: impl IntoRecord) -> Result<u64> {
-        self.decrement_each_with(vec![(column.to_string(), amount.into())], extra).await
+    pub async fn decrement_with(
+        &self,
+        column: &str,
+        amount: impl Into<Value>,
+        extra: impl IntoRecord,
+    ) -> Result<u64> {
+        self.decrement_each_with(vec![(column.to_string(), amount.into())], extra)
+            .await
     }
 
     /// Decrement the given columns by the given amounts.
-    pub async fn decrement_each(&self, columns: impl IntoIterator<Item = (impl Into<String>, impl Into<Value>)>) -> Result<u64> {
-        self.decrement_each_with(columns, Vec::<(String, Operand)>::new()).await
+    pub async fn decrement_each(
+        &self,
+        columns: impl IntoIterator<Item = (impl Into<String>, impl Into<Value>)>,
+    ) -> Result<u64> {
+        self.decrement_each_with(columns, Vec::<(String, Operand)>::new())
+            .await
     }
 
     /// Decrement the given columns, updating extra columns at the same time.
@@ -2655,7 +3133,10 @@ impl Builder {
         columns: impl IntoIterator<Item = (impl Into<String>, impl Into<Value>)>,
         extra: impl IntoRecord,
     ) -> Result<u64> {
-        let columns = columns.into_iter().map(|(c, a)| (c.into(), a.into())).collect();
+        let columns = columns
+            .into_iter()
+            .map(|(c, a)| (c.into(), a.into()))
+            .collect();
         let record = self.increments(columns, extra.into_record(), "-", "decrement")?;
         self.update(record).await
     }
@@ -2672,7 +3153,10 @@ impl Builder {
     /// Delete the record with the given ID.
     pub async fn delete_by_id(&self, id: impl Into<Value>) -> Result<u64> {
         let column = format!("{}.id", self.table_name().unwrap_or_default());
-        self.clone().where_op(column, "=", Operand::Value(to_binding(id))).delete().await
+        self.clone()
+            .where_op(column, "=", Operand::Value(to_binding(id)))
+            .delete()
+            .await
     }
 
     /// Run a truncate statement on the table.

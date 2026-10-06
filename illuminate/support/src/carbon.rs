@@ -2041,7 +2041,7 @@ impl CarbonInterval {
                 _ => tokens.push(raw.to_string()),
             }
         }
-        if tokens.is_empty() || tokens.len() % 2 != 0 {
+        if tokens.is_empty() || !tokens.len().is_multiple_of(2) {
             return Err(invalid());
         }
         for pair in tokens.chunks(2) {
