@@ -104,11 +104,9 @@ impl RouteMiddleware {
             Self::Instance { middleware: a, .. },
             Self::Instance { middleware: b, .. },
         ) = (self, candidate)
-        {
-            if same_instance(a, b) {
+            && same_instance(a, b) {
                 return true;
             }
-        }
         if self.is_instance() && self.name() == "Closure" {
             return false;
         }
@@ -259,13 +257,12 @@ pub(crate) fn sort_middleware(priority: &[String], middleware: Vec<RouteMiddlewa
                 let Some(priority_index) = priority_index(priority, &middleware[index]) else {
                     continue;
                 };
-                if let Some((last_index, last_priority)) = last {
-                    if priority_index < last_priority {
+                if let Some((last_index, last_priority)) = last
+                    && priority_index < last_priority {
                         let item = middleware.remove(index);
                         middleware.insert(last_index, item);
                         continue 'restart;
                     }
-                }
                 last = Some((index, priority_index));
             }
             break;

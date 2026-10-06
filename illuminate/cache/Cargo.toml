@@ -9,3 +9,21 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-config.workspace = true
+illuminate-http.workspace = true
+illuminate-filesystem.workspace = true
+async-trait.workspace = true
+hex.workspace = true
+indexmap.workspace = true
+md-5.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha1.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio.workspace = true

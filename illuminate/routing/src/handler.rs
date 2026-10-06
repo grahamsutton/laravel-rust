@@ -68,11 +68,10 @@ pub fn action_name_from_type(type_name: &str) -> String {
     }
     let path = type_name.split('<').next().unwrap_or(type_name);
     let segments: Vec<&str> = path.split("::").collect();
-    if let [.., controller, method] = segments.as_slice() {
-        if controller.chars().next().is_some_and(char::is_uppercase) {
+    if let [.., controller, method] = segments.as_slice()
+        && controller.chars().next().is_some_and(char::is_uppercase) {
             return format!("{controller}@{method}");
         }
-    }
     type_name.to_string()
 }
 

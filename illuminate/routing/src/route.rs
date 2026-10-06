@@ -512,7 +512,7 @@ impl RouteDefinition {
         including_method: bool,
     ) -> Result<Option<IndexMap<String, String>>, InvalidRouteException> {
         let path = crate::compiled::normalize_path(&request.decoded_path());
-        self.matches_parts(&request.method().to_string(), &path, &request.host(), including_method)
+        self.matches_parts(request.method().as_ref(), &path, &request.host(), including_method)
     }
 
     pub(crate) fn matches_parts(

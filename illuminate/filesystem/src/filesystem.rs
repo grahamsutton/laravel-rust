@@ -524,10 +524,13 @@ impl Filesystem {
 
     /// Blocking variant of [`Filesystem::delete`].
     pub fn delete_sync(&self, paths: impl IntoPaths) -> bool {
-        paths
-            .into_paths()
-            .iter()
-            .fold(true, |success, path| fs::remove_file(path).is_ok() && success)
+        let mut success = true;
+        for path in paths.into_paths() {
+            if fs::remove_file(path).is_err() {
+                success = false;
+            }
+        }
+        success
     }
 
     /// Move a file to a new location.

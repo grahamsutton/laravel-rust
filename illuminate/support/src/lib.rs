@@ -29,6 +29,8 @@ pub mod preg;
 pub mod str;
 pub mod stringable;
 pub mod traits;
+pub mod uri;
+mod transliteration;
 pub mod value;
 
 pub use arr::Arr;
@@ -45,6 +47,7 @@ pub use pluralizer::Pluralizer;
 pub use str::Str;
 pub use stringable::Stringable;
 pub use traits::{Conditionable, Tappable};
+pub use uri::{Uri, UriQueryString};
 pub use value::{Map, Number as JsonNumber, Value, ValueExt, cast, json, to_value};
 
 /// Re-exports used by the framework's macros. Not part of the public API.
