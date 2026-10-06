@@ -430,6 +430,11 @@ pub trait ServiceProvider: Send + Sync + 'static {
     /// Bootstrap any application services.
     fn boot(&self, _app: &Container) {}
 
+    /// The provider's fully qualified type name (its identity).
+    fn type_name(&self) -> &'static str {
+        std::any::type_name::<Self>()
+    }
+
     /// The provider's name, for display in `about` and debugging.
     fn name(&self) -> String {
         let full = std::any::type_name::<Self>();
