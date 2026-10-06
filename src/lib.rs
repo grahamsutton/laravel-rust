@@ -27,6 +27,7 @@
 
 pub use illuminate_cache as cache;
 pub use illuminate_config as config;
+pub use illuminate_console as console;
 pub use illuminate_container as container;
 pub use illuminate_cookie as cookie;
 pub use illuminate_encryption as encryption;
@@ -42,6 +43,7 @@ pub use illuminate_routing as routing;
 pub use illuminate_session as session;
 pub use illuminate_support as support;
 pub use illuminate_translation as translation;
+pub use illuminate_validation as validation;
 
 /// Testing helpers: `TestApp`, `TestResponse`, and friends.
 pub mod testing {
@@ -63,6 +65,7 @@ pub use illuminate_support::{Error, Result, Value, json};
 pub mod facades {
     pub use illuminate_cache::facades::{Cache, RateLimiter};
     pub use illuminate_config::Config;
+    pub use illuminate_console::{Artisan, Schedule};
     pub use illuminate_cookie::facades::Cookie;
     pub use illuminate_encryption::Crypt;
     pub use illuminate_events::Event;
@@ -73,6 +76,7 @@ pub mod facades {
     pub use illuminate_routing::{Redirect, Route, URL};
     pub use illuminate_session::Session;
     pub use illuminate_translation::Lang;
+    pub use illuminate_validation::Validator;
 }
 
 // ---------------------------------------------------------------------------
@@ -127,8 +131,13 @@ pub mod prelude {
     pub use illuminate_routing::{
         FromRequest, Inject, Input, Path, Query, ResourceController, UrlRoutable,
     };
+    pub use illuminate_console::{Command, Console};
     pub use illuminate_session::RequestSessionExt;
     pub use illuminate_support::error::Context as _;
+    pub use illuminate_validation::{
+        FormRequest, Password, Rule, Rules, Validated, ValidatesRequests, ValidationException,
+        ValidationRule, rules,
+    };
     pub use illuminate_support::{
         Arr, Carbon, CarbonInterval, Collection, Conditionable, Error, HtmlString,
         Map, MessageBag, Number, Result, Str, Stringable, Tappable, Value, ValueExt, cast, json,
