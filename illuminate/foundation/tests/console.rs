@@ -69,3 +69,43 @@ async fn maintenance_mode_can_be_toggled() {
     app.flush_cookies();
     app.get("/").await.assert_ok();
 }
+
+#[tokio::test]
+async fn generators_create_and_register_files() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("app/http")).unwrap();
+    std::fs::write(dir.path().join("app/mod.rs"), "pub mod http;\n").unwrap();
+    std::fs::write(dir.path().join("app/http/mod.rs"), "").unwrap();
+    std::fs::create_dir_all(dir.path().join("bootstrap")).unwrap();
+    std::fs::write(
+        dir.path().join("bootstrap/providers.rs"),
+        "pub fn providers() -> Vec<Box<dyn ServiceProvider>> {\n    vec![\n        Box::new(crate::app::providers::AppServiceProvider),\n    ]\n}\n",
+    )
+    .unwrap();
+    let app = TestApp::new(Application::configure_detached(dir.path()));
+
+    app.artisan("make:controller Admin/PhotoController --resource")
+        .expects_output_to_contain("Controller [app/http/controllers/admin/photo_controller.rs] created successfully.")
+        .assert_successful()
+        .await;
+    let controller = std::fs::read_to_string(dir.path().join("app/http/controllers/admin/photo_controller.rs")).unwrap();
+    assert!(controller.contains("impl ResourceController for PhotoController"));
+    assert!(std::fs::read_to_string(dir.path().join("app/http/mod.rs")).unwrap().contains("pub mod controllers;"));
+    assert!(std::fs::read_to_string(dir.path().join("app/http/controllers/admin/mod.rs")).unwrap().contains("pub use photo_controller::PhotoController;"));
+
+    app.artisan("make:controller Admin/PhotoController")
+        .expects_output_to_contain("Controller already exists.")
+        .assert_failed()
+        .await;
+
+    app.artisan("make:command SendEmails").assert_successful().await;
+    let command = std::fs::read_to_string(dir.path().join("app/console/commands/send_emails.rs")).unwrap();
+    assert!(command.contains("\"app:send-emails\""));
+
+    app.artisan("make:provider RiakServiceProvider").assert_successful().await;
+    let providers = std::fs::read_to_string(dir.path().join("bootstrap/providers.rs")).unwrap();
+    assert!(providers.contains("Box::new(crate::app::providers::RiakServiceProvider),"));
+
+    app.artisan("make:view users.index").assert_successful().await;
+    assert!(dir.path().join("resources/views/users/index.blade.html").exists());
+}

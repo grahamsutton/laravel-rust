@@ -2,6 +2,7 @@
 //! framework's commands.
 
 pub mod commands;
+pub mod generators;
 
 use std::sync::{Arc, Mutex};
 
@@ -48,6 +49,10 @@ pub fn register_framework_commands() {
     Artisan::register(ServeCommand);
     Artisan::register(StorageLinkCommand);
     Artisan::register(UpCommand);
+
+    for generator in generators::commands::all() {
+        Artisan::register(generator);
+    }
 
     for command in crate::providers::extra_framework_commands() {
         Artisan::register_arc(command);
