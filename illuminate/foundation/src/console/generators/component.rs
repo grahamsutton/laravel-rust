@@ -48,7 +48,7 @@ impl Command for MakeComponentCommand {
             class: view_segments[view_segments.len() - 1].clone(),
         };
         let quote = Inspiring::quote();
-        let template = populate(stubs::VIEW, &[("quote", &quote)]);
+        let template = populate(&stubs::get("view.stub"), &[("quote", &quote)]);
 
         if cmd.option_bool("view") {
             return self.write_view(&cmd, &app, &view_file, &template, force);
@@ -63,7 +63,7 @@ impl Command for MakeComponentCommand {
         } else {
             format!("ComponentView::view(\"components.{view_name}\")")
         };
-        let contents = populate(stubs::COMPONENT, &[("class", &name.class), ("view", &render)]);
+        let contents = populate(&stubs::get("view-component.stub"), &[("class", &name.class), ("view", &render)]);
 
         match generate(&app, "app/view/components", &name, "rs", &contents, Registration::Discovered, force) {
             Ok(path) => {

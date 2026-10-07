@@ -5,6 +5,7 @@
 //! and `DECRBY` working on them; everything else is stored as JSON, exactly
 //! where Laravel's `RedisStore` would use PHP's `serialize`.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -15,7 +16,9 @@ use illuminate_redis::{Connection, RedisManager};
 use illuminate_support::{Result, Value, ValueExt};
 
 use crate::lock::{Lock, LockDriver, LockInfo};
+use crate::manager::CacheManager;
 use crate::store::{LockProvider, Store, separate_lock_store_required};
+use crate::tags::namespace_key;
 
 /// Sets a key only when it doesn't exist yet (Laravel's `LuaScripts::add`).
 ///
@@ -193,6 +196,196 @@ impl RedisStore {
     fn prefixed(&self, key: &str) -> String {
         format!("{}{key}", self.prefix)
     }
+
+    /// The Redis store behind a cache store resolved by the cache manager,
+    /// if it is one — the Rust spelling of Laravel's
+    /// `$cache->getStore() instanceof RedisStore`.
+    ///
+    /// ```no_run
+    /// use illuminate_cache::{Cache, RedisStore};
+    ///
+    /// # async fn example() -> illuminate_support::Result<()> {
+    /// if let Some(redis) = RedisStore::of(&Cache::store("redis")?.get_store()) {
+    ///     redis.flush_stale_tags().await?;
+    /// }
+    /// # Ok(()) }
+    /// ```
+    pub fn of(store: &Arc<dyn Store>) -> Option<RedisStore> {
+        let manager = try_app::<CacheManager>()?;
+        let config = try_app::<Config>()?;
+        let Value::Object(stores) = config.get("cache.stores") else {
+            return None;
+        };
+        stores
+            .iter()
+            .filter(|(_, options)| options.get("driver").and_then(Value::as_str) == Some("redis"))
+            // Only resolve the stores that could be this one.
+            .filter(|(_, options)| store.get_prefix() == manager.get_prefix(options))
+            .find_map(|(name, options)| {
+                let resolved = manager.store(name).ok()?.get_store();
+                if !Arc::ptr_eq(&resolved, store) {
+                    return None;
+                }
+                let option = |key: &str, default: &str| {
+                    options
+                        .get(key)
+                        .filter(|value| !value.is_blank())
+                        .map(ValueExt::to_string_lossy)
+                        .unwrap_or_else(|| default.to_string())
+                };
+                Some(
+                    RedisStore::new(redis_manager(&config), resolved.get_prefix(), option("connection", "cache"))
+                        .with_lock_connection(option("lock_connection", "default")),
+                )
+            })
+    }
+
+    // ------------------------------------------------------------------
+    // Tags
+    // ------------------------------------------------------------------
+
+    /// The key of the set recording the namespaces a tag has been part of.
+    fn tag_entries_key(name: &str) -> String {
+        format!("tag:{name}:entries")
+    }
+
+    /// Record that the given tags (and their current ids) form a namespace
+    /// tagged items are stored under, so pruning can find them later.
+    pub(crate) async fn add_tag_namespace(&self, tags: &[(String, String)]) -> Result<()> {
+        if tags.is_empty() {
+            return Ok(());
+        }
+        let member = serde_json::to_string(tags)?;
+        self.connection()?
+            .pipeline(|redis| {
+                for (name, _) in tags {
+                    redis.sadd(self.prefixed(&Self::tag_entries_key(name)), (member.as_str(),));
+                }
+            })
+            .await?;
+        Ok(())
+    }
+
+    /// The names of every tag currently in use (Laravel's `currentTags`).
+    pub async fn current_tags(&self) -> Result<Vec<String>> {
+        let prefix = self.prefixed("tag:");
+        let mut tags: Vec<String> = self
+            .scan(&format!("{prefix}*:entries"))
+            .await?
+            .into_iter()
+            .filter_map(|key| {
+                key.strip_prefix(&prefix)
+                    .and_then(|rest| rest.strip_suffix(":entries"))
+                    .map(str::to_string)
+            })
+            .collect();
+        tags.sort();
+        tags.dedup();
+        Ok(tags)
+    }
+
+    /// Remove the stale entries of every tag — Laravel's `flushStaleTags`,
+    /// run by `cargo artisan cache:prune-stale-tags`.
+    ///
+    /// Flushing a tag gives it a new id, orphaning the items stored under
+    /// the old one; items stored forever would otherwise stay in Redis for
+    /// good. Pruning deletes those items, and forgets the namespaces that no
+    /// longer have any items, so each tag's record of its entries doesn't
+    /// grow without bound.
+    pub async fn flush_stale_tags(&self) -> Result<()> {
+        let connection = self.connection()?;
+        let mut ids: HashMap<String, Option<String>> = HashMap::new();
+        let mut stale: HashSet<String> = HashSet::new();
+        let mut records: Vec<(String, String, String, bool)> = Vec::new();
+
+        for tag in self.current_tags().await? {
+            let key = self.prefixed(&Self::tag_entries_key(&tag));
+            for member in connection.smembers(&key).await? {
+                let Ok(tags) = serde_json::from_str::<Vec<(String, String)>>(&member) else {
+                    connection.srem(&key, (member.as_str(),)).await?;
+                    continue;
+                };
+                let mut live = true;
+                for (name, id) in &tags {
+                    if !ids.contains_key(name) {
+                        let current = match self.get(&format!("tag:{name}:key")).await? {
+                            Some(Value::String(current)) => Some(current),
+                            _ => None,
+                        };
+                        ids.insert(name.clone(), current);
+                    }
+                    live &= ids[name].as_deref() == Some(id.as_str());
+                }
+                let namespace = tags.iter().map(|(_, id)| id.as_str()).collect::<Vec<_>>().join("|");
+                let hash = namespace_key(&namespace);
+                if !live {
+                    stale.insert(hash.clone());
+                }
+                records.push((key.clone(), member, hash, live));
+            }
+        }
+        if records.is_empty() {
+            return Ok(());
+        }
+
+        // A single pass over the store's keys deletes the items of stale
+        // namespaces, and notes which namespaces still hold items.
+        let mut present: HashSet<String> = HashSet::new();
+        let mut orphans: Vec<String> = Vec::new();
+        for key in self.scan(&format!("{}*", self.prefix)).await? {
+            let Some(hash) = key.strip_prefix(&self.prefix).and_then(tagged_namespace) else {
+                continue;
+            };
+            if stale.contains(hash) {
+                orphans.push(key.clone());
+            } else {
+                present.insert(hash.to_string());
+            }
+        }
+        for chunk in orphans.chunks(1000) {
+            connection.del(chunk.to_vec()).await?;
+        }
+
+        // Redis removes a set once its last member is gone.
+        for (key, member, hash, live) in records {
+            if !live || !present.contains(&hash) {
+                connection.srem(&key, (member.as_str(),)).await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Every key matching the pattern (relative to the connection's own
+    /// prefix), found with `SCAN` so Redis is never blocked.
+    async fn scan(&self, pattern: &str) -> Result<Vec<String>> {
+        let connection = self.connection()?;
+        let connection_prefix = connection.prefix().to_string();
+        let pattern = format!("{connection_prefix}{pattern}");
+        let mut cursor = "0".to_string();
+        let mut keys = Vec::new();
+        loop {
+            let (next, chunk): (String, Vec<String>) = connection
+                .query("scan", (cursor.as_str(), "match", pattern.as_str(), "count", 1000))
+                .await?;
+            keys.extend(chunk.into_iter().map(|key| match key.strip_prefix(&connection_prefix) {
+                Some(key) if !connection_prefix.is_empty() => key.to_string(),
+                _ => key,
+            }));
+            if next == "0" {
+                break;
+            }
+            cursor = next;
+        }
+        keys.sort();
+        keys.dedup();
+        Ok(keys)
+    }
+}
+
+/// The namespace of a tagged item's key (`{sha1}:{key}`), if it is one.
+fn tagged_namespace(key: &str) -> Option<&str> {
+    let (hash, rest) = key.split_at_checked(40)?;
+    (rest.starts_with(':') && hash.bytes().all(|byte| byte.is_ascii_hexdigit())).then_some(hash)
 }
 
 #[async_trait]
@@ -470,5 +663,72 @@ mod tests {
         let driver = RedisLock::new(redis, "default");
         assert_eq!(driver.get_connection_name(), "default");
         assert!(format!("{driver:?}").contains("default"));
+    }
+
+    #[test]
+    fn tagged_item_keys_are_recognized() {
+        let hash = namespace_key("a|b");
+        assert_eq!(tagged_namespace(&format!("{hash}:name")), Some(hash.as_str()));
+        assert_eq!(tagged_namespace("tag:people:key"), None);
+        assert_eq!(tagged_namespace(&hash), None);
+    }
+
+    #[tokio::test]
+    async fn stale_tags_are_pruned() {
+        use crate::CacheServiceProvider;
+        use illuminate_container::ServiceProvider;
+        use illuminate_redis::RedisServiceProvider;
+        use illuminate_redis::testing::RedisServer;
+
+        let server = RedisServer::shared();
+        let container = Arc::new(Container::new());
+        let _guard = Container::set_local_instance(container.clone());
+        container.instance(Config::new(json!({
+            "app": {"name": "Laravel"},
+            "database": {"redis": server.config()},
+            "cache": {
+                "default": "redis",
+                "stores": {"redis": {"driver": "redis", "connection": "cache"}},
+                "prefix": "app-",
+            },
+        })));
+        RedisServiceProvider.register(&container);
+        CacheServiceProvider.register(&container);
+
+        let manager = container.make::<CacheManager>();
+        let cache = manager.store("redis").unwrap();
+        let redis = RedisStore::of(&cache.get_store()).expect("the store is a Redis store");
+        assert_eq!(redis.get_prefix(), "app-");
+        assert!(RedisStore::of(&manager.repository(crate::ArrayStore::new()).get_store()).is_none());
+
+        cache.tags(["people", "artists"]).unwrap().forever("John", "Lennon").await.unwrap();
+        cache.tags(["people", "authors"]).unwrap().forever("Anne", "Rice").await.unwrap();
+        cache.tags(["people", "authors"]).unwrap().put("Mary", "Shelley", 1).await.unwrap();
+        assert_eq!(redis.current_tags().await.unwrap(), ["artists", "authors", "people"]);
+
+        // Flushing `authors` orphans Anne, who was stored forever.
+        cache.tags(["authors"]).unwrap().flush().await.unwrap();
+        let connection = redis.connection().unwrap();
+        let before = connection.keys("app-*").await.unwrap();
+        assert_eq!(before.iter().filter(|key| tagged_namespace(&key[4..]).is_some()).count(), 3);
+
+        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+        redis.flush_stale_tags().await.unwrap();
+
+        let after = connection.keys("app-*").await.unwrap();
+        let items: Vec<&String> = after.iter().filter(|key| tagged_namespace(&key[4..]).is_some()).collect();
+        assert_eq!(items.len(), 1, "{after:?}");
+        assert_eq!(
+            cache.tags(["people", "artists"]).unwrap().get("John").await.unwrap(),
+            Some(json!("Lennon"))
+        );
+        // Only the live namespace is still recorded; `authors` has none left.
+        assert_eq!(connection.scard("app-tag:people:entries").await.unwrap(), 1);
+        assert_eq!(connection.scard("app-tag:authors:entries").await.unwrap(), 0);
+        assert_eq!(redis.current_tags().await.unwrap(), ["artists", "people"]);
+
+        // Pruning again changes nothing.
+        redis.flush_stale_tags().await.unwrap();
+        assert_eq!(connection.keys("app-*").await.unwrap().len(), after.len());
     }
 }

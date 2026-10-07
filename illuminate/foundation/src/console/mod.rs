@@ -53,6 +53,17 @@ pub fn register_framework_commands() {
     Artisan::register(PackageDiscoverCommand);
     Artisan::register(UpCommand);
 
+    Artisan::register(ConfigPublishCommand);
+    Artisan::register(VendorPublishCommand);
+    Artisan::register(LangPublishCommand);
+    Artisan::register(StubPublishCommand);
+    Artisan::register(DevCommand);
+    Artisan::register(DevListCommand);
+    Artisan::register(ReloadCommand);
+    Artisan::register(SchemaDumpCommand);
+    Artisan::register(DbMonitorCommand::default());
+    Artisan::register(CachePruneStaleTagsCommand);
+
     Artisan::register(MigrateCommand::default());
     Artisan::register(MigrateFreshCommand::default());
     Artisan::register(MigrateInstallCommand);

@@ -31,24 +31,35 @@ pub trait Loader: Send + Sync {
     fn namespaces(&self) -> IndexMap<String, PathBuf>;
 }
 
+/// The framework's English language files, by group: `auth`,
+/// `pagination`, `passwords` and `validation`. `cargo artisan lang:publish`
+/// copies them to the application's `lang/en` directory for customization.
+///
+/// ```
+/// let (group, json) = illuminate_translation::FRAMEWORK_FILES[0];
+/// assert_eq!(group, "auth");
+/// assert!(json.contains("These credentials do not match our records."));
+/// ```
+pub const FRAMEWORK_FILES: [(&str, &str); 4] = [
+    ("auth", include_str!("../lang/en/auth.json")),
+    ("pagination", include_str!("../lang/en/pagination.json")),
+    ("passwords", include_str!("../lang/en/passwords.json")),
+    ("validation", include_str!("../lang/en/validation.json")),
+];
+
 /// The English lines shipped with the framework (`auth`, `pagination`,
 /// `passwords` and `validation`). Applications override them with their own
 /// `lang/en/{group}.json` files.
 static FRAMEWORK_LINES: LazyLock<HashMap<&'static str, Value>> = LazyLock::new(|| {
-    [
-        ("auth", include_str!("../lang/en/auth.json")),
-        ("pagination", include_str!("../lang/en/pagination.json")),
-        ("passwords", include_str!("../lang/en/passwords.json")),
-        ("validation", include_str!("../lang/en/validation.json")),
-    ]
-    .into_iter()
-    .map(|(group, json)| {
-        (
-            group,
-            serde_json::from_str(json).expect("the framework's language files are valid JSON"),
-        )
-    })
-    .collect()
+    FRAMEWORK_FILES
+        .into_iter()
+        .map(|(group, json)| {
+            (
+                group,
+                serde_json::from_str(json).expect("the framework's language files are valid JSON"),
+            )
+        })
+        .collect()
 });
 
 /// The framework's default lines for a locale and group, if it ships any.

@@ -49,7 +49,7 @@ impl Command for MakeModelCommand {
             (String::new(), String::new())
         };
         let contents = populate(
-            stubs::MODEL,
+            &stubs::get("model.stub"),
             &[
                 ("class", &model),
                 ("factory_import", &factory_import),
@@ -114,7 +114,7 @@ pub fn commands() -> Vec<MakeCommand> {
             Registration::ModuleAndExport,
             |cmd, name| {
                 let model = model_for(cmd, name, "Factory");
-                populate(stubs::FACTORY, &[("class", &name.class), ("model", &model)])
+                populate(&stubs::get("factory.stub"), &[("class", &name.class), ("model", &model)])
             },
         )
         .options("{--m|model= : The name of the model}"),
@@ -127,7 +127,7 @@ pub fn commands() -> Vec<MakeCommand> {
             |cmd, name| {
                 let model = model_for(cmd, name, "Observer");
                 let variable = Str::snake(&model);
-                populate(stubs::OBSERVER, &[("class", &name.class), ("model", &model), ("variable", &variable)])
+                populate(&stubs::get("observer.stub"), &[("class", &name.class), ("model", &model), ("variable", &variable)])
             },
         )
         .options("{--m|model= : The model that the observer applies to}"),
@@ -142,7 +142,7 @@ pub fn commands() -> Vec<MakeCommand> {
                 let variable = Str::snake(&model);
                 let imports = if model == "User" { "User".to_string() } else { format!("{model}, User") };
                 populate(
-                    stubs::POLICY,
+                    &stubs::get("policy.stub"),
                     &[("class", &name.class), ("model", &model), ("variable", &variable), ("imports", &imports)],
                 )
             },

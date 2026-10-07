@@ -4,8 +4,10 @@ use std::sync::Arc;
 
 use illuminate_console::{Command, Components, Console, async_trait};
 use illuminate_database::migrations::{MigrateOptions, MigrationEvent, RollbackOptions, render_task};
+use illuminate_database::schema::SchemaLoaded;
 use illuminate_database::seeder::{SeederEvent, SeederOutput, run_seeder};
 use illuminate_database::{DatabaseManager, Migrator, SeederRegistry};
+use illuminate_events::Event;
 use illuminate_support::Result;
 
 use crate::application::Application;
@@ -52,6 +54,32 @@ fn colorize(line: &str) -> String {
     line.to_string()
 }
 
+/// Load the stored schema dump (`schema:dump`) into a database no
+/// migration has run on yet — Laravel's `loadSchemaState`.
+async fn load_schema_state(cmd: &Console, migrator: &Migrator) -> Result<()> {
+    if migrator.has_run_any_migrations().await? {
+        return Ok(());
+    }
+    let app = Application::current();
+    let connection = migrator.connection_name();
+    let path = match cmd.option("schema-path").filter(|path| !path.is_empty()) {
+        Some(path) => std::path::PathBuf::from(path),
+        None => Migrator::schema_path(app.database_path(""), &connection),
+    };
+    if !path.is_file() {
+        return Ok(());
+    }
+
+    cmd.components().info("Loading stored database schemas.");
+    let display = crate::console::generators::relative(&app, &path);
+    cmd.components()
+        .task(display, || async { migrator.load_schema_state(&path).await })
+        .await?;
+    cmd.new_line(1);
+
+    Event::dispatch(SchemaLoaded { connection_name: connection, path }).await
+}
+
 /// Run a seeder by name, printing progress.
 async fn seed(cmd: &Console, class: &str) -> Result<()> {
     let registry = Application::current().make::<SeederRegistry>();
@@ -92,7 +120,8 @@ impl Default for MigrateCommand {
         Self {
             signature: migrate_signature(
                 "migrate",
-                "{--pretend : Dump the SQL queries that would be run}
+                "{--schema-path= : The path to a schema dump file}
+                 {--pretend : Dump the SQL queries that would be run}
                  {--seed : Indicates if the seed task should be re-run}
                  {--seeder= : The class name of the root seeder}
                  {--step : Force the migrations to be run so they can be rolled back individually}",
@@ -124,6 +153,10 @@ impl Command for MigrateCommand {
                     migrator.install().await
                 })
                 .await?;
+            cmd.new_line(1);
+        }
+        if !cmd.option_bool("pretend") {
+            load_schema_state(&cmd, &migrator).await?;
         }
         migrator
             .run(MigrateOptions {
@@ -285,9 +318,21 @@ impl Command for MigrateRefreshCommand {
         if !migrator.repository_exists().await? {
             migrator.install().await?;
         }
-        migrator
-            .refresh(cmd.option("step").and_then(|s| s.parse().ok()))
-            .await?;
+        match cmd.option("step").and_then(|s| s.parse::<usize>().ok()).filter(|step| *step > 0) {
+            Some(step) => {
+                migrator
+                    .rollback(RollbackOptions {
+                        step: Some(step),
+                        ..Default::default()
+                    })
+                    .await?;
+            }
+            None => {
+                migrator.reset(false).await?;
+            }
+        }
+        load_schema_state(&cmd, &migrator).await?;
+        migrator.run(MigrateOptions::default()).await?;
         cmd.new_line(1);
         if cmd.option_bool("seed") {
             let class = cmd.option("seeder").unwrap_or_else(|| "DatabaseSeeder".into());
@@ -308,6 +353,7 @@ impl Default for MigrateFreshCommand {
             signature: migrate_signature(
                 "migrate:fresh",
                 "{--drop-views : Drop all tables and views}
+                 {--schema-path= : The path to a schema dump file}
                  {--seed : Indicates if the seed task should be re-run}
                  {--seeder= : The class name of the root seeder}
                  {--step : Force the migrations to be run so they can be rolled back individually}",
@@ -346,6 +392,8 @@ impl Command for MigrateFreshCommand {
         cmd.components()
             .task("Creating migration table", || async { migrator.install().await })
             .await?;
+        cmd.new_line(1);
+        load_schema_state(&cmd, &migrator).await?;
         migrator
             .run(MigrateOptions {
                 pretend: false,

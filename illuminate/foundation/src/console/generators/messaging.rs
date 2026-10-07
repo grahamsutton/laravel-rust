@@ -4,10 +4,10 @@
 use illuminate_console::{Command, Console, async_trait};
 use illuminate_support::{Result, Str};
 
-use super::{QualifiedName, Registration, generate, populate, relative};
+use super::{QualifiedName, Registration, generate, populate, relative, stubs};
 use crate::application::Application;
 
-const MAIL: &str = r#"use laravel::prelude::*;
+pub(crate) const MAIL: &str = r#"use laravel::prelude::*;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct {{ class }} {
@@ -39,7 +39,7 @@ impl Mailable for {{ class }} {
 }
 "#;
 
-const NOTIFICATION: &str = r#"use laravel::prelude::*;
+pub(crate) const NOTIFICATION: &str = r#"use laravel::prelude::*;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct {{ class }} {
@@ -73,7 +73,7 @@ impl Notification for {{ class }} {
 }
 "#;
 
-const MARKDOWN: &str = r#"<x-mail::message>
+pub(crate) const MARKDOWN: &str = r#"<x-mail::message>
 # Introduction
 
 The body of your message.
@@ -85,11 +85,6 @@ Button Text
 Thanks,<br>
 {{ config('app.name') }}
 </x-mail::message>
-"#;
-
-const VIEW: &str = r#"<div>
-    <!-- {{ quote }} -->
-</div>
 "#;
 
 /// Write a view for the message: `mail.orders.shipped` =>
@@ -145,7 +140,7 @@ impl Command for MakeMailCommand {
             (None, None) => "Content::view(\"view.name\")".to_string(),
         };
         let subject = Str::headline(&name.class);
-        let contents = populate(MAIL, &[("class", &name.class), ("subject", &subject), ("content", &content)]);
+        let contents = populate(&stubs::get("mail.stub"), &[("class", &name.class), ("subject", &subject), ("content", &content)]);
 
         match generate(&app, "app/mail", &name, "rs", &contents, Registration::ModuleAndExport, force) {
             Ok(path) => cmd
@@ -159,10 +154,10 @@ impl Command for MakeMailCommand {
         }
 
         if let Some(markdown) = markdown {
-            write_view(&cmd, &app, &markdown, MARKDOWN, force)?;
+            write_view(&cmd, &app, &markdown, &stubs::get("markdown-mail.stub"), force)?;
         } else if let Some(view) = view {
             let quote = crate::inspiring::Inspiring::quote();
-            write_view(&cmd, &app, &view, &populate(VIEW, &[("quote", &quote)]), force)?;
+            write_view(&cmd, &app, &view, &populate(&stubs::get("view.stub"), &[("quote", &quote)]), force)?;
         }
         Ok(())
     }
@@ -201,7 +196,7 @@ impl Command for MakeNotificationCommand {
             .line(\"Thank you for using our application!\")"
                 .to_string(),
         };
-        let contents = populate(NOTIFICATION, &[("class", &name.class), ("mail", &mail)]);
+        let contents = populate(&stubs::get("notification.stub"), &[("class", &name.class), ("mail", &mail)]);
 
         match generate(&app, "app/notifications", &name, "rs", &contents, Registration::ModuleAndExport, force) {
             Ok(path) => cmd
@@ -215,7 +210,7 @@ impl Command for MakeNotificationCommand {
         }
 
         if let Some(markdown) = markdown {
-            write_view(&cmd, &app, &markdown, MARKDOWN, force)?;
+            write_view(&cmd, &app, &markdown, &stubs::get("markdown-notification.stub"), force)?;
         }
         Ok(())
     }

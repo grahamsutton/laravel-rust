@@ -3,7 +3,9 @@
 
 use illuminate_database::seeder::run_seeder;
 use illuminate_database::eloquent::Model;
+use illuminate_database::schema::SchemaLoaded;
 use illuminate_database::{DatabaseManager, MigrateOptions, Migrator, Seeder, SeederRegistry};
+use illuminate_events::Event;
 use illuminate_support::{Value, json};
 
 use super::TestApp;
@@ -11,7 +13,9 @@ use super::TestApp;
 impl TestApp {
     /// Run every migration against a fresh database — Laravel's
     /// `RefreshDatabase` trait. Tests use an in-memory SQLite database by
-    /// default, so each test starts from a clean slate.
+    /// default, so each test starts from a clean slate. When the
+    /// connection has a schema dump (`schema:dump`), it's loaded first and
+    /// only the migrations created since are run.
     pub async fn refresh_database(&mut self) -> &mut Self {
         let migrator = Migrator::from_app();
         let connection = migrator.get_repository().get_connection();
@@ -20,6 +24,19 @@ impl TestApp {
             .drop_all_tables()
             .await
             .expect("Unable to drop the database tables");
+
+        let connection_name = migrator.connection_name();
+        let path = Migrator::schema_path(self.app().database_path(""), &connection_name);
+        if path.is_file() {
+            migrator
+                .load_schema_state(&path)
+                .await
+                .expect("Unable to load the database schema");
+            Event::dispatch(SchemaLoaded { connection_name, path })
+                .await
+                .expect("Unable to dispatch the SchemaLoaded event");
+        }
+
         migrator
             .run(MigrateOptions::default())
             .await

@@ -3,10 +3,10 @@
 use illuminate_console::{Command, Console, async_trait};
 use illuminate_support::{Result, Str};
 
-use super::{QualifiedName, Registration, generate, populate, relative};
+use super::{QualifiedName, Registration, generate, populate, relative, stubs};
 use crate::application::Application;
 
-const RESOURCE: &str = r#"use laravel::prelude::*;
+pub(crate) const RESOURCE: &str = r#"use laravel::prelude::*;
 {{ import }}
 pub struct {{ class }}(pub {{ model }});
 
@@ -28,7 +28,7 @@ impl JsonResource for {{ class }} {
 }
 "#;
 
-const COLLECTION: &str = r#"use laravel::prelude::*;
+pub(crate) const COLLECTION: &str = r#"use laravel::prelude::*;
 
 use super::{{ collects }};
 
@@ -81,7 +81,7 @@ impl Command for MakeResourceCommand {
             // `UserCollection` collects `UserResource`.
             let base = name.class.strip_suffix("Collection").unwrap_or(&name.class);
             let collects = format!("{base}Resource");
-            populate(COLLECTION, &[("class", &name.class), ("collects", &collects)])
+            populate(&stubs::get("resource-collection.stub"), &[("class", &name.class), ("collects", &collects)])
         } else {
             let model = cmd
                 .option("model")
@@ -92,9 +92,9 @@ impl Command for MakeResourceCommand {
             let model_file = app.base_path(&format!("app/models/{}.rs", Str::snake(&model)));
             if std::path::Path::new(&model_file).exists() {
                 let import = format!("\nuse crate::app::models::{model};\n");
-                populate(RESOURCE, &[("class", &name.class), ("model", &model), ("import", &import)])
+                populate(&stubs::get("resource.stub"), &[("class", &name.class), ("model", &model), ("import", &import)])
             } else {
-                populate(RESOURCE, &[("class", &name.class), ("model", "Value"), ("import", "")])
+                populate(&stubs::get("resource.stub"), &[("class", &name.class), ("model", "Value"), ("import", "")])
             }
         };
 

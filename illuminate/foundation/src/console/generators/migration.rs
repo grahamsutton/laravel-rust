@@ -42,12 +42,12 @@ impl Command for MakeMigrationCommand {
             }
 
         let stub = match (&table, create) {
-            (None, _) => stubs::MIGRATION,
-            (Some(_), true) => stubs::MIGRATION_CREATE,
-            (Some(_), false) => stubs::MIGRATION_UPDATE,
+            (None, _) => "migration.stub",
+            (Some(_), true) => "migration.create.stub",
+            (Some(_), false) => "migration.update.stub",
         };
         let contents = populate(
-            stub,
+            &stubs::get(stub),
             &[("class", &Str::studly(&name)), ("table", table.as_deref().unwrap_or_default())],
         );
 

@@ -98,6 +98,7 @@ pub mod facades {
     pub use illuminate_encryption::Crypt;
     pub use illuminate_events::Event;
     pub use illuminate_filesystem::facades::{File, Storage};
+    pub use illuminate_foundation::console::commands::DevCommands;
     pub use illuminate_foundation::{App, Vite};
     pub use illuminate_hashing::Hash;
     pub use illuminate_image::Image;
@@ -170,7 +171,7 @@ pub mod prelude {
     pub use illuminate_notifications::{MailMessage, Notifiable, Notification, SlackMessage, SlackRoute};
     pub use serde::{Deserialize, Serialize};
 
-    pub use illuminate_container::{Container, Injectable as InjectableContract, ServiceProvider};
+    pub use illuminate_container::{Container, Injectable as InjectableContract, Publishable, ServiceProvider};
     pub use illuminate_filesystem::UploadedFileExt;
     pub use illuminate_image::{FilesystemImageExt, RequestImageExt, StorageImageExt, UploadedFileImageExt};
     pub use illuminate_foundation::{Application, ApplicationBuilder, ConfigFile, Inspiring};

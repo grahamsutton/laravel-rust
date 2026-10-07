@@ -32,6 +32,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, RwLock};
 
+pub mod publishing;
+
+pub use publishing::{PublishGroups, PublishRegistry, PublishRoot, PublishSource, Publishable};
+
 type AnyArc = Box<dyn Any + Send + Sync>;
 type Factory = Arc<dyn Fn(&Container) -> AnyArc + Send + Sync>;
 type Callback = Arc<dyn Fn(&dyn Any, &Container) + Send + Sync>;
@@ -438,6 +442,42 @@ pub trait ServiceProvider: Send + Sync + 'static {
     fn name(&self) -> String {
         let full = std::any::type_name::<Self>();
         full.rsplit("::").next().unwrap_or(full).to_string()
+    }
+
+    /// Register files to be published by `vendor:publish`, under the given
+    /// tags — Laravel's `$this->publishes([...], 'courier-config')`.
+    ///
+    /// ```
+    /// use illuminate_container::{Container, Publishable, ServiceProvider};
+    ///
+    /// struct CourierServiceProvider;
+    ///
+    /// impl ServiceProvider for CourierServiceProvider {
+    ///     fn boot(&self, app: &Container) {
+    ///         self.publishes(app, [Publishable::config("courier.rs", "// ...")], "courier-config");
+    ///     }
+    /// }
+    /// ```
+    fn publishes(&self, app: &Container, paths: impl IntoIterator<Item = Publishable>, groups: impl PublishGroups)
+    where
+        Self: Sized,
+    {
+        publishing::publishes(self, app, paths, groups);
+    }
+
+    /// Register migrations to be published by `vendor:publish`. Their
+    /// timestamps are updated to the moment they are published (when
+    /// `database.migrations.update_date_on_publish` is on), so they run after
+    /// the application's existing migrations.
+    fn publishes_migrations(
+        &self,
+        app: &Container,
+        paths: impl IntoIterator<Item = Publishable>,
+        groups: impl PublishGroups,
+    ) where
+        Self: Sized,
+    {
+        publishing::publishes(self, app, paths.into_iter().map(Publishable::as_migration), groups);
     }
 }
 

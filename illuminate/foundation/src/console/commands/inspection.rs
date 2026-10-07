@@ -38,7 +38,7 @@ async fn server_version(connection: &Connection) -> String {
 }
 
 /// The number of open connections to the server, where it can tell us.
-async fn open_connections(connection: &Connection) -> Option<i64> {
+pub(crate) async fn open_connections(connection: &Connection) -> Option<i64> {
     let query = match connection.driver() {
         Driver::Sqlite => return None,
         Driver::Postgres => "select count(*) from pg_stat_activity",

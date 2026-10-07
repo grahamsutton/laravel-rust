@@ -47,7 +47,9 @@
 //!
 //! The framework's English `auth`, `pagination`, `passwords` and
 //! `validation` lines are built in; override any of them with your own
-//! `lang/en/{group}.json` file.
+//! `lang/en/{group}.json` file. `cargo artisan lang:publish` copies them
+//! into your `lang/en` directory as a starting point
+//! ([`FRAMEWORK_FILES`]).
 //!
 //! ## Per-request locales
 //!
@@ -62,7 +64,7 @@ mod selector;
 mod translator;
 
 pub use facade::{__, __with, Lang, trans, trans_choice, trans_choice_with, trans_with};
-pub use loader::{ArrayLoader, FileLoader, Loader, framework_lines};
+pub use loader::{ArrayLoader, FRAMEWORK_FILES, FileLoader, Loader, framework_lines};
 pub use provider::TranslationServiceProvider;
 pub use selector::{ChoiceCount, MessageSelector};
 pub use translator::{Translator, locale_scope, make_replacements, with_locale, with_locale_async};

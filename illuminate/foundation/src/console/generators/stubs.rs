@@ -2,6 +2,73 @@
 //!
 //! Placeholders: `{{ class }}`, `{{ command }}`, `{{ event }}`, `{{ model }}`,
 //! `{{ table }}`, `{{ view }}`.
+//!
+//! Like Laravel, every generator prefers your application's own copy of a
+//! stub: run `cargo artisan stub:publish` to copy them all into `stubs/`,
+//! then change them however you like.
+
+use crate::application::Application;
+
+/// Every stub the generators use, by the file name `stub:publish` gives it
+/// in your application's `stubs` directory (Laravel's names).
+pub const ALL: &[(&str, &str)] = &[
+    ("channel.stub", CHANNEL),
+    ("class.stub", CLASS),
+    ("config.stub", CONFIG),
+    ("console.stub", COMMAND),
+    ("controller.api.stub", CONTROLLER_API),
+    ("controller.invokable.stub", CONTROLLER_INVOKABLE),
+    ("controller.plain.stub", CONTROLLER),
+    ("controller.stub", CONTROLLER_RESOURCE),
+    ("enum.stub", ENUM),
+    ("event.stub", EVENT),
+    ("exception.stub", EXCEPTION),
+    ("factory.stub", FACTORY),
+    ("interface.stub", TRAIT),
+    ("job.middleware.stub", JOB_MIDDLEWARE),
+    ("job.queued.stub", JOB),
+    ("listener.stub", LISTENER_PLAIN),
+    ("listener.typed.stub", LISTENER),
+    ("mail.stub", super::messaging::MAIL),
+    ("markdown-mail.stub", super::messaging::MARKDOWN),
+    ("markdown-notification.stub", super::messaging::MARKDOWN),
+    ("middleware.stub", MIDDLEWARE),
+    ("migration.create.stub", MIGRATION_CREATE),
+    ("migration.stub", MIGRATION),
+    ("migration.update.stub", MIGRATION_UPDATE),
+    ("model.stub", MODEL),
+    ("notification.stub", super::messaging::NOTIFICATION),
+    ("observer.stub", OBSERVER),
+    ("policy.stub", POLICY),
+    ("provider.stub", PROVIDER),
+    ("request.stub", REQUEST),
+    ("resource-collection.stub", super::resource::COLLECTION),
+    ("resource.stub", super::resource::RESOURCE),
+    ("rule.stub", RULE),
+    ("scope.stub", SCOPE),
+    ("seeder.stub", SEEDER),
+    ("test.stub", TEST_FEATURE),
+    ("test.unit.stub", TEST_UNIT),
+    ("trait.stub", TRAIT),
+    ("view-component.stub", COMPONENT),
+    ("view.stub", VIEW),
+];
+
+/// The framework's own copy of a stub.
+pub fn default(name: &str) -> Option<&'static str> {
+    ALL.iter().find(|(stub, _)| *stub == name).map(|(_, contents)| *contents)
+}
+
+/// The stub with the given name: your application's customized
+/// `stubs/{name}` when it exists, otherwise the framework's own.
+pub fn get(name: &str) -> String {
+    if let Some(app) = Application::try_current()
+        && let Ok(custom) = std::fs::read_to_string(app.base_path(&format!("stubs/{name}")))
+    {
+        return custom;
+    }
+    default(name).unwrap_or_default().to_string()
+}
 
 pub const CONTROLLER: &str = r#"use laravel::prelude::*;
 
@@ -609,3 +676,19 @@ pub fn config() -> Value {
     })
 }
 "#;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_stub_has_a_unique_name() {
+        let mut names: Vec<&str> = ALL.iter().map(|(name, _)| *name).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), ALL.len());
+        assert!(names.iter().all(|name| name.ends_with(".stub")));
+        assert_eq!(default("controller.plain.stub"), Some(CONTROLLER));
+        assert_eq!(default("missing.stub"), None);
+    }
+}

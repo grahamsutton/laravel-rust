@@ -15,6 +15,7 @@
 //! ```
 
 mod blueprint;
+mod dump;
 mod grammar;
 mod state;
 
@@ -28,6 +29,7 @@ pub use blueprint::{
     default_time_precision, set_default_morph_key_type, set_default_string_length,
     set_default_time_precision,
 };
+pub use dump::{SchemaDumped, SchemaLoaded, SchemaOutput, SchemaState};
 pub use grammar::SchemaGrammar;
 pub use state::TableState;
 

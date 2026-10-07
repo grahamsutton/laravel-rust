@@ -2,7 +2,9 @@
 
 mod app;
 mod basic;
+mod cache;
 mod database;
+pub mod dev;
 mod environment;
 mod events;
 mod housekeeping;
@@ -10,12 +12,27 @@ mod inspection;
 pub(crate) mod install;
 mod models;
 mod optimize;
+pub mod publish;
 mod queue;
+mod reload;
 mod routes;
+pub mod schema;
 mod serve;
 
 pub use app::{DownCommand, KeyGenerateCommand, StorageLinkCommand, UpCommand};
 pub use basic::{AboutCommand, CacheClearCommand, ConfigShowCommand, EnvironmentCommand, InspireCommand};
+pub use cache::PruneStaleTagsCommand as CachePruneStaleTagsCommand;
+pub use dev::{
+    DevCommand, DevCommandColor, DevCommandPriority, DevCommandRegistry, DevCommands, DevListCommand, DevProcess,
+    DevProcessCommand, DevProcessRunner, NodePackageManager, PendingDevCommand,
+};
+pub use publish::{
+    ConfigPublishCommand, LangPublishCommand, StubPublishCommand, VendorPublishCommand, VendorTagPublished,
+};
+pub use reload::{ReloadCommand, ReloadCommands};
+pub use schema::{
+    DatabaseBusy, DumpCommand as SchemaDumpCommand, MonitorCommand as DbMonitorCommand, ThreadCounter,
+};
 pub use database::{
     MigrateCommand, MigrateFreshCommand, MigrateInstallCommand, MigrateRefreshCommand, MigrateResetCommand,
     MigrateRollbackCommand, MigrateStatusCommand, SeedCommand, WipeCommand,

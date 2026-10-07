@@ -153,15 +153,15 @@ pub fn all() -> Vec<MakeCommand> {
             Registration::ModuleAndExport,
             |cmd, name| {
                 let stub = if cmd.option_bool("api") {
-                    stubs::CONTROLLER_API
+                    "controller.api.stub"
                 } else if cmd.option_bool("resource") {
-                    stubs::CONTROLLER_RESOURCE
+                    "controller.stub"
                 } else if cmd.option_bool("invokable") {
-                    stubs::CONTROLLER_INVOKABLE
+                    "controller.invokable.stub"
                 } else {
-                    stubs::CONTROLLER
+                    "controller.plain.stub"
                 };
-                populate(stub, &[("class", &class(name))])
+                populate(&stubs::get(stub), &[("class", &class(name))])
             },
         )
         .options(
@@ -175,7 +175,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new seeder class",
             "database/seeders",
             Registration::Discovered,
-            |_, name| populate(stubs::SEEDER, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("seeder.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:job",
@@ -183,7 +183,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new job class",
             "app/jobs",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::JOB, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("job.queued.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:middleware",
@@ -191,7 +191,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new HTTP middleware class",
             "app/http/middleware",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::MIDDLEWARE, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("middleware.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:command",
@@ -204,7 +204,7 @@ pub fn all() -> Vec<MakeCommand> {
                     let base = name.class.strip_suffix("Command").unwrap_or(&name.class);
                     format!("app:{}", Str::kebab(base))
                 });
-                populate(stubs::COMMAND, &[("class", &class(name)), ("command", &command)])
+                populate(&stubs::get("console.stub"), &[("class", &class(name)), ("command", &command)])
             },
         )
         .options("{--command= : The terminal command that will be used to invoke the class}"),
@@ -214,7 +214,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new service provider class",
             "app/providers",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::PROVIDER, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("provider.stub"), &[("class", &class(name))]),
         )
         .after(|_, name, _| register_provider(name)),
         MakeCommand::new(
@@ -223,7 +223,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new form request class",
             "app/http/requests",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::REQUEST, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("request.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:rule",
@@ -231,7 +231,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new validation rule",
             "app/rules",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::RULE, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("rule.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:event",
@@ -239,7 +239,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new event class",
             "app/events",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::EVENT, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("event.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:listener",
@@ -249,10 +249,10 @@ pub fn all() -> Vec<MakeCommand> {
             Registration::ModuleAndExport,
             |cmd, name| match cmd.option("event") {
                 Some(event) => populate(
-                    stubs::LISTENER,
+                    &stubs::get("listener.typed.stub"),
                     &[("class", &class(name)), ("event", &Str::studly(&event))],
                 ),
-                None => populate(stubs::LISTENER_PLAIN, &[("class", &class(name))]),
+                None => populate(&stubs::get("listener.stub"), &[("class", &class(name))]),
             },
         )
         .options("{--e|event= : The event class being listened for}"),
@@ -264,7 +264,7 @@ pub fn all() -> Vec<MakeCommand> {
             Registration::ModuleAndExport,
             |_, name| {
                 let message = Str::ucfirst(&Str::snake_with(&name.class, " ").replace(" exception", ""));
-                populate(stubs::EXCEPTION, &[("class", &class(name)), ("message", &format!("{message}."))])
+                populate(&stubs::get("exception.stub"), &[("class", &class(name)), ("message", &format!("{message}."))])
             },
         ),
         MakeCommand::new(
@@ -275,9 +275,9 @@ pub fn all() -> Vec<MakeCommand> {
             Registration::None,
             |cmd, _| {
                 if cmd.option_bool("unit") {
-                    stubs::TEST_UNIT.to_string()
+                    stubs::get("test.unit.stub")
                 } else {
-                    stubs::TEST_FEATURE.to_string()
+                    stubs::get("test.stub")
                 }
             },
         )
@@ -300,7 +300,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new view",
             "resources/views",
             Registration::None,
-            |_, _| populate(stubs::VIEW, &[("quote", &Inspiring::quote())]),
+            |_, _| populate(&stubs::get("view.stub"), &[("quote", &Inspiring::quote())]),
         )
         .extension("blade.html")
         .rename(|name| {
@@ -325,7 +325,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new scope class",
             "app/models/scopes",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::SCOPE, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("scope.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:channel",
@@ -340,7 +340,7 @@ pub fn all() -> Vec<MakeCommand> {
                 } else {
                     ("use laravel::prelude::*;", "AuthUser")
                 };
-                populate(stubs::CHANNEL, &[("class", &class(name)), ("import", import), ("user", user)])
+                populate(&stubs::get("channel.stub"), &[("class", &class(name)), ("import", import), ("user", user)])
             },
         ),
         MakeCommand::new(
@@ -349,7 +349,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new job middleware class",
             "app/jobs/middleware",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::JOB_MIDDLEWARE, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("job.middleware.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:config",
@@ -357,7 +357,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new configuration file",
             "config",
             Registration::None,
-            |_, _| stubs::CONFIG.to_string(),
+            |_, _| stubs::get("config.stub"),
         )
         .rename(|name| QualifiedName { namespace: Vec::new(), class: Str::snake(&name.class) })
         .after(|_, name, _| {
@@ -370,7 +370,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new class",
             "app",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::CLASS, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("class.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:enum",
@@ -378,7 +378,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new enum",
             "app",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::ENUM, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("enum.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:trait",
@@ -386,7 +386,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new trait",
             "app",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::TRAIT, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("trait.stub"), &[("class", &class(name))]),
         ),
         MakeCommand::new(
             "make:interface",
@@ -394,7 +394,7 @@ pub fn all() -> Vec<MakeCommand> {
             "Create a new interface (a Rust trait)",
             "app",
             Registration::ModuleAndExport,
-            |_, name| populate(stubs::TRAIT, &[("class", &class(name))]),
+            |_, name| populate(&stubs::get("interface.stub"), &[("class", &class(name))]),
         ),
     ]
 }

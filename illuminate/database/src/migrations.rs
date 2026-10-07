@@ -32,6 +32,7 @@
 //! # Ok(()) }
 //! ```
 
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::Instant;
 
@@ -485,6 +486,16 @@ impl DatabaseMigrationRepository {
 /// A migration output callback.
 pub type MigrationOutput = Arc<dyn Fn(&MigrationEvent) + Send + Sync>;
 
+/// The migration files were deleted after dumping the schema
+/// (`schema:dump --prune`) — Laravel's `MigrationsPruned` event.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MigrationsPruned {
+    /// The connection whose schema was dumped.
+    pub connection_name: String,
+    /// The migrations directory.
+    pub path: PathBuf,
+}
+
 /// Runs migrations up and down.
 pub struct Migrator {
     manager: Arc<DatabaseManager>,
@@ -596,6 +607,45 @@ impl Migrator {
     /// Delete the migration repository.
     pub async fn delete_repository(&self) -> Result<()> {
         self.repository.delete_repository().await
+    }
+
+    /// Load a schema dump (`schema:dump`) into the database: the migration
+    /// repository is dropped first, since the dump recreates it along with
+    /// the record of every migration it contains.
+    ///
+    /// Migrations are compiled into the application, so pruned migrations
+    /// (`schema:dump --prune`) disappear once the application is rebuilt;
+    /// a fresh database is then built from the dump and the migrations
+    /// created after it.
+    pub async fn load_schema_state(&self, path: impl AsRef<Path>) -> Result<()> {
+        if self.repository_exists().await? {
+            self.delete_repository().await?;
+        }
+        let connection = self.repository.get_connection();
+        connection
+            .get_schema_state()
+            .with_migration_table(Some(&self.repository.table))
+            .load(path)
+            .await
+    }
+
+    /// The conventional path of a connection's schema dump:
+    /// `{database_path}/schema/{connection}-schema.dump` when it exists,
+    /// otherwise `{database_path}/schema/{connection}-schema.sql`.
+    pub fn schema_path(database_path: impl AsRef<Path>, connection: &str) -> PathBuf {
+        let directory = database_path.as_ref().join("schema");
+        let dump = directory.join(format!("{connection}-schema.dump"));
+        if dump.is_file() {
+            return dump;
+        }
+        directory.join(format!("{connection}-schema.sql"))
+    }
+
+    /// The name of the connection migrations run on by default.
+    pub fn connection_name(&self) -> String {
+        self.connection
+            .clone()
+            .unwrap_or_else(|| self.manager.get_default_connection())
     }
 
     /// Determine if any migrations have been run.

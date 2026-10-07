@@ -83,6 +83,17 @@ SanctumServiceProvider);`. The `laravel` crate re-exports each package behind
 a cargo feature (`features = ["sanctum"]`), and installers like
 `install:api` turn the feature on.
 
+Packages ship compiled, so the files they publish with `vendor:publish` are
+embedded strings rather than paths into the package. A provider registers
+them in `boot`, the way Laravel's `$this->publishes()` does:
+
+```rust
+self.publishes(app, [Publishable::config("sanctum.rs", CONFIG_STUB)], "sanctum-config");
+```
+
+Destinations are relative to the application's directories (`config/`,
+`database/migrations/`, `lang/`, ...), resolved when the command runs.
+
 ## Core conventions
 
 ### Dynamic values

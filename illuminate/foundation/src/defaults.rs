@@ -16,6 +16,7 @@ pub fn all() -> Vec<ConfigFile> {
         ConfigFile::new("auth", auth),
         ConfigFile::new("broadcasting", broadcasting),
         ConfigFile::new("cache", cache),
+        ConfigFile::new("concurrency", concurrency),
         ConfigFile::new("cors", cors),
         ConfigFile::new("database", database),
         ConfigFile::new("filesystems", filesystems),
@@ -192,6 +193,12 @@ pub fn cache() -> Value {
             "null": {"driver": "null"},
         },
         "prefix": env("CACHE_PREFIX", format!("{}-cache-", app_name_slug("-"))),
+    })
+}
+
+pub fn concurrency() -> Value {
+    json!({
+        "default": env("CONCURRENCY_DRIVER", "tokio"),
     })
 }
 
