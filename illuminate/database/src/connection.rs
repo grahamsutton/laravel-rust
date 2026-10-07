@@ -58,7 +58,9 @@ pub type QueryListener = Arc<dyn Fn(&QueryExecuted) + Send + Sync>;
 /// The listeners shared by every connection of a manager.
 pub(crate) type Listeners = Arc<RwLock<Vec<QueryListener>>>;
 
-type AfterCommitCallback = Box<dyn FnOnce() + Send>;
+/// A callback run when a transaction commits or rolls back.
+pub type TransactionCallback =
+    Box<dyn FnOnce() -> std::pin::Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
 tokio::task_local! {
     /// The transactions opened by `transaction(...)` in the current task,
@@ -72,7 +74,8 @@ static NEXT_CONNECTION_ID: AtomicU64 = AtomicU64::new(1);
 pub(crate) struct TransactionHandle {
     connection: tokio::sync::Mutex<RawConnection>,
     level: AtomicUsize,
-    after_commit: Mutex<Vec<(usize, AfterCommitCallback)>>,
+    after_commit: Mutex<Vec<(usize, TransactionCallback)>>,
+    after_rollback: Mutex<Vec<(usize, TransactionCallback)>>,
 }
 
 impl TransactionHandle {
@@ -788,16 +791,70 @@ impl Connection {
     /// away when no transaction is open. Callbacks registered inside a
     /// transaction that rolls back are discarded.
     pub fn after_commit(&self, callback: impl FnOnce() + Send + 'static) {
+        let deferred = self.defer_until_commit(Box::new(move || {
+            callback();
+            Box::pin(async {})
+        }));
+        if let Err(callback) = deferred {
+            // No transaction: the wrapper runs the callback synchronously.
+            drop(callback());
+        }
+    }
+
+    /// Execute the async callback after the current transaction commits, or
+    /// right away when no transaction is open.
+    ///
+    /// ```no_run
+    /// # async fn example() -> illuminate_support::Result<()> {
+    /// use illuminate_database::DB;
+    ///
+    /// DB::connection("sqlite").after_commit_async(|| async {
+    ///     // Notify the shipping service...
+    /// })
+    /// .await;
+    /// # Ok(()) }
+    /// ```
+    pub async fn after_commit_async<F, Fut>(&self, callback: F)
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        if let Err(callback) = self.defer_until_commit(Box::new(move || Box::pin(callback()))) {
+            callback().await;
+        }
+    }
+
+    /// Hold the callback until the current transaction commits. Hands it
+    /// back when no transaction is open, so the caller decides what to do.
+    /// Callbacks deferred inside a savepoint that rolls back are discarded.
+    pub fn defer_until_commit(
+        &self,
+        callback: TransactionCallback,
+    ) -> std::result::Result<(), TransactionCallback> {
         match self.current_transaction() {
             Some(handle) if handle.level() > 0 => {
                 let level = handle.level();
-                handle
-                    .after_commit
-                    .lock()
-                    .unwrap()
-                    .push((level, Box::new(callback)));
+                handle.after_commit.lock().unwrap().push((level, callback));
+                Ok(())
             }
-            _ => callback(),
+            _ => Err(callback),
+        }
+    }
+
+    /// Hold the callback until the current transaction (or savepoint) rolls
+    /// back; it is discarded when the transaction commits. Hands it back
+    /// when no transaction is open.
+    pub fn defer_until_rollback(
+        &self,
+        callback: TransactionCallback,
+    ) -> std::result::Result<(), TransactionCallback> {
+        match self.current_transaction() {
+            Some(handle) if handle.level() > 0 => {
+                let level = handle.level();
+                handle.after_rollback.lock().unwrap().push((level, callback));
+                Ok(())
+            }
+            _ => Err(callback),
         }
     }
 
@@ -826,6 +883,7 @@ impl Connection {
             connection: tokio::sync::Mutex::new(connection),
             level: AtomicUsize::new(1),
             after_commit: Mutex::new(Vec::new()),
+            after_rollback: Mutex::new(Vec::new()),
         }))
     }
 
@@ -851,15 +909,18 @@ impl Connection {
         result.map_err(|e| self.query_exception("commit", Vec::new(), e.into()))?;
 
         if level == 0 {
+            handle.after_rollback.lock().unwrap().clear();
             let callbacks: Vec<_> = std::mem::take(&mut *handle.after_commit.lock().unwrap());
             for (_, callback) in callbacks {
-                callback();
+                callback().await;
             }
         } else {
             // Callbacks of the committed savepoint now belong to its parent.
-            for (callback_level, _) in handle.after_commit.lock().unwrap().iter_mut() {
-                if *callback_level > level {
-                    *callback_level = level;
+            for callbacks in [&handle.after_commit, &handle.after_rollback] {
+                for (callback_level, _) in callbacks.lock().unwrap().iter_mut() {
+                    if *callback_level > level {
+                        *callback_level = level;
+                    }
                 }
             }
         }
@@ -880,7 +941,19 @@ impl Connection {
             .lock()
             .unwrap()
             .retain(|(callback_level, _)| *callback_level <= level);
-        result.map_err(|e| self.query_exception("rollback", Vec::new(), e.into()))
+        let rolled_back: Vec<_> = {
+            let mut callbacks = handle.after_rollback.lock().unwrap();
+            let (rolled_back, kept) = std::mem::take(&mut *callbacks)
+                .into_iter()
+                .partition(|(callback_level, _)| *callback_level > level);
+            *callbacks = kept;
+            rolled_back
+        };
+        result.map_err(|e| self.query_exception("rollback", Vec::new(), e.into()))?;
+        for (_, callback) in rolled_back {
+            callback().await;
+        }
+        Ok(())
     }
 
     fn release_manual_transaction(&self, handle: &Arc<TransactionHandle>) {

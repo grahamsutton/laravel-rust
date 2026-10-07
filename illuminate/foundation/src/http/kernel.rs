@@ -129,7 +129,10 @@ impl HttpKernel {
                 // `dispatch_after_response` jobs and deferred callbacks run once
                 // the response is on its way.
                 if let Some(deferred) = request.extension::<illuminate_queue::DeferredCallbacks>() {
-                    tokio::spawn(async move { deferred.invoke().await });
+                    let container = kernel.app.container().clone();
+                    tokio::spawn(illuminate_container::Container::scope(container, async move {
+                        deferred.invoke().await
+                    }));
                 }
                 response
             }) as BoxFuture<'static, Response>

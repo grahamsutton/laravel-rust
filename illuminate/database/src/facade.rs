@@ -162,6 +162,16 @@ impl DB {
         Self::default_connection().after_commit(callback)
     }
 
+    /// Execute the async callback after the current transaction commits, or
+    /// right away when no transaction is open.
+    pub async fn after_commit_async<F, Fut>(callback: F)
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        Self::default_connection().after_commit_async(callback).await
+    }
+
     /// Register a listener called for every executed query.
     pub fn listen(callback: impl Fn(&QueryExecuted) + Send + Sync + 'static) {
         Self::manager().listen(callback)

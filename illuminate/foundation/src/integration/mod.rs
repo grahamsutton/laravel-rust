@@ -38,6 +38,52 @@ pub fn boot() {
     auth::boot();
     wire_events();
     wire_eloquent();
+    wire_transactions();
+}
+
+/// Jobs dispatched `after_commit` wait for the open database transaction.
+fn wire_transactions() {
+    illuminate_container::Container::get_instance()
+        .instance_arc::<dyn illuminate_queue::TransactionManager>(Arc::new(DatabaseTransactions));
+}
+
+/// The queue's view of the database's transactions.
+struct DatabaseTransactions;
+
+impl DatabaseTransactions {
+    /// The resolved connection with an open transaction, if any.
+    fn open() -> Option<illuminate_database::Connection> {
+        let manager = try_app::<illuminate_database::DatabaseManager>()?;
+        manager
+            .get_connections()
+            .into_iter()
+            .map(|name| manager.connection(&name))
+            .find(|connection| connection.transaction_level() > 0)
+    }
+}
+
+impl illuminate_queue::TransactionManager for DatabaseTransactions {
+    fn in_transaction(&self) -> bool {
+        Self::open().is_some()
+    }
+
+    fn add_callback(&self, callback: illuminate_queue::TransactionCallback) {
+        let callback: illuminate_database::TransactionCallback = callback;
+        let unclaimed = match Self::open() {
+            Some(connection) => connection.defer_until_commit(callback).err(),
+            None => Some(callback),
+        };
+        // The transaction closed in the meantime: nothing to wait for.
+        if let Some(callback) = unclaimed {
+            tokio::spawn(illuminate_container::Container::scope_current(callback()));
+        }
+    }
+
+    fn add_callback_for_rollback(&self, callback: illuminate_queue::TransactionCallback) {
+        if let Some(connection) = Self::open() {
+            let _ = connection.defer_until_rollback(callback);
+        }
+    }
 }
 
 /// Eloquent hashes `#[hashed]` attributes with the application's hasher,

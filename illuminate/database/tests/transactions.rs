@@ -501,3 +501,65 @@ fn database_futures_are_send() {
     }));
     assert_send(Schema::has_table("users"));
 }
+
+#[tokio::test]
+async fn async_callbacks_wait_for_the_outcome_of_the_transaction() {
+    let db = memory().await;
+    let events = Arc::new(Mutex::new(Vec::<&str>::new()));
+
+    let record = |event: &'static str| {
+        let events = events.clone();
+        Box::new(move || {
+            Box::pin(async move { events.lock().unwrap().push(event) })
+                as std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>
+        }) as illuminate_database::TransactionCallback
+    };
+
+    // Without a transaction, the callback is handed back.
+    assert!(db.defer_until_commit(record("none")).is_err());
+
+    let conn = db.clone();
+    let (committed, rolled_back) = (record("committed"), record("rolled back"));
+    let (inner_committed, inner_rolled_back) = (record("inner committed"), record("inner rolled back"));
+    db.transaction(|| async move {
+        assert!(conn.defer_until_commit(committed).is_ok());
+        assert!(conn.defer_until_rollback(rolled_back).is_ok());
+
+        let inner = conn.clone();
+        let result: Result<()> = conn
+            .transaction(|| async move {
+                assert!(inner.defer_until_commit(inner_committed).is_ok());
+                assert!(inner.defer_until_rollback(inner_rolled_back).is_ok());
+                Err(fail())
+            })
+            .await;
+        assert!(result.is_err());
+        Ok(())
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(*events.lock().unwrap(), vec!["inner rolled back", "committed"]);
+
+    events.lock().unwrap().clear();
+    let conn = db.clone();
+    let (committed, rolled_back) = (record("committed"), record("rolled back"));
+    let result: Result<()> = db
+        .transaction(|| async move {
+            assert!(conn.defer_until_commit(committed).is_ok());
+            assert!(conn.defer_until_rollback(rolled_back).is_ok());
+            Err(fail())
+        })
+        .await;
+    assert!(result.is_err());
+    assert_eq!(*events.lock().unwrap(), vec!["rolled back"]);
+
+    // `after_commit_async` runs right away outside a transaction.
+    let ran = Arc::new(AtomicUsize::new(0));
+    let counter = ran.clone();
+    db.after_commit_async(move || async move {
+        counter.fetch_add(1, Ordering::SeqCst);
+    })
+    .await;
+    assert_eq!(ran.load(Ordering::SeqCst), 1);
+}

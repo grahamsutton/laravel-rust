@@ -46,7 +46,7 @@ pub mod query;
 pub mod schema;
 pub mod seeder;
 
-pub use connection::{Connection, QueryExecuted, QueryListener, QueryLog};
+pub use connection::{Connection, QueryExecuted, QueryListener, QueryLog, TransactionCallback};
 pub use de::{from_row, from_value};
 pub use driver::Driver;
 pub use error::{

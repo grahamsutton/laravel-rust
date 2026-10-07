@@ -482,6 +482,62 @@ pub fn resolve<T: ?Sized + Send + Sync + 'static>() -> Arc<T> {
     app::<T>()
 }
 
+/// A future that runs with a given container as the current one — on
+/// whichever thread polls it. See [`Container::scope`].
+pub struct Scoped<F> {
+    container: Arc<Container>,
+    future: std::pin::Pin<Box<F>>,
+}
+
+impl<F: std::future::Future> std::future::Future for Scoped<F> {
+    type Output = F::Output;
+
+    fn poll(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<F::Output> {
+        let this = self.get_mut();
+        let _guard = Container::set_local_instance(this.container.clone());
+        this.future.as_mut().poll(cx)
+    }
+}
+
+impl Container {
+    /// Run the future with this container as the current one, even when it
+    /// is spawned onto another thread.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use illuminate_container::{Container, app};
+    ///
+    /// struct Greeting(&'static str);
+    ///
+    /// let container = Arc::new(Container::new());
+    /// container.instance(Greeting("Hello!"));
+    ///
+    /// # let runtime = tokio::runtime::Builder::new_multi_thread().build().unwrap();
+    /// # runtime.block_on(async {
+    /// let greeting = tokio::spawn(Container::scope(container, async { app::<Greeting>().0 }))
+    ///     .await
+    ///     .unwrap();
+    ///
+    /// assert_eq!(greeting, "Hello!");
+    /// # });
+    /// ```
+    pub fn scope<F: std::future::Future>(container: Arc<Container>, future: F) -> Scoped<F> {
+        Scoped {
+            container,
+            future: Box::pin(future),
+        }
+    }
+
+    /// Run the future with the current container, even when it is spawned
+    /// onto another thread.
+    pub fn scope_current<F: std::future::Future>(future: F) -> Scoped<F> {
+        Self::scope(Self::get_instance(), future)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

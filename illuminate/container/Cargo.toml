@@ -11,3 +11,6 @@ rust-version.workspace = true
 [dependencies]
 illuminate-support.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

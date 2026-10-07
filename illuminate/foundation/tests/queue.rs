@@ -177,3 +177,30 @@ async fn queued_listeners_are_pushed_onto_the_queue() {
 
     assert_eq!(SHIPPED.load(Ordering::SeqCst), 42);
 }
+
+#[tokio::test]
+async fn after_commit_jobs_wait_for_the_transaction() {
+    let (_app, _dir) = test_app("array");
+    use illuminate_database::DB;
+
+    DB::transaction(|| async {
+        ProcessPodcast { id: 1 }.dispatch().after_commit().await?;
+        assert_eq!(Queue::size(None).await?, 0, "the job waits for the commit");
+        Ok(())
+    })
+    .await
+    .unwrap();
+    assert_eq!(Queue::size(None).await.unwrap(), 1);
+
+    let result: Result<()> = DB::transaction(|| async {
+        ProcessPodcast { id: 2 }.dispatch().after_commit().await?;
+        bail!("Something went wrong.")
+    })
+    .await;
+    assert!(result.is_err());
+    assert_eq!(Queue::size(None).await.unwrap(), 1, "rolled back jobs are never pushed");
+
+    // Outside a transaction, the job is pushed right away.
+    ProcessPodcast { id: 3 }.dispatch().after_commit().await.unwrap();
+    assert_eq!(Queue::size(None).await.unwrap(), 2);
+}
