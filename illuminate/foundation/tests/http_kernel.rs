@@ -88,3 +88,24 @@ async fn local_disks_serve_files_through_signed_urls() {
     app.get(&url).await.assert_ok().assert_see("Revenue is up");
     app.get("/storage/reports/q1.txt").await.assert_forbidden();
 }
+
+#[tokio::test]
+async fn local_disks_receive_uploads_through_signed_urls() {
+    use illuminate_filesystem::Storage;
+    use illuminate_support::Carbon;
+
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = illuminate_foundation::testing::TestApp::new(illuminate_foundation::Application::configure_detached(dir.path()));
+
+    let disk = Storage::disk("local").unwrap();
+    let upload = disk
+        .temporary_upload_url("reports/q2.json", Carbon::now().add_minutes(5))
+        .unwrap();
+    assert!(upload.url.starts_with("http://localhost/storage/reports/q2.json?"));
+
+    app.put_json(&upload.url, json!({"revenue": "up"})).await.assert_no_content();
+    assert_eq!(disk.get("reports/q2.json").await.unwrap(), r#"{"revenue":"up"}"#);
+
+    app.put_json("/storage/reports/q3.json", json!({})).await.assert_forbidden();
+    assert!(!disk.exists("reports/q3.json").await.unwrap());
+}

@@ -6,7 +6,7 @@ use std::sync::{Arc, RwLock};
 use bytes::Bytes;
 
 use illuminate_container::try_app;
-use illuminate_http::{ExceptionHandler, Response, UploadedFile};
+use illuminate_http::{BodyStream, BoxFuture, ExceptionHandler, Request, Response, UploadedFile};
 use illuminate_support::error::{InvalidArgumentException, RuntimeException};
 use illuminate_support::{Carbon, Error, Result, Str, Value, ValueExt, json};
 
@@ -18,6 +18,25 @@ use crate::serve::UrlSigner;
 
 /// Builds temporary URLs for a disk: `(path, expiration, options) -> url`.
 pub type TemporaryUrlCallback = Arc<dyn Fn(&str, Carbon, &Value) -> Result<String> + Send + Sync>;
+
+/// Builds temporary upload URLs for a disk: `(path, expiration, options)`.
+pub type TemporaryUploadUrlCallback =
+    Arc<dyn Fn(&str, Carbon, &Value) -> Result<TemporaryUploadUrl> + Send + Sync>;
+
+/// Serves a disk's files: `(request, path, headers) -> response`.
+pub type ServeCallback = Arc<
+    dyn Fn(Request, String, Vec<(String, String)>) -> BoxFuture<'static, Result<Response>> + Send + Sync,
+>;
+
+/// A temporary URL a client can upload a file to directly, and the headers
+/// it must send along — what Laravel's `temporaryUploadUrl` returns.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TemporaryUploadUrl {
+    /// The URL to `PUT` the file to.
+    pub url: String,
+    /// Headers the upload request must include.
+    pub headers: Vec<(String, String)>,
+}
 
 /// A storage disk.
 ///
@@ -51,6 +70,8 @@ pub struct FilesystemAdapter {
     disk: String,
     prefix: String,
     temporary_url_callback: RwLock<Option<TemporaryUrlCallback>>,
+    temporary_upload_url_callback: RwLock<Option<TemporaryUploadUrlCallback>>,
+    serve_callback: RwLock<Option<ServeCallback>>,
     _keep_alive: Option<Arc<tempfile::TempDir>>,
 }
 
@@ -77,6 +98,8 @@ impl FilesystemAdapter {
             disk: "ondemand".to_string(),
             prefix,
             temporary_url_callback: RwLock::new(None),
+            temporary_upload_url_callback: RwLock::new(None),
+            serve_callback: RwLock::new(None),
             _keep_alive: None,
         }
     }
@@ -272,6 +295,31 @@ impl FilesystemAdapter {
         self.driver.read(&self.location(path)?).await
     }
 
+    /// Get a stream of the file's contents — Laravel's `readStream`. Local
+    /// disks read the file in chunks, so large files never need to fit in
+    /// memory.
+    ///
+    /// ```
+    /// use futures::StreamExt;
+    /// use illuminate_filesystem::FilesystemAdapter;
+    ///
+    /// # tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+    /// let root = tempfile::tempdir().unwrap();
+    /// let disk = FilesystemAdapter::local(root.path());
+    /// disk.put("report.csv", "id,name\n1,Taylor\n").await.unwrap();
+    ///
+    /// let mut stream = disk.read_stream("report.csv").await.unwrap();
+    /// let mut contents = Vec::new();
+    /// while let Some(chunk) = stream.next().await {
+    ///     contents.extend_from_slice(&chunk.unwrap());
+    /// }
+    /// assert_eq!(contents, b"id,name\n1,Taylor\n");
+    /// # });
+    /// ```
+    pub async fn read_stream(&self, path: &str) -> Result<BodyStream> {
+        self.driver.read_stream(&self.location(path)?).await
+    }
+
     /// Get the contents of a file, decoded from JSON.
     pub async fn json(&self, path: &str) -> Result<Value> {
         Ok(serde_json::from_slice(&self.bytes(path).await?)?)
@@ -337,6 +385,58 @@ impl FilesystemAdapter {
             Some(visibility),
         )
         .await
+    }
+
+    /// Write a stream of chunks to a file — Laravel's `writeStream`.
+    ///
+    /// ```
+    /// use bytes::Bytes;
+    /// use illuminate_filesystem::FilesystemAdapter;
+    ///
+    /// # tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+    /// let root = tempfile::tempdir().unwrap();
+    /// let disk = FilesystemAdapter::local(root.path());
+    ///
+    /// let chunks = futures::stream::iter(vec![Ok(Bytes::from("Hello, ")), Ok(Bytes::from("World"))]);
+    /// assert!(disk.write_stream("greetings/hello.txt", chunks).await.unwrap());
+    ///
+    /// assert_eq!(disk.get("greetings/hello.txt").await.unwrap(), "Hello, World");
+    /// # });
+    /// ```
+    pub async fn write_stream(
+        &self,
+        path: &str,
+        contents: impl futures::Stream<Item = Result<Bytes>> + Send + 'static,
+    ) -> Result<bool> {
+        self.write_stream_with(path, Box::pin(contents), None).await
+    }
+
+    /// Write a stream of chunks to a file with the given visibility.
+    pub async fn write_stream_with_visibility(
+        &self,
+        path: &str,
+        contents: impl futures::Stream<Item = Result<Bytes>> + Send + 'static,
+        visibility: Visibility,
+    ) -> Result<bool> {
+        self.write_stream_with(path, Box::pin(contents), Some(visibility))
+            .await
+    }
+
+    async fn write_stream_with(
+        &self,
+        path: &str,
+        contents: BodyStream,
+        visibility: Option<Visibility>,
+    ) -> Result<bool> {
+        let location = self.location(path)?;
+        if self.is_read_only() {
+            return self.read_only_failure(&location);
+        }
+        let result = self
+            .driver
+            .write_stream(&location, contents, self.write_options(visibility))
+            .await;
+        self.outcome(result)
     }
 
     /// Store an uploaded file in the given directory under a unique,
@@ -673,9 +773,134 @@ impl FilesystemAdapter {
         *self.temporary_url_callback.write().unwrap() = Some(Arc::new(callback));
     }
 
+    /// Determine if temporary upload URLs can be generated for this disk.
+    pub fn provides_temporary_upload_urls(&self) -> bool {
+        self.temporary_upload_url_callback.read().unwrap().is_some()
+            || (self.serves_signed_urls() && try_app::<dyn UrlSigner>().is_some())
+    }
+
+    /// Get a temporary URL a client can upload the file at the given path
+    /// to directly, with the headers it must send.
+    ///
+    /// Local disks with `'serve' => true` sign a URL to the
+    /// `storage.{disk}.upload` route; any disk can customize this with
+    /// [`FilesystemAdapter::build_temporary_upload_urls_using`].
+    ///
+    /// ```
+    /// use illuminate_filesystem::{FilesystemAdapter, TemporaryUploadUrl};
+    /// use illuminate_support::Carbon;
+    ///
+    /// let disk = FilesystemAdapter::local("/tmp/uploads");
+    /// assert!(!disk.provides_temporary_upload_urls());
+    ///
+    /// disk.build_temporary_upload_urls_using(|path, expiration, _options| {
+    ///     Ok(TemporaryUploadUrl {
+    ///         url: format!("https://uploads.test/{path}?expires={}", expiration.timestamp()),
+    ///         headers: vec![("Content-Type".into(), "image/jpeg".into())],
+    ///     })
+    /// });
+    ///
+    /// let upload = disk.temporary_upload_url("photo.jpg", Carbon::from_timestamp(1_893_456_000)).unwrap();
+    /// assert_eq!(upload.url, "https://uploads.test/photo.jpg?expires=1893456000");
+    /// assert_eq!(upload.headers[0].1, "image/jpeg");
+    /// ```
+    pub fn temporary_upload_url(&self, path: &str, expiration: Carbon) -> Result<TemporaryUploadUrl> {
+        self.temporary_upload_url_with(path, expiration, &json!({}))
+    }
+
+    /// Get a temporary upload URL, passing driver specific options along.
+    pub fn temporary_upload_url_with(
+        &self,
+        path: &str,
+        expiration: Carbon,
+        options: &Value,
+    ) -> Result<TemporaryUploadUrl> {
+        let callback = self.temporary_upload_url_callback.read().unwrap().clone();
+        if let Some(callback) = callback {
+            return callback(path, expiration, options);
+        }
+        if self.serves_signed_urls()
+            && let Some(signer) = try_app::<dyn UrlSigner>()
+        {
+            let url = signer.temporary_signed_route(
+                &format!("storage.{}.upload", self.disk),
+                expiration,
+                json!({"path": path, "upload": true}),
+            )?;
+            return Ok(TemporaryUploadUrl {
+                url,
+                headers: Vec::new(),
+            });
+        }
+        Err(RuntimeException::new(
+            "This driver does not support creating temporary upload URLs.",
+        )
+        .into())
+    }
+
+    /// Define a custom temporary upload URL builder for this disk.
+    pub fn build_temporary_upload_urls_using(
+        &self,
+        callback: impl Fn(&str, Carbon, &Value) -> Result<TemporaryUploadUrl> + Send + Sync + 'static,
+    ) {
+        *self.temporary_upload_url_callback.write().unwrap() = Some(Arc::new(callback));
+    }
+
     // ------------------------------------------------------------------
     // Responses
     // ------------------------------------------------------------------
+
+    /// Serve the file at the given path for the request — what the
+    /// `storage.{disk}` route of a served local disk calls. The response
+    /// comes from the [`serve_using`](Self::serve_using) callback when one
+    /// is set, and from [`response`](Self::response) otherwise.
+    pub async fn serve(
+        &self,
+        request: &Request,
+        path: &str,
+        name: Option<&str>,
+        headers: &[(&str, &str)],
+    ) -> Result<Response> {
+        let callback = self.serve_callback.read().unwrap().clone();
+        if let Some(callback) = callback {
+            let headers = headers
+                .iter()
+                .map(|(name, value)| (name.to_string(), value.to_string()))
+                .collect();
+            return callback(request.clone(), path.to_string(), headers).await;
+        }
+        let mut response = self.response(path, name).await?;
+        for (name, value) in headers {
+            response.set_header(name, value);
+        }
+        Ok(response)
+    }
+
+    /// Customize how the disk's files are served — Laravel's `serveUsing`.
+    ///
+    /// ```
+    /// use illuminate_filesystem::FilesystemAdapter;
+    /// use illuminate_http::{Request, Response};
+    ///
+    /// # tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+    /// let disk = FilesystemAdapter::local("/tmp/media");
+    /// disk.serve_using(|_request, path, _headers| async move {
+    ///     Ok(Response::redirect(format!("https://cdn.test/{path}")))
+    /// });
+    ///
+    /// let response = disk.serve(&Request::create("/storage/a.png", "GET"), "a.png", None, &[]).await.unwrap();
+    /// assert_eq!(response.target_url().unwrap(), "https://cdn.test/a.png");
+    /// # });
+    /// ```
+    pub fn serve_using<F, Fut>(&self, callback: F)
+    where
+        F: Fn(Request, String, Vec<(String, String)>) -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = Result<Response>> + Send + 'static,
+    {
+        let callback: ServeCallback =
+            Arc::new(move |request, path, headers| Box::pin(callback(request, path, headers)));
+        *self.serve_callback.write().unwrap() = Some(callback);
+    }
 
     /// Create a response that displays the file inline in the browser.
     pub async fn response(&self, path: &str, name: Option<&str>) -> Result<Response> {

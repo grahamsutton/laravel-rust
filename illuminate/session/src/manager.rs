@@ -200,6 +200,41 @@ impl SessionManager {
         self.get_default_driver().is_some()
     }
 
+    /// Determine if every request should acquire the session lock
+    /// (`session.block`), not just routes that [`block`].
+    ///
+    /// [`block`]: illuminate_routing::RouteDefinition::block
+    pub fn should_block(&self) -> bool {
+        self.config.get("session.block").truthy()
+    }
+
+    /// The cache store used for session locks (`session.block_store`; the
+    /// default cache store when unset).
+    pub fn block_driver(&self) -> Option<String> {
+        match self.config.get("session.block_store") {
+            Value::String(store) if !store.is_empty() => Some(store),
+            _ => None,
+        }
+    }
+
+    /// How long a blocking route's session lock is held, at most, when the
+    /// route doesn't say (`session.block_lock_seconds`, 10 by default).
+    pub fn default_route_block_lock_seconds(&self) -> u64 {
+        self.config
+            .get("session.block_lock_seconds")
+            .to_i64_lossy()
+            .map_or(10, |seconds| seconds.max(0) as u64)
+    }
+
+    /// How long to wait for a session lock when the route doesn't say
+    /// (`session.block_wait_seconds`, 10 by default).
+    pub fn default_route_block_wait_seconds(&self) -> u64 {
+        self.config
+            .get("session.block_wait_seconds")
+            .to_i64_lossy()
+            .map_or(10, |seconds| seconds.max(0) as u64)
+    }
+
     /// The name of the session cookie.
     pub fn cookie_name(&self) -> String {
         self.get_session_config().cookie

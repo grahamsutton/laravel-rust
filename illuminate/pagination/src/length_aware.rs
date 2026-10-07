@@ -236,9 +236,42 @@ impl<T> LengthAwarePaginator<T> {
         out
     }
 
-    /// Render the pagination links (Tailwind CSS markup, like Laravel's default).
+    /// Render the pagination links with the default view (Tailwind CSS,
+    /// unless you chose another with [`use_bootstrap_five`](crate::use_bootstrap_five)
+    /// and friends).
     pub fn links(&self) -> HtmlString {
-        HtmlString::new(links::render_tailwind(self))
+        self.links_with(&crate::presets::get_default_view())
+    }
+
+    /// Render the pagination links with the given view: a built-in one
+    /// (`pagination::tailwind`, `pagination::bootstrap-5`, ...) or one of
+    /// your own, rendered by the [registered renderer](crate::render_views_using).
+    pub fn links_with(&self, view: &str) -> HtmlString {
+        let data = self.link_data();
+        let html = match links::builtin_view(view) {
+            Some((None, false)) => links::render_tailwind(self),
+            Some((None, true)) => links::render_simple_tailwind(
+                self.has_pages(),
+                self.previous_page_url(),
+                self.next_page_url(),
+            ),
+            Some((Some(flavour), false)) => links::render_bootstrap(flavour, &data),
+            Some((Some(flavour), true)) => links::render_simple_bootstrap(flavour, &data),
+            None => crate::presets::render_custom(view, data.to_view_data())
+                .unwrap_or_else(|| links::render_tailwind(self)),
+        };
+        HtmlString::new(html)
+    }
+
+    fn link_data(&self) -> links::LinkData {
+        links::LinkData {
+            has_pages: self.has_pages(),
+            current_page: self.current_page,
+            previous: self.previous_page_url(),
+            next: self.next_page_url(),
+            elements: self.elements(),
+            summary: Some((self.first_item(), self.last_item(), self.total)),
+        }
     }
 
     /// Alias of `links`.
@@ -270,6 +303,12 @@ impl<T: Serialize> LengthAwarePaginator<T> {
     /// The paginator as JSON.
     pub fn to_json(&self) -> String {
         self.to_array().to_string()
+    }
+
+    /// The paginator as pretty-printed JSON (indented like PHP's
+    /// `JSON_PRETTY_PRINT`).
+    pub fn to_pretty_json(&self) -> String {
+        crate::pretty_json(&self.to_array())
     }
 }
 

@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 use regex::Regex;
 
 use illuminate_http::{BoxFuture, Request, Response};
-use illuminate_support::{Result, Str};
+use illuminate_support::{Map, Result, Str, Value, ValueExt};
 
 use crate::compiled::CompiledRoute;
 use crate::exceptions::InvalidRouteException;
@@ -82,11 +82,16 @@ pub(crate) struct RouteState {
     pub missing: Option<RouteHandler>,
     pub with_trashed: bool,
     pub scope_bindings: Option<bool>,
+    pub metadata: Map<String, Value>,
+    pub lock_seconds: Option<u64>,
+    pub wait_seconds: Option<u64>,
+    pub http_only: bool,
+    pub https_only: bool,
 }
 
 struct RouteInner {
     state: RwLock<RouteState>,
-    action: RouteAction,
+    action: RwLock<RouteAction>,
     compiled: RwLock<Option<Arc<CompiledRoute>>>,
     changes: Arc<AtomicU64>,
 }
@@ -128,7 +133,7 @@ impl std::fmt::Debug for RouteDefinition {
             .field("methods", &state.methods)
             .field("uri", &state.uri)
             .field("name", &state.name)
-            .field("action", &self.inner.action.name)
+            .field("action", &self.action_name())
             .finish()
     }
 }
@@ -158,7 +163,7 @@ impl RouteDefinition {
                     binding_fields,
                     ..RouteState::default()
                 }),
-                action,
+                action: RwLock::new(action),
                 compiled: RwLock::new(None),
                 changes,
             }),
@@ -362,6 +367,124 @@ impl RouteDefinition {
         self
     }
 
+    /// Set the handler for the route — Laravel's `uses`.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use illuminate_container::Container;
+    /// use illuminate_http::Request;
+    /// use illuminate_routing::Route;
+    ///
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
+    /// let _guard = Container::set_local_instance(Arc::new(Container::new()));
+    ///
+    /// Route::get("/greeting", || async { "Hello" }).uses(|| async { "Howdy" });
+    ///
+    /// let response = Route::router().dispatch(Request::create("/greeting", "GET")).await;
+    /// assert_eq!(response.content_string(), "Howdy");
+    /// # });
+    /// ```
+    pub fn uses<H, T>(self, handler: H) -> Self
+    where
+        H: crate::handler::Handler<T>,
+        T: 'static,
+    {
+        *self.inner.action.write().unwrap() = handler.into_action();
+        self.update(|_| {});
+        self
+    }
+
+    /// Don't allow concurrent requests from the same session while this
+    /// route runs: the session is locked for at most `lock_seconds`, and
+    /// other requests wait up to `wait_seconds` for the lock. Laravel's
+    /// default is `block(10, 10)`.
+    ///
+    /// ```
+    /// use illuminate_routing::RouteDefinition;
+    /// # use illuminate_routing::route::RouteAction;
+    /// # let action = RouteAction::new("Closure", std::sync::Arc::new(|_| Box::pin(async { Ok(illuminate_http::Response::new("")) })));
+    ///
+    /// let route = RouteDefinition::new(&["POST"], "/profile", action).block(10, 5);
+    /// assert_eq!(route.locks_for(), Some(10));
+    /// assert_eq!(route.waits_for(), Some(5));
+    ///
+    /// let route = route.without_blocking();
+    /// assert_eq!(route.locks_for(), None);
+    /// ```
+    pub fn block(self, lock_seconds: u64, wait_seconds: u64) -> Self {
+        self.update(|state| {
+            state.lock_seconds = Some(lock_seconds);
+            state.wait_seconds = Some(wait_seconds);
+        });
+        self
+    }
+
+    /// Allow concurrent requests from the same session.
+    pub fn without_blocking(self) -> Self {
+        self.update(|state| {
+            state.lock_seconds = None;
+            state.wait_seconds = None;
+        });
+        self
+    }
+
+    /// Only respond to requests made over HTTPS (Laravel's `'https'` route
+    /// action); URLs generated for the route use `https://`.
+    pub fn https(self) -> Self {
+        self.update(|state| {
+            state.https_only = true;
+            state.http_only = false;
+        });
+        self
+    }
+
+    /// Only respond to plain HTTP requests (Laravel's `'http'` route
+    /// action); URLs generated for the route use `http://`.
+    pub fn http(self) -> Self {
+        self.update(|state| {
+            state.http_only = true;
+            state.https_only = false;
+        });
+        self
+    }
+
+    /// Add metadata to the route. Nested objects are merged recursively;
+    /// other values (lists included) replace what was there.
+    ///
+    /// ```
+    /// use illuminate_routing::RouteDefinition;
+    /// use illuminate_support::json;
+    /// # use illuminate_routing::route::RouteAction;
+    /// # let action = RouteAction::new("Closure", std::sync::Arc::new(|_| Box::pin(async { Ok(illuminate_http::Response::new("")) })));
+    ///
+    /// let route = RouteDefinition::new(&["GET"], "/reports", action)
+    ///     .metadata(json!({"docs": {"summary": "Reports"}, "tags": ["a"]}))
+    ///     .metadata(json!({"docs": {"deprecated": true}, "tags": ["b"]}));
+    ///
+    /// assert_eq!(
+    ///     route.get_metadata(),
+    ///     json!({"docs": {"summary": "Reports", "deprecated": true}, "tags": ["b"]})
+    /// );
+    /// assert_eq!(route.get_metadata_key("docs.summary"), json!("Reports"));
+    /// assert_eq!(route.get_metadata_or("missing", "default"), json!("default"));
+    /// ```
+    pub fn metadata(self, metadata: Value) -> Self {
+        if let Value::Object(metadata) = metadata {
+            self.update(|state| merge_metadata(&mut state.metadata, metadata));
+        }
+        self
+    }
+
+    /// Replace the route's metadata.
+    pub fn set_metadata(self, metadata: Value) -> Self {
+        let metadata = match metadata {
+            Value::Object(metadata) => metadata,
+            _ => Map::new(),
+        };
+        self.update(|state| state.metadata = metadata);
+        self
+    }
+
     // ------------------------------------------------------------------
     // Inspection
     // ------------------------------------------------------------------
@@ -435,6 +558,50 @@ impl RouteDefinition {
         self.state().defaults.clone()
     }
 
+    /// The maximum number of seconds the route's session lock is held for
+    /// (`None` unless the route [blocks](Self::block)).
+    pub fn locks_for(&self) -> Option<u64> {
+        self.state().lock_seconds
+    }
+
+    /// The maximum number of seconds to wait for the route's session lock.
+    pub fn waits_for(&self) -> Option<u64> {
+        self.state().wait_seconds
+    }
+
+    /// Determine if the route only responds to plain HTTP requests.
+    pub fn http_only(&self) -> bool {
+        self.state().http_only
+    }
+
+    /// Determine if the route only responds to HTTPS requests.
+    pub fn https_only(&self) -> bool {
+        self.state().https_only
+    }
+
+    /// Alias of [`https_only`](Self::https_only).
+    pub fn secure(&self) -> bool {
+        self.https_only()
+    }
+
+    /// All of the route's metadata.
+    pub fn get_metadata(&self) -> Value {
+        Value::Object(self.state().metadata.clone())
+    }
+
+    /// A piece of the route's metadata, using "dot" notation (`null` when missing).
+    pub fn get_metadata_key(&self, key: &str) -> Value {
+        self.get_metadata().dot(key).cloned().unwrap_or(Value::Null)
+    }
+
+    /// A piece of the route's metadata, or the given default.
+    pub fn get_metadata_or(&self, key: &str, default: impl Into<Value>) -> Value {
+        self.get_metadata()
+            .dot(key)
+            .cloned()
+            .unwrap_or_else(|| default.into())
+    }
+
     /// Determine if this is the fallback route.
     pub fn is_fallback(&self) -> bool {
         self.state().fallback
@@ -457,7 +624,7 @@ impl RouteDefinition {
 
     /// The action's display name (`"UserController@show"` or `"Closure"`).
     pub fn action_name(&self) -> String {
-        self.inner.action.name.clone()
+        self.inner.action.read().unwrap().name.clone()
     }
 
     /// The controller method of the action (`"show"`).
@@ -468,7 +635,7 @@ impl RouteDefinition {
 
     /// The route's handler.
     pub fn handler(&self) -> RouteHandler {
-        self.inner.action.handler.clone()
+        self.inner.action.read().unwrap().handler.clone()
     }
 
     /// The route's `missing` handler, if any.
@@ -535,6 +702,7 @@ impl RouteDefinition {
             request.method().as_ref(),
             &path,
             &request.host(),
+            request.secure(),
             including_method,
         )
     }
@@ -544,10 +712,17 @@ impl RouteDefinition {
         method: &str,
         path: &str,
         host: &str,
+        secure: bool,
         including_method: bool,
     ) -> Result<Option<IndexMap<String, String>>, InvalidRouteException> {
         if including_method && !self.has_method(method) {
             return Ok(None);
+        }
+        {
+            let state = self.state();
+            if (state.http_only && secure) || (state.https_only && !secure) {
+                return Ok(None);
+            }
         }
         let compiled = self.compiled()?;
         if !compiled.matches_path(path) || !compiled.matches_host(host) {
@@ -701,6 +876,23 @@ pub struct RouteListing {
     pub name: Option<String>,
     pub action: String,
     pub middleware: Vec<String>,
+}
+
+/// Merge route metadata: nested objects are merged recursively, while all
+/// other values — lists included — replace the existing value.
+pub(crate) fn merge_metadata(old: &mut Map<String, Value>, new: Map<String, Value>) {
+    for (key, value) in new {
+        match value {
+            Value::Object(incoming) if matches!(old.get(&key), Some(Value::Object(_))) => {
+                if let Some(Value::Object(existing)) = old.get_mut(&key) {
+                    merge_metadata(existing, incoming);
+                }
+            }
+            value => {
+                old.insert(key, value);
+            }
+        }
+    }
 }
 
 #[cfg(test)]

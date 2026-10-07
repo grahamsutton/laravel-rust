@@ -24,10 +24,13 @@ pub mod exceptions;
 pub mod input;
 pub mod into_response;
 pub mod middleware;
+pub mod multipart;
 pub mod precognition;
 pub mod request;
 pub mod response;
 pub mod server;
+pub mod streamed;
+pub mod testing;
 pub mod uploaded_file;
 
 pub use context::{current_request, request, with_request, with_request_sync};
@@ -41,10 +44,12 @@ pub use middleware::{Destination, Middleware, Next, build_pipeline, middleware_f
 pub use precognition::Precognition;
 pub use request::Request;
 pub use response::{Body, BodyStream, Response, ResponseFactory, SyncStream, response};
+pub use streamed::{StreamedEvent, StreamedJson};
+pub use testing::FileFactory;
 pub use uploaded_file::UploadedFile;
 
 /// Re-exports of the underlying `http` crate types.
-pub use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri, header};
+pub use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode, Uri, Version, header};
 
 /// A boxed, sendable future — the currency of middleware and handlers.
 pub type BoxFuture<'a, T> = std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send + 'a>>;

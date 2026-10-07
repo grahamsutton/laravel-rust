@@ -499,14 +499,35 @@ impl TestResponse {
 
     /// Assert the response is a download (optionally of the given file name).
     pub fn assert_download(&self, filename: Option<&str>) -> &Self {
-        let disposition = self.header("content-disposition").unwrap_or_default();
-        if !disposition.starts_with("attachment") {
-            self.fail("Response does not offer a file download.".into());
+        let header = self.header("content-disposition").unwrap_or_default();
+        let parts: Vec<&str> = header.split(';').collect();
+        let disposition = parts[0].trim();
+        if disposition != "attachment" {
+            self.fail(format!(
+                "Response does not offer a file download.\nDisposition [{disposition}] found in header, [attachment] expected."
+            ));
         }
-        if let Some(filename) = filename
-            && !disposition.contains(filename) {
-                self.fail(format!("Expected file [{filename}] is not present in Content-Disposition header."));
-            }
+        let Some(filename) = filename else {
+            return self;
+        };
+        let message = format!("Expected file [{filename}] is not present in Content-Disposition header.");
+        let Some(parameter) = parts.get(1) else {
+            self.fail(message)
+        };
+        let mut pair = parameter.splitn(2, '=');
+        let name = pair.next().unwrap_or_default().trim();
+        if name != "filename" {
+            self.fail(format!(
+                "Unsupported Content-Disposition header provided.\nDisposition [{name}] found in header, [filename] expected."
+            ));
+        }
+        let value = pair
+            .next()
+            .unwrap_or_default()
+            .trim_matches(|c| c == ' ' || c == '"' || c == '\'');
+        if value != filename {
+            self.fail(message);
+        }
         self
     }
 

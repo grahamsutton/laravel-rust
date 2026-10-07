@@ -194,3 +194,233 @@ pub fn render_simple_tailwind(has_pages: bool, previous: Option<String>, next: O
     out.push_str("</nav>");
     out
 }
+
+/// What the built-in views need to know about a paginator.
+pub(crate) struct LinkData {
+    pub has_pages: bool,
+    pub current_page: u64,
+    pub previous: Option<String>,
+    pub next: Option<String>,
+    /// The page elements (length-aware paginators only).
+    pub elements: Vec<Element>,
+    /// `(first item, last item, total)` (length-aware paginators only).
+    pub summary: Option<(Option<u64>, Option<u64>, u64)>,
+}
+
+impl LinkData {
+    /// The data handed to custom pagination views.
+    pub(crate) fn to_view_data(&self) -> illuminate_support::Value {
+        use illuminate_support::{Map, Value, json};
+        let elements: Vec<Value> = self
+            .elements
+            .iter()
+            .map(|element| match element {
+                Element::Dots => Value::String("...".into()),
+                Element::Pages(pages) => Value::Object(
+                    pages
+                        .iter()
+                        .map(|(page, url)| (page.to_string(), Value::String(url.clone())))
+                        .collect::<Map<String, Value>>(),
+                ),
+            })
+            .collect();
+        let (first_item, last_item, total) = match self.summary {
+            Some((first, last, total)) => (json!(first), json!(last), json!(total)),
+            None => (Value::Null, Value::Null, Value::Null),
+        };
+        json!({
+            "paginator": {
+                "has_pages": self.has_pages,
+                "current_page": self.current_page,
+                "on_first_page": self.previous.is_none(),
+                "has_more_pages": self.next.is_some(),
+                "previous_page_url": self.previous,
+                "next_page_url": self.next,
+                "first_item": first_item,
+                "last_item": last_item,
+                "total": total,
+            },
+            "elements": elements,
+        })
+    }
+}
+
+/// The Bootstrap flavours Laravel ships views for.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Bootstrap {
+    Three,
+    Four,
+    Five,
+}
+
+impl Bootstrap {
+    fn item(self, state: &str) -> String {
+        match (self, state) {
+            (Bootstrap::Three, "") => "<li>".to_string(),
+            (Bootstrap::Three, state) => format!("<li class=\"{state}\""),
+            (_, "") => "<li class=\"page-item\">".to_string(),
+            (_, state) => format!("<li class=\"page-item {state}\""),
+        }
+    }
+
+    fn link_class(self) -> &'static str {
+        match self {
+            Bootstrap::Three => "",
+            _ => " class=\"page-link\"",
+        }
+    }
+}
+
+/// Render the page links of a Bootstrap 3 or 4 view, or of the desktop
+/// part of the Bootstrap 5 view.
+fn bootstrap_page_links(out: &mut String, flavour: Bootstrap, data: &LinkData) {
+    let prev_label = translate("pagination.previous");
+    let next_label = translate("pagination.next");
+    let class = flavour.link_class();
+    out.push_str("<ul class=\"pagination\">");
+    match &data.previous {
+        None => out.push_str(&format!(
+            "{} aria-disabled=\"true\" aria-label=\"{prev_label}\"><span{class} aria-hidden=\"true\">&lsaquo;</span></li>",
+            flavour.item("disabled")
+        )),
+        Some(url) => out.push_str(&format!(
+            "{}<a{class} href=\"{}\" rel=\"prev\" aria-label=\"{prev_label}\">&lsaquo;</a></li>",
+            flavour.item(""),
+            e(url)
+        )),
+    }
+    for element in &data.elements {
+        match element {
+            Element::Dots => out.push_str(&format!(
+                "{} aria-disabled=\"true\"><span{class}>...</span></li>",
+                flavour.item("disabled")
+            )),
+            Element::Pages(pages) => {
+                for (page, url) in pages {
+                    if *page == data.current_page {
+                        out.push_str(&format!(
+                            "{} aria-current=\"page\"><span{class}>{page}</span></li>",
+                            flavour.item("active")
+                        ));
+                    } else {
+                        out.push_str(&format!(
+                            "{}<a{class} href=\"{}\">{page}</a></li>",
+                            flavour.item(""),
+                            e(url)
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    match &data.next {
+        Some(url) => out.push_str(&format!(
+            "{}<a{class} href=\"{}\" rel=\"next\" aria-label=\"{next_label}\">&rsaquo;</a></li>",
+            flavour.item(""),
+            e(url)
+        )),
+        None => out.push_str(&format!(
+            "{} aria-disabled=\"true\" aria-label=\"{next_label}\"><span{class} aria-hidden=\"true\">&rsaquo;</span></li>",
+            flavour.item("disabled")
+        )),
+    }
+    out.push_str("</ul>");
+}
+
+/// Render "Previous" / "Next" Bootstrap list items.
+fn bootstrap_previous_next(out: &mut String, flavour: Bootstrap, data: &LinkData) {
+    let prev_label = translate("pagination.previous");
+    let next_label = translate("pagination.next");
+    let class = flavour.link_class();
+    out.push_str("<ul class=\"pagination\">");
+    match &data.previous {
+        None => out.push_str(&format!(
+            "{} aria-disabled=\"true\"><span{class}>{prev_label}</span></li>",
+            flavour.item("disabled")
+        )),
+        Some(url) => out.push_str(&format!(
+            "{}<a{class} href=\"{}\" rel=\"prev\">{prev_label}</a></li>",
+            flavour.item(""),
+            e(url)
+        )),
+    }
+    match &data.next {
+        Some(url) => out.push_str(&format!(
+            "{}<a{class} href=\"{}\" rel=\"next\">{next_label}</a></li>",
+            flavour.item(""),
+            e(url)
+        )),
+        None => out.push_str(&format!(
+            "{} aria-disabled=\"true\"><span{class}>{next_label}</span></li>",
+            flavour.item("disabled")
+        )),
+    }
+    out.push_str("</ul>");
+}
+
+/// Render Laravel's `pagination::bootstrap-{3,4,5}` views.
+pub(crate) fn render_bootstrap(flavour: Bootstrap, data: &LinkData) -> String {
+    if !data.has_pages {
+        return String::new();
+    }
+    if flavour != Bootstrap::Five {
+        let mut out = "<nav>".to_string();
+        bootstrap_page_links(&mut out, flavour, data);
+        out.push_str("</nav>");
+        return out;
+    }
+
+    let mut out = "<nav class=\"d-flex justify-items-center justify-content-between\">".to_string();
+    out.push_str("<div class=\"d-flex justify-content-between flex-fill d-sm-none\">");
+    bootstrap_previous_next(&mut out, flavour, data);
+    out.push_str("</div>");
+    out.push_str("<div class=\"d-none flex-sm-fill d-sm-flex align-items-sm-center justify-content-sm-between\">");
+    let (first, last, total) = data.summary.unwrap_or((None, None, 0));
+    out.push_str(&format!(
+        "<div class=\"small text-muted\">{} <span class=\"fw-semibold\">{}</span> {} <span class=\"fw-semibold\">{}</span> {} <span class=\"fw-semibold\">{total}</span> {}</div>",
+        translate("Showing"),
+        first.map(|n| n.to_string()).unwrap_or_default(),
+        translate("to"),
+        last.map(|n| n.to_string()).unwrap_or_default(),
+        translate("of"),
+        translate("results"),
+    ));
+    out.push_str("<div>");
+    bootstrap_page_links(&mut out, flavour, data);
+    out.push_str("</div></div></nav>");
+    out
+}
+
+/// Render Laravel's `pagination::simple-bootstrap-{3,4,5}` views.
+pub(crate) fn render_simple_bootstrap(flavour: Bootstrap, data: &LinkData) -> String {
+    if !data.has_pages {
+        return String::new();
+    }
+    let mut out = if flavour == Bootstrap::Five {
+        format!(
+            "<nav role=\"navigation\" aria-label=\"{}\">",
+            translate("Pagination Navigation")
+        )
+    } else {
+        "<nav>".to_string()
+    };
+    bootstrap_previous_next(&mut out, flavour, data);
+    out.push_str("</nav>");
+    out
+}
+
+/// Which built-in view a view name refers to: `(flavour, simple)`, with
+/// `None` as the flavour for Tailwind.
+pub(crate) fn builtin_view(view: &str) -> Option<(Option<Bootstrap>, bool)> {
+    Some(match view {
+        "pagination::tailwind" => (None, false),
+        "pagination::simple-tailwind" => (None, true),
+        "pagination::bootstrap-3" | "pagination::default" => (Some(Bootstrap::Three), false),
+        "pagination::simple-bootstrap-3" | "pagination::simple-default" => (Some(Bootstrap::Three), true),
+        "pagination::bootstrap-4" => (Some(Bootstrap::Four), false),
+        "pagination::simple-bootstrap-4" => (Some(Bootstrap::Four), true),
+        "pagination::bootstrap-5" => (Some(Bootstrap::Five), false),
+        "pagination::simple-bootstrap-5" => (Some(Bootstrap::Five), true),
+        _ => return None,
+    })
+}

@@ -155,6 +155,21 @@ impl Route {
         router().api_resources(resources)
     }
 
+    /// Register many resource controllers whose routes allow soft deleted models.
+    pub fn soft_deletable_resources(resources: Vec<(&str, Arc<dyn ResourceController>)>) {
+        router().soft_deletable_resources(resources)
+    }
+
+    /// Register many singleton resource controllers at once.
+    pub fn singletons(singletons: Vec<(&str, Arc<dyn ResourceController>)>) {
+        router().singletons(singletons)
+    }
+
+    /// Register many API singleton resource controllers at once.
+    pub fn api_singletons(singletons: Vec<(&str, Arc<dyn ResourceController>)>) {
+        router().api_singletons(singletons)
+    }
+
     /// Register a singleton resource controller.
     pub fn singleton<C: ResourceController>(
         name: &str,
@@ -178,6 +193,11 @@ impl Route {
     /// Create a route group with the given attributes.
     pub fn group(attributes: GroupAttributes, routes: impl FnOnce()) {
         router().group(attributes, routes)
+    }
+
+    /// Start a group (or route) with metadata.
+    pub fn metadata(metadata: Value) -> RouteRegistrar {
+        router().metadata(metadata)
     }
 
     /// Prefix a group of routes.
@@ -339,6 +359,16 @@ impl Route {
     /// Determine if the current route's name matches the pattern (`"admin.*"`).
     pub fn is(pattern: &str) -> bool {
         Self::current_route_named(&[pattern])
+    }
+
+    /// Determine if the current route's action matches any of the patterns.
+    pub fn uses(patterns: &[&str]) -> bool {
+        router().uses(patterns)
+    }
+
+    /// Determine if the current route's action is exactly the given one.
+    pub fn current_route_uses(action: &str) -> bool {
+        router().current_route_uses(action)
     }
 
     /// Determine if the current route's name matches any of the patterns.

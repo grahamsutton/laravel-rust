@@ -143,13 +143,36 @@ impl<T> Paginator<T> {
         self
     }
 
-    /// Render "Previous" / "Next" links (Tailwind CSS markup).
+    /// Render "Previous" / "Next" links with the default simple view
+    /// (Tailwind CSS unless you chose another).
     pub fn links(&self) -> HtmlString {
-        HtmlString::new(links::render_simple_tailwind(
-            self.has_pages(),
-            self.previous_page_url(),
-            self.next_page_url(),
-        ))
+        self.links_with(&crate::presets::get_default_simple_view())
+    }
+
+    /// Render "Previous" / "Next" links with the given view. Simple
+    /// paginators always use the simple flavour of the built-in views.
+    pub fn links_with(&self, view: &str) -> HtmlString {
+        let data = links::LinkData {
+            has_pages: self.has_pages(),
+            current_page: self.current_page,
+            previous: self.previous_page_url(),
+            next: self.next_page_url(),
+            elements: Vec::new(),
+            summary: None,
+        };
+        let html = match links::builtin_view(view) {
+            Some((Some(flavour), _)) => links::render_simple_bootstrap(flavour, &data),
+            Some((None, _)) => links::render_simple_tailwind(data.has_pages, data.previous, data.next),
+            None => crate::presets::render_custom(view, data.to_view_data()).unwrap_or_else(|| {
+                links::render_simple_tailwind(data.has_pages, data.previous.clone(), data.next.clone())
+            }),
+        };
+        HtmlString::new(html)
+    }
+
+    /// Alias of `links`.
+    pub fn render(&self) -> HtmlString {
+        self.links()
     }
 }
 
@@ -168,6 +191,76 @@ impl<T: Serialize> Paginator<T> {
             "prev_page_url": self.previous_page_url(),
             "to": self.last_item(),
         })
+    }
+}
+
+/// Laravel's static pagination view presets, as `Paginator::use_bootstrap_five()`.
+///
+/// ```
+/// use illuminate_pagination::Paginator;
+///
+/// Paginator::use_bootstrap_five();
+/// assert_eq!(Paginator::get_default_view(), "pagination::bootstrap-5");
+/// Paginator::use_tailwind();
+/// assert_eq!(Paginator::get_default_simple_view(), "pagination::simple-tailwind");
+/// ```
+impl Paginator<()> {
+    /// Set the default pagination view.
+    pub fn default_view(view: &str) {
+        crate::presets::default_view(view);
+    }
+
+    /// Set the default "simple" pagination view.
+    pub fn default_simple_view(view: &str) {
+        crate::presets::default_simple_view(view);
+    }
+
+    /// The default pagination view.
+    pub fn get_default_view() -> String {
+        crate::presets::get_default_view()
+    }
+
+    /// The default "simple" pagination view.
+    pub fn get_default_simple_view() -> String {
+        crate::presets::get_default_simple_view()
+    }
+
+    /// Render pagination links with Tailwind CSS (the default).
+    pub fn use_tailwind() {
+        crate::presets::use_tailwind();
+    }
+
+    /// Render pagination links with Bootstrap (version 4).
+    pub fn use_bootstrap() {
+        crate::presets::use_bootstrap();
+    }
+
+    /// Render pagination links with Bootstrap 3.
+    pub fn use_bootstrap_three() {
+        crate::presets::use_bootstrap_three();
+    }
+
+    /// Render pagination links with Bootstrap 4.
+    pub fn use_bootstrap_four() {
+        crate::presets::use_bootstrap_four();
+    }
+
+    /// Render pagination links with Bootstrap 5.
+    pub fn use_bootstrap_five() {
+        crate::presets::use_bootstrap_five();
+    }
+}
+
+impl<T: Serialize> Paginator<T> {
+    /// The paginator as JSON.
+    pub fn to_json(&self) -> String {
+        self.to_array().to_string()
+    }
+
+    /// The paginator as pretty-printed JSON (indented like PHP's
+    /// `JSON_PRETTY_PRINT`).
+    pub fn to_pretty_json(&self) -> String {
+        crate::pretty_json(&self.to_array())
     }
 }
 

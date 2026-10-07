@@ -42,7 +42,7 @@ async fn first_error(file: UploadedFile, rule: &str) -> Option<String> {
 async fn file_rule() {
     let _c = container();
     assert_eq!(
-        first_error(UploadedFile::fake("avatar.jpg", 10), "required|file").await,
+        first_error(UploadedFile::fake().create("avatar.jpg", 10), "required|file").await,
         None
     );
     let mut validator = Validator::make(json!({"avatar": "not a file"}), [("avatar", "file")]);
@@ -57,7 +57,7 @@ async fn file_rule() {
 async fn image_rule() {
     let _c = container();
     assert_eq!(
-        first_error(UploadedFile::fake("avatar.jpg", 10), "image").await,
+        first_error(UploadedFile::fake().create("avatar.jpg", 10), "image").await,
         None
     );
     assert_eq!(
@@ -65,7 +65,7 @@ async fn image_rule() {
         None
     );
     assert_eq!(
-        first_error(UploadedFile::fake("doc.pdf", 10), "image")
+        first_error(UploadedFile::fake().create("doc.pdf", 10), "image")
             .await
             .as_deref(),
         Some("The avatar field must be an image.")
@@ -95,7 +95,7 @@ async fn mimes_and_mimetypes() {
         Some("The avatar field must be a file of type: jpg, png.")
     );
     assert_eq!(
-        first_error(UploadedFile::fake("photo.jpeg", 1), "mimes:jpg").await,
+        first_error(UploadedFile::fake().create("photo.jpeg", 1), "mimes:jpg").await,
         None
     );
     assert_eq!(
@@ -205,7 +205,7 @@ async fn dimensions_rule() {
     let svg = UploadedFile::new("logo.svg", "image/svg+xml", b"<svg></svg>".to_vec());
     assert_eq!(first_error(svg, "dimensions:max_width=1").await, None);
     assert!(
-        first_error(UploadedFile::fake("doc.pdf", 1), "dimensions:max_width=1")
+        first_error(UploadedFile::fake().create("doc.pdf", 1), "dimensions:max_width=1")
             .await
             .is_some()
     );
@@ -280,7 +280,7 @@ async fn multiple_files_are_validated_with_wildcards() {
     let mut files = IndexMap::new();
     files.insert(
         "photos".to_string(),
-        vec![png_file("a.png", 1, 1), UploadedFile::fake("b.pdf", 1)],
+        vec![png_file("a.png", 1, 1), UploadedFile::fake().create("b.pdf", 1)],
     );
     let mut validator = Validator::make(
         json!({}),
@@ -306,7 +306,7 @@ async fn multiple_files_are_validated_with_wildcards() {
 
     // ...and so is a lone file addressed with a wildcard.
     let mut validator = Validator::make(json!({}), rules! { "photos.*" => "image" })
-        .with_file("photos", UploadedFile::fake("x.pdf", 1));
+        .with_file("photos", UploadedFile::fake().create("x.pdf", 1));
     assert!(validator.fails().await);
     assert!(validator.errors().has("photos.0"));
 }

@@ -529,8 +529,16 @@ impl UrlGenerator {
         let mut parameters =
             format_parameters(route, parameters.into_route_parameters(), &defaults);
 
-        let domain = route.get_domain().map(|domain| self.format_domain(&domain));
-        let scheme = self.format_scheme(None);
+        let scheme = if route.http_only() {
+            "http://".to_string()
+        } else if route.https_only() {
+            "https://".to_string()
+        } else {
+            self.format_scheme(None)
+        };
+        let domain = route
+            .get_domain()
+            .map(|domain| self.format_domain(&scheme, &domain));
         let root = self.format_root(&scheme, domain.as_deref());
         let root = replace_route_parameters(&root, &mut parameters, &defaults);
         // Optional parameters left out of the middle of a URI would leave
@@ -563,8 +571,8 @@ impl UrlGenerator {
         Ok(format!("/{}", stripped.trim_start_matches('/')))
     }
 
-    fn format_domain(&self, domain: &str) -> String {
-        let domain = format!("{}{domain}", self.format_scheme(None));
+    fn format_domain(&self, scheme: &str, domain: &str) -> String {
+        let domain = format!("{scheme}{domain}");
         match self.get_request() {
             Some(request) => {
                 let secure = request.secure();

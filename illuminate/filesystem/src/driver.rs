@@ -13,12 +13,17 @@ use std::str::FromStr;
 
 use async_trait::async_trait;
 use bytes::Bytes;
+use futures::StreamExt;
 
+use illuminate_http::BodyStream;
 use illuminate_support::{Result, Value, ValueExt};
 
 use crate::exceptions::FilesystemException;
 use crate::filesystem::{blocking, set_mode};
 use crate::path::detect_mime_type;
+
+/// How much of a file a local read stream reads at a time (64 KB).
+const STREAM_CHUNK_SIZE: usize = 64 * 1024;
 
 /// File visibility: whether a file should generally be accessible to others.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -182,6 +187,24 @@ pub trait Driver: Send + Sync + 'static {
 
     /// Copy a file.
     async fn copy(&self, from: &str, to: &str, options: WriteOptions) -> Result<()>;
+
+    /// Read a file as a stream of chunks. Drivers that can't stream read
+    /// the whole file and hand it over as a single chunk.
+    async fn read_stream(&self, path: &str) -> Result<BodyStream> {
+        let contents = self.read(path).await?;
+        Ok(Box::pin(futures::stream::once(async move { Ok(contents) })))
+    }
+
+    /// Write a file from a stream of chunks. Drivers that can't stream
+    /// collect the chunks and [`write`](Driver::write) them at once.
+    async fn write_stream(&self, path: &str, mut contents: BodyStream, options: WriteOptions) -> Result<()> {
+        let mut buffer = Vec::new();
+        while let Some(chunk) = contents.next().await {
+            let chunk = chunk.map_err(|error| FilesystemException::write(path, error))?;
+            buffer.extend_from_slice(&chunk);
+        }
+        self.write(path, Bytes::from(buffer), options).await
+    }
 
     /// The URL of a file, if the driver knows how to build one itself.
     fn url(&self, _path: &str) -> Option<String> {
@@ -450,6 +473,75 @@ impl Driver for LocalDriver {
         let driver = self.clone();
         let path = path.to_string();
         blocking(move || driver.write_sync(&path, &contents, options)).await
+    }
+
+    async fn read_stream(&self, path: &str) -> Result<BodyStream> {
+        use tokio::io::AsyncReadExt;
+
+        let location = self.prefix_path(path);
+        let is_file = tokio::fs::metadata(&location)
+            .await
+            .map_err(|error| FilesystemException::read(path, error))?
+            .is_file();
+        if !is_file {
+            return Err(FilesystemException::read(path, "The path is not a file.").into());
+        }
+        let file = tokio::fs::File::open(&location)
+            .await
+            .map_err(|error| FilesystemException::read(path, error))?;
+        let path = path.to_string();
+        let chunks = futures::stream::try_unfold(file, move |mut file| {
+            let path = path.clone();
+            async move {
+                let mut buffer = vec![0u8; STREAM_CHUNK_SIZE];
+                let read = file
+                    .read(&mut buffer)
+                    .await
+                    .map_err(|error| FilesystemException::read(&path, error))?;
+                if read == 0 {
+                    return Ok(None);
+                }
+                buffer.truncate(read);
+                Ok(Some((Bytes::from(buffer), file)))
+            }
+        });
+        Ok(Box::pin(chunks))
+    }
+
+    async fn write_stream(&self, path: &str, mut contents: BodyStream, options: WriteOptions) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        let location = self.prefix_path(path);
+        let directory_visibility = options
+            .directory_visibility
+            .unwrap_or(self.directory_visibility);
+        let parent = location.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let driver = self.clone();
+        let owned_path = path.to_string();
+        blocking(move || {
+            driver
+                .ensure_directory_exists(&parent, directory_visibility)
+                .map_err(|error| FilesystemException::write(&owned_path, error).into())
+        })
+        .await?;
+
+        let mut file = tokio::fs::File::create(&location)
+            .await
+            .map_err(|error| FilesystemException::write(path, error))?;
+        while let Some(chunk) = contents.next().await {
+            let chunk = chunk.map_err(|error| FilesystemException::write(path, error))?;
+            file.write_all(&chunk)
+                .await
+                .map_err(|error| FilesystemException::write(path, error))?;
+        }
+        file.flush()
+            .await
+            .map_err(|error| FilesystemException::write(path, error))?;
+        if let Some(visibility) = options.visibility {
+            set_mode(&location, self.permissions.for_file(visibility))
+                .map_err(|error| FilesystemException::write(path, error))?;
+        }
+        Ok(())
     }
 
     async fn delete(&self, path: &str) -> Result<()> {

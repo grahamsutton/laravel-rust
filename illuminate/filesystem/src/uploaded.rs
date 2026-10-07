@@ -25,7 +25,7 @@ use crate::driver::Visibility;
 /// FilesystemServiceProvider.register(&container);
 /// Storage::fake("local").unwrap();
 ///
-/// let file = UploadedFile::fake("avatar.jpg", 10);
+/// let file = UploadedFile::fake().create("avatar.jpg", 10);
 ///
 /// let path = file.store_as("avatars", "1.jpg").await.unwrap();
 ///

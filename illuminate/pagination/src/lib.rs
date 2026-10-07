@@ -20,6 +20,7 @@
 
 mod length_aware;
 mod links;
+pub mod presets;
 mod resolvers;
 mod simple;
 
@@ -27,6 +28,10 @@ pub use length_aware::LengthAwarePaginator;
 pub use resolvers::{
     current_page, current_path, query_string, resolve_current_page_using, resolve_current_path_using,
     resolve_query_string_using, translate, translate_using,
+};
+pub use presets::{
+    default_simple_view, default_view, render_views_using, use_bootstrap, use_bootstrap_five,
+    use_bootstrap_four, use_bootstrap_three, use_tailwind,
 };
 pub use simple::Paginator;
 
@@ -71,6 +76,19 @@ impl PaginatorOptions {
     pub fn page_name(mut self, name: impl Into<String>) -> Self {
         self.page_name = name.into();
         self
+    }
+}
+
+/// Encode a value as JSON indented with four spaces, like PHP's
+/// `JSON_PRETTY_PRINT`.
+pub(crate) fn pretty_json(value: &Value) -> String {
+    use serde::Serialize;
+    let mut buffer = Vec::new();
+    let formatter = serde_json::ser::PrettyFormatter::with_indent(b"    ");
+    let mut serializer = serde_json::Serializer::with_formatter(&mut buffer, formatter);
+    match value.serialize(&mut serializer) {
+        Ok(()) => String::from_utf8(buffer).unwrap_or_default(),
+        Err(_) => "null".to_string(),
     }
 }
 

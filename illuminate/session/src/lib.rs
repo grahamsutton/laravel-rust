@@ -47,6 +47,7 @@ mod helpers;
 mod manager;
 pub mod middleware;
 mod provider;
+mod redirects;
 mod request;
 mod store;
 
@@ -67,6 +68,7 @@ pub use middleware::{
     apply_response_session_data,
 };
 pub use provider::SessionServiceProvider;
+pub use redirects::RedirectSessionExt;
 pub use request::RequestSessionExt;
 pub use store::{SessionKeys, Store};
 
@@ -78,6 +80,7 @@ pub mod facades {
 /// Everything you need to work with the session, in one import.
 pub mod prelude {
     pub use crate::facade::Session;
+    pub use crate::redirects::RedirectSessionExt;
     pub use crate::request::RequestSessionExt;
     pub use crate::store::Store;
 }

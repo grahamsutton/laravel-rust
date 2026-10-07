@@ -7,7 +7,7 @@ use indexmap::IndexMap;
 
 use illuminate_http::UploadedFile;
 use illuminate_support::error::RuntimeException;
-use illuminate_support::{Error, Map, MessageBag, Result, Value};
+use illuminate_support::{Error, Map, MessageBag, Result, Str, Value};
 
 use crate::data::{self, Node};
 use crate::exception::ValidationException;
@@ -455,6 +455,104 @@ impl Validator {
         Factory::current().replacer(rule, replacer);
     }
 
+    /// Register a custom rule for this validator only — Laravel's
+    /// `addExtension`. Use [`Validator::extend`] to register a rule for
+    /// every validator.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use illuminate_container::Container;
+    /// use illuminate_validation::Validator;
+    /// use illuminate_support::json;
+    ///
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
+    /// let _guard = Container::set_local_instance(Arc::new(Container::new()));
+    ///
+    /// let mut validator = Validator::make(json!({"code": "ABC"}), [("code", "uppercase_code:4")]);
+    /// validator
+    ///     .add_extension("uppercase_code", |_attribute, value, parameters, _context| {
+    ///         let length: usize = parameters[0].parse().unwrap_or(0);
+    ///         value.as_str().is_some_and(|code| code.len() == length && code == code.to_uppercase())
+    ///     })
+    ///     .add_replacer("uppercase_code", |message, _attribute, _rule, parameters| {
+    ///         message.replace(":length", &parameters[0])
+    ///     })
+    ///     .set_fallback_messages([("uppercase_code", "The :attribute must be :length uppercase letters.")]);
+    ///
+    /// assert!(validator.fails().await);
+    /// assert_eq!(validator.errors().first("code"), Some("The code must be 4 uppercase letters."));
+    /// # });
+    /// ```
+    pub fn add_extension(
+        &mut self,
+        rule: &str,
+        extension: impl Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool
+        + Send
+        + Sync
+        + 'static,
+    ) -> &mut Self {
+        self.extensions
+            .rules
+            .insert(Str::snake(rule), Arc::new(extension));
+        self
+    }
+
+    /// Register a custom implicit rule (it runs even when the attribute is
+    /// missing or empty) for this validator only.
+    pub fn add_implicit_extension(
+        &mut self,
+        rule: &str,
+        extension: impl Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool
+        + Send
+        + Sync
+        + 'static,
+    ) -> &mut Self {
+        self.add_extension(rule, extension);
+        self.extensions.implicit.push(Str::studly(rule));
+        self
+    }
+
+    /// Register a custom dependent rule (its parameters name other fields)
+    /// for this validator only.
+    pub fn add_dependent_extension(
+        &mut self,
+        rule: &str,
+        extension: impl Fn(&str, &Value, &[String], &ValidationContext<'_>) -> bool
+        + Send
+        + Sync
+        + 'static,
+    ) -> &mut Self {
+        self.add_extension(rule, extension);
+        self.extensions.dependent.push(Str::studly(rule));
+        self
+    }
+
+    /// Register a custom placeholder replacer for this validator only: it
+    /// receives the message, attribute, rule and parameters.
+    pub fn add_replacer(
+        &mut self,
+        rule: &str,
+        replacer: impl Fn(&str, &str, &str, &[String]) -> String + Send + Sync + 'static,
+    ) -> &mut Self {
+        self.extensions
+            .replacers
+            .insert(Str::snake(rule), Arc::new(replacer));
+        self
+    }
+
+    /// Set the messages used when a custom rule has no message of its own.
+    pub fn set_fallback_messages<'a>(
+        &mut self,
+        messages: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> &mut Self {
+        for (rule, message) in messages {
+            self.extensions
+                .fallback_messages
+                .insert(Str::snake(rule), Value::String(message.to_string()));
+        }
+        self
+    }
+
     /// Resolve validation messages using the given resolver (the
     /// translation component's hook).
     pub fn resolve_messages_using(resolver: impl MessageResolver + 'static) {
@@ -602,6 +700,29 @@ impl Validator {
         self
     }
 
+    /// Append rules to the validator — Laravel's `appendRules`: rules for
+    /// attributes that already have some are added after them.
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use illuminate_container::Container;
+    /// use illuminate_validation::{Validator, rules};
+    /// use illuminate_support::json;
+    ///
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
+    /// let _guard = Container::set_local_instance(Arc::new(Container::new()));
+    ///
+    /// let mut validator = Validator::make(json!({"name": "Taylor Otwell"}), rules! { "name" => "required" })
+    ///     .append_rules(rules! { "name" => "max:5" });
+    ///
+    /// assert!(validator.fails().await);
+    /// assert_eq!(validator.errors().first("name"), Some("The name field must not be greater than 5 characters."));
+    /// # });
+    /// ```
+    pub fn append_rules(self, rules: impl Into<Rules>) -> Self {
+        self.add_rules(rules)
+    }
+
     /// Include uploaded files in the data under validation, keyed by input
     /// name (`avatar`, `photos[]`, `user[avatar]`), exactly as returned by
     /// `Request::all_files()`.
@@ -678,6 +799,74 @@ impl Validator {
         match self.try_passes().await {
             Ok(passes) => passes,
             Err(error) => panic!("{error}"),
+        }
+    }
+
+    /// Run the callback when the data passes the validation rules,
+    /// returning its result (`None` when validation fails).
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use illuminate_container::Container;
+    /// use illuminate_validation::{Validator, rules};
+    /// use illuminate_support::json;
+    ///
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
+    /// let _guard = Container::set_local_instance(Arc::new(Container::new()));
+    ///
+    /// let mut validator = Validator::make(json!({"email": "nope"}), rules! { "email" => "email" });
+    ///
+    /// let message = validator
+    ///     .when_fails(|validator| validator.errors().first("email").unwrap_or_default().to_string())
+    ///     .await;
+    /// assert_eq!(message.as_deref(), Some("The email field must be a valid email address."));
+    ///
+    /// assert_eq!(validator.when_passes(|_| "Welcome!").await, None);
+    /// # });
+    /// ```
+    pub async fn when_passes<R>(&mut self, callback: impl FnOnce(&mut Validator) -> R) -> Option<R> {
+        if self.passes().await {
+            Some(callback(self))
+        } else {
+            None
+        }
+    }
+
+    /// Run `callback` when the data passes the validation rules, and
+    /// `default` when it fails.
+    pub async fn when_passes_or<R>(
+        &mut self,
+        callback: impl FnOnce(&mut Validator) -> R,
+        default: impl FnOnce(&mut Validator) -> R,
+    ) -> R {
+        if self.passes().await {
+            callback(self)
+        } else {
+            default(self)
+        }
+    }
+
+    /// Run the callback when the data fails the validation rules,
+    /// returning its result (`None` when validation passes).
+    pub async fn when_fails<R>(&mut self, callback: impl FnOnce(&mut Validator) -> R) -> Option<R> {
+        if self.fails().await {
+            Some(callback(self))
+        } else {
+            None
+        }
+    }
+
+    /// Run `callback` when the data fails the validation rules, and
+    /// `default` when it passes.
+    pub async fn when_fails_or<R>(
+        &mut self,
+        callback: impl FnOnce(&mut Validator) -> R,
+        default: impl FnOnce(&mut Validator) -> R,
+    ) -> R {
+        if self.fails().await {
+            callback(self)
+        } else {
+            default(self)
         }
     }
 

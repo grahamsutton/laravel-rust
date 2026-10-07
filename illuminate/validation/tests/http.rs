@@ -76,9 +76,9 @@ async fn requests_validate_with_custom_messages_and_attributes() {
 async fn requests_validate_uploaded_files() {
     let _c = container();
     let request = post(json!({"name": "Taylor"}));
-    request.attach_file("avatar", UploadedFile::fake("me.jpg", 10));
-    request.attach_file("photos", UploadedFile::fake("a.jpg", 10));
-    request.attach_file("photos", UploadedFile::fake("b.pdf", 10));
+    request.attach_file("avatar", UploadedFile::fake().create("me.jpg", 1));
+    request.attach_file("photos", UploadedFile::fake().create("a.jpg", 10));
+    request.attach_file("photos", UploadedFile::fake().create("b.pdf", 10));
 
     let error = request
         .validate(

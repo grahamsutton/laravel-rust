@@ -10,7 +10,7 @@ use http::{HeaderMap, HeaderName, HeaderValue, Method, Uri, Version};
 use indexmap::IndexMap;
 use serde::de::DeserializeOwned;
 
-use illuminate_support::{Arr, Carbon, Map, Str, Stringable, Value, ValueExt, cast};
+use illuminate_support::{Arr, Carbon, Fluent, Map, Str, Stringable, Value, ValueExt, cast};
 
 use crate::cookie::parse_cookie_header;
 use crate::input::{insert_bracketed, merge_values, normalize_lists, parse_query};
@@ -218,6 +218,101 @@ impl Request {
         )
     }
 
+    /// Create a `multipart/form-data` request carrying input and uploaded
+    /// files — what a browser sends when a form uploads files.
+    ///
+    /// ```
+    /// use illuminate_http::{Request, UploadedFile};
+    /// use illuminate_support::json;
+    /// use indexmap::IndexMap;
+    ///
+    /// let mut files = IndexMap::new();
+    /// files.insert("avatar".to_string(), vec![UploadedFile::fake().image("avatar.jpg", 10, 10)]);
+    ///
+    /// let request = Request::create_multipart("/avatar", "POST", json!({"name": "Taylor"}), files, Default::default());
+    ///
+    /// assert!(request.has_file("avatar"));
+    /// assert_eq!(request.input("name"), json!("Taylor"));
+    /// assert!(request.header("content-type").unwrap().starts_with("multipart/form-data; boundary="));
+    /// ```
+    pub fn create_multipart(
+        uri: &str,
+        method: &str,
+        parameters: Value,
+        files: IndexMap<String, Vec<UploadedFile>>,
+        mut headers: HeaderMap,
+    ) -> Self {
+        let uri: Uri = uri.parse().unwrap_or_else(|_| Uri::from_static("/"));
+        let method = Method::from_bytes(method.to_ascii_uppercase().as_bytes()).unwrap_or(Method::POST);
+        let parameters = if parameters.is_object() || parameters.is_array() {
+            parameters
+        } else {
+            Value::Object(Map::new())
+        };
+        let boundary = crate::multipart::boundary();
+        let body = crate::multipart::encode(&parameters, &files, &boundary);
+        if let Ok(value) = HeaderValue::try_from(crate::multipart::content_type(&boundary)) {
+            headers.insert(http::header::CONTENT_TYPE, value);
+        }
+        headers.insert(http::header::CONTENT_LENGTH, HeaderValue::from(body.len()));
+        let files = files
+            .into_iter()
+            .map(|(name, list)| (name.trim_end_matches("[]").to_string(), list))
+            .collect();
+        Self::from_parts_with_files(
+            method,
+            uri,
+            Version::HTTP_11,
+            headers,
+            body,
+            normalize_lists(parameters),
+            files,
+            Some(SocketAddr::from(([127, 0, 0, 1], 0))),
+        )
+    }
+
+    /// Create an independent copy of the request: changes to the copy's
+    /// input, headers or attributes don't affect the original.
+    ///
+    /// ```
+    /// use illuminate_http::Request;
+    /// use illuminate_support::json;
+    ///
+    /// let request = Request::create_with("/", "POST", json!({"name": "Taylor"}), Default::default());
+    /// let copy = request.duplicate();
+    /// copy.merge(json!({"name": "Abigail"}));
+    ///
+    /// assert_eq!(request.input("name"), json!("Taylor"));
+    /// assert_eq!(copy.input("name"), json!("Abigail"));
+    /// ```
+    pub fn duplicate(&self) -> Self {
+        self.duplicate_with(None, None)
+    }
+
+    /// Create an independent copy of the request, replacing its query
+    /// parameters and/or its input.
+    pub fn duplicate_with(&self, query: Option<Value>, input: Option<Value>) -> Self {
+        let inner = &self.inner;
+        Self {
+            inner: Arc::new(Inner {
+                method: RwLock::new(self.method()),
+                uri: inner.uri.clone(),
+                version: inner.version,
+                headers: RwLock::new(self.headers()),
+                body: inner.body.clone(),
+                query: query.unwrap_or_else(|| inner.query.clone()),
+                input: RwLock::new(input.unwrap_or_else(|| inner.input.read().unwrap().clone())),
+                files: RwLock::new(inner.files.read().unwrap().clone()),
+                cookies: RwLock::new(inner.cookies.read().unwrap().clone()),
+                route_params: RwLock::new(inner.route_params.read().unwrap().clone()),
+                route_name: RwLock::new(inner.route_name.read().unwrap().clone()),
+                attributes: RwLock::new(inner.attributes.read().unwrap().clone()),
+                extensions: RwLock::new(inner.extensions.read().unwrap().clone()),
+                remote_addr: inner.remote_addr,
+            }),
+        }
+    }
+
     // ------------------------------------------------------------------
     // Method & URL
     // ------------------------------------------------------------------
@@ -325,6 +420,11 @@ impl Request {
     /// The root URL of the application (`https://example.com`).
     pub fn root(&self) -> String {
         format!("{}://{}", self.scheme(), self.http_host())
+    }
+
+    /// The scheme and HTTP host (`https://example.com:8080`).
+    pub fn scheme_and_http_host(&self) -> String {
+        self.root()
     }
 
     /// The URL without the query string.
@@ -488,6 +588,61 @@ impl Request {
         self.inner.remote_addr
     }
 
+    /// Get a server variable, PHP's `$_SERVER` style (`REQUEST_METHOD`,
+    /// `REQUEST_URI`, `SERVER_NAME`, `HTTP_USER_AGENT`, ...).
+    ///
+    /// ```
+    /// use illuminate_http::{HeaderMap, Request};
+    /// use illuminate_support::json;
+    ///
+    /// let mut headers = HeaderMap::new();
+    /// headers.insert("user-agent", "Symfony".parse().unwrap());
+    /// let request = Request::create_with("/users?page=2", "GET", Default::default(), headers);
+    ///
+    /// assert_eq!(request.server("REQUEST_METHOD"), json!("GET"));
+    /// assert_eq!(request.server("REQUEST_URI"), json!("/users?page=2"));
+    /// assert_eq!(request.server("HTTP_USER_AGENT"), json!("Symfony"));
+    /// assert_eq!(request.server("MISSING"), json!(null));
+    /// ```
+    pub fn server(&self, key: &str) -> Value {
+        self.server_all().get(key).cloned().unwrap_or(Value::Null)
+    }
+
+    /// Every server variable.
+    pub fn server_all(&self) -> Value {
+        let mut server = Map::new();
+        let uri = &self.inner.uri;
+        let request_uri = uri
+            .path_and_query()
+            .map(|pq| pq.as_str().to_string())
+            .unwrap_or_else(|| "/".to_string());
+        server.insert("SERVER_NAME".into(), Value::from(self.host()));
+        server.insert("SERVER_PORT".into(), Value::from(self.port()));
+        server.insert("SERVER_PROTOCOL".into(), Value::from(format!("{:?}", self.version())));
+        server.insert("REQUEST_METHOD".into(), Value::from(self.method().as_str()));
+        server.insert("REQUEST_URI".into(), Value::from(request_uri));
+        server.insert("QUERY_STRING".into(), Value::from(uri.query().unwrap_or_default()));
+        server.insert("SCRIPT_NAME".into(), Value::from(""));
+        if self.secure() {
+            server.insert("HTTPS".into(), Value::from("on"));
+        }
+        if let Some(addr) = self.inner.remote_addr {
+            server.insert("REMOTE_ADDR".into(), Value::from(addr.ip().to_string()));
+            server.insert("REMOTE_PORT".into(), Value::from(addr.port()));
+        }
+        for (name, value) in self.inner.headers.read().unwrap().iter() {
+            let Ok(value) = value.to_str() else { continue };
+            let key = name.as_str().to_ascii_uppercase().replace('-', "_");
+            let key = if key == "CONTENT_TYPE" || key == "CONTENT_LENGTH" {
+                key
+            } else {
+                format!("HTTP_{key}")
+            };
+            server.insert(key, Value::from(value));
+        }
+        Value::Object(server)
+    }
+
     /// Mark whether forwarding headers from proxies should be trusted.
     pub fn set_trust_proxies(&self, trust: bool) {
         self.set_attribute("_trust_proxies", trust);
@@ -518,31 +673,154 @@ impl Request {
         (self.ajax() && !self.pjax() && self.accepts_any_content_type()) || self.wants_json()
     }
 
-    /// Determine if the current request is asking for JSON.
+    /// Determine if the current request is asking for JSON (its most
+    /// preferred content type is JSON).
     pub fn wants_json(&self) -> bool {
-        self.header("accept")
-            .and_then(|accept| accept.split(',').next().map(str::to_string))
+        self.acceptable_content_types()
+            .first()
+            .map(|first| first.to_ascii_lowercase())
             .is_some_and(|first| first.contains("/json") || first.contains("+json"))
     }
 
-    /// Determine if the request accepts any of the given content types.
-    pub fn accepts(&self, content_types: &[&str]) -> bool {
-        let accept = match self.header("accept") {
-            Some(accept) if !accept.trim().is_empty() => accept,
-            _ => return true,
+    /// Determine if the current request is asking for Markdown.
+    ///
+    /// ```
+    /// use illuminate_http::{HeaderMap, Request};
+    ///
+    /// let mut headers = HeaderMap::new();
+    /// headers.insert("accept", "text/markdown, text/html;q=0.9".parse().unwrap());
+    /// let request = Request::create_with("/docs", "GET", Default::default(), headers);
+    ///
+    /// assert!(request.wants_markdown());
+    /// assert!(request.accepts_markdown());
+    /// ```
+    pub fn wants_markdown(&self) -> bool {
+        self.acceptable_content_types()
+            .first()
+            .is_some_and(|first| first.to_ascii_lowercase().starts_with("text/markdown"))
+    }
+
+    /// The content types the client accepts, most preferred first (the
+    /// `Accept` header, sorted by quality).
+    ///
+    /// ```
+    /// use illuminate_http::{HeaderMap, Request};
+    ///
+    /// let mut headers = HeaderMap::new();
+    /// headers.insert("accept", "text/html;q=0.8, application/json, */*;q=0.1".parse().unwrap());
+    /// let request = Request::create_with("/", "GET", Default::default(), headers);
+    ///
+    /// assert_eq!(request.acceptable_content_types(), ["application/json", "text/html", "*/*"]);
+    /// ```
+    pub fn acceptable_content_types(&self) -> Vec<String> {
+        let Some(accept) = self.header("accept") else {
+            return Vec::new();
         };
-        accept.split(',').any(|accepted| {
-            let accepted = accepted.split(';').next().unwrap_or_default().trim();
-            if accepted == "*/*" || accepted == "*" {
+        let mut items: Vec<(usize, f64, String)> = Vec::new();
+        for (index, item) in accept.split(',').enumerate() {
+            let mut parts = item.split(';');
+            let value = parts.next().unwrap_or_default().trim();
+            if value.is_empty() {
+                continue;
+            }
+            let quality = parts
+                .filter_map(|parameter| parameter.split_once('='))
+                .find(|(name, _)| name.trim().eq_ignore_ascii_case("q"))
+                .and_then(|(_, q)| q.trim().parse::<f64>().ok())
+                .unwrap_or(1.0);
+            items.retain(|(_, _, existing)| existing != value);
+            items.push((index, quality, value.to_string()));
+        }
+        items.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.0.cmp(&b.0))
+        });
+        items.into_iter().map(|(_, _, value)| value).collect()
+    }
+
+    /// Determine if the request accepts any of the given content types.
+    ///
+    /// ```
+    /// use illuminate_http::{HeaderMap, Request};
+    ///
+    /// let mut headers = HeaderMap::new();
+    /// headers.insert("accept", "application/*".parse().unwrap());
+    /// let request = Request::create_with("/", "GET", Default::default(), headers);
+    ///
+    /// assert!(request.accepts(&["application/json"]));
+    /// assert!(!request.accepts(&["text/html"]));
+    /// ```
+    pub fn accepts(&self, content_types: &[&str]) -> bool {
+        let accepts = self.acceptable_content_types();
+        if accepts.is_empty() {
+            return true;
+        }
+        accepts.iter().any(|accept| {
+            let accept = accept.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
+            if accept == "*/*" || accept == "*" {
                 return true;
             }
-            content_types.iter().any(|ct| {
-                *ct == accepted
-                    || accepted
-                        .strip_suffix("/*")
-                        .is_some_and(|prefix| ct.starts_with(&format!("{prefix}/")))
+            content_types.iter().any(|content_type| {
+                let content_type = content_type.to_ascii_lowercase();
+                Self::matches_type(&accept, &content_type)
+                    || accept == format!("{}/*", content_type.split('/').next().unwrap_or_default())
             })
         })
+    }
+
+    /// Return the most suitable of the given content types (or formats like
+    /// `json` and `html`) based on content negotiation, or `None` when the
+    /// client accepts none of them.
+    ///
+    /// ```
+    /// use illuminate_http::{HeaderMap, Request};
+    ///
+    /// let mut headers = HeaderMap::new();
+    /// headers.insert("accept", "text/html, application/json;q=0.9".parse().unwrap());
+    /// let request = Request::create_with("/", "GET", Default::default(), headers);
+    ///
+    /// assert_eq!(request.prefers(&["json", "html"]).as_deref(), Some("html"));
+    /// assert_eq!(request.prefers(&["application/json"]).as_deref(), Some("application/json"));
+    /// assert_eq!(request.prefers(&["text/csv"]), None);
+    /// ```
+    pub fn prefers(&self, content_types: &[&str]) -> Option<String> {
+        for accept in self.acceptable_content_types() {
+            let accept = accept.split(';').next().unwrap_or_default().trim().to_ascii_lowercase();
+            if accept == "*/*" || accept == "*" {
+                return content_types.first().map(|first| first.to_string());
+            }
+            for content_type in content_types {
+                let mime = Self::mime_type_for_format(content_type)
+                    .unwrap_or(content_type)
+                    .to_ascii_lowercase();
+                if Self::matches_type(&mime, &accept)
+                    || accept == format!("{}/*", mime.split('/').next().unwrap_or_default())
+                {
+                    return Some(content_type.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    /// Determine if the request accepts any content type.
+    pub fn accepts_any_content_type(&self) -> bool {
+        let acceptable = self.acceptable_content_types();
+        match acceptable.first() {
+            None => true,
+            Some(first) => first == "*/*" || first == "*",
+        }
+    }
+
+    /// Determine if the request accepts JSON.
+    pub fn accepts_json(&self) -> bool {
+        self.accepts(&["application/json"])
+    }
+
+    /// Determine if the request accepts Markdown.
+    pub fn accepts_markdown(&self) -> bool {
+        self.accepts(&["text/markdown"])
     }
 
     /// Determine if the request accepts HTML.
@@ -550,15 +828,75 @@ impl Request {
         self.accepts(&["text/html"])
     }
 
-    /// Determine if the request accepts any content type.
-    pub fn accepts_any_content_type(&self) -> bool {
-        match self.header("accept") {
-            None => true,
-            Some(accept) => {
-                let first = accept.split(',').next().unwrap_or_default().trim();
-                first.is_empty() || first == "*/*" || first == "*"
-            }
+    /// Determine if the given content types match: identical, or `actual`
+    /// is a structured-syntax suffix match (`application/json` matches
+    /// `application/vnd.api+json`).
+    ///
+    /// ```
+    /// use illuminate_http::Request;
+    ///
+    /// assert!(Request::matches_type("application/json", "application/json"));
+    /// assert!(Request::matches_type("application/json", "application/vnd.api+json"));
+    /// assert!(!Request::matches_type("application/json", "text/html"));
+    /// ```
+    pub fn matches_type(actual: &str, content_type: &str) -> bool {
+        if actual == content_type {
+            return true;
         }
+        let Some((top, sub)) = actual.split_once('/') else {
+            return false;
+        };
+        let prefix = format!("{top}/");
+        let suffix = format!("+{sub}");
+        content_type.match_indices(&prefix).any(|(index, _)| {
+            let rest = &content_type[index + prefix.len()..];
+            rest.char_indices()
+                .skip(1)
+                .any(|(offset, _)| rest[offset..].starts_with(&suffix))
+        })
+    }
+
+    /// The data format expected in the response (`json`, `html`, ...), from
+    /// the most preferred acceptable content type that has one.
+    pub fn format(&self, default: &str) -> String {
+        self.acceptable_content_types()
+            .iter()
+            .find_map(|content_type| Self::format_for_mime_type(content_type))
+            .unwrap_or(default)
+            .to_string()
+    }
+
+    /// The MIME types associated with each request format.
+    const FORMATS: &[(&str, &[&str])] = &[
+        ("html", &["text/html", "application/xhtml+xml"]),
+        ("txt", &["text/plain"]),
+        ("js", &["application/javascript", "application/x-javascript", "text/javascript"]),
+        ("css", &["text/css"]),
+        ("json", &["application/json", "application/x-json"]),
+        ("jsonld", &["application/ld+json"]),
+        ("xml", &["text/xml", "application/xml", "application/x-xml"]),
+        ("rdf", &["application/rdf+xml"]),
+        ("atom", &["application/atom+xml"]),
+        ("rss", &["application/rss+xml"]),
+        ("form", &["application/x-www-form-urlencoded", "multipart/form-data"]),
+        ("markdown", &["text/markdown"]),
+    ];
+
+    /// The primary MIME type of a format (`json` → `application/json`).
+    pub fn mime_type_for_format(format: &str) -> Option<&'static str> {
+        Self::FORMATS
+            .iter()
+            .find(|(name, _)| *name == format)
+            .map(|(_, types)| types[0])
+    }
+
+    /// The format of a MIME type (`application/json` → `json`).
+    pub fn format_for_mime_type(mime_type: &str) -> Option<&'static str> {
+        let mime_type = mime_type.split(';').next().unwrap_or_default().trim();
+        Self::FORMATS
+            .iter()
+            .find(|(_, types)| types.contains(&mime_type))
+            .map(|(name, _)| *name)
     }
 
     /// Determine if the request is a prefetch request.
@@ -577,6 +915,47 @@ impl Request {
         let mut all = self.inner.query.clone();
         merge_values(&mut all, self.inner.input.read().unwrap().clone());
         all
+    }
+
+    /// Get all of the input as a [`Fluent`] instance.
+    ///
+    /// ```
+    /// use illuminate_http::Request;
+    /// use illuminate_support::json;
+    ///
+    /// let request = Request::create_with("/", "POST", json!({"user": {"name": "Taylor", "age": 30}}), Default::default());
+    ///
+    /// assert_eq!(request.fluent().get("user.name"), json!("Taylor"));
+    /// assert_eq!(request.fluent_key("user").integer("age"), 30);
+    /// assert_eq!(request.fluent_only(&["missing"]).get("missing"), json!(null));
+    /// ```
+    pub fn fluent(&self) -> Fluent {
+        Fluent::from(self.all())
+    }
+
+    /// Get an input item (an object, usually) as a [`Fluent`] instance.
+    pub fn fluent_key(&self, key: &str) -> Fluent {
+        match self.input(key) {
+            value @ Value::Object(_) => Fluent::from(value),
+            Value::Array(items) => Fluent::from(
+                items
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, item)| (index.to_string(), item))
+                    .collect::<Map<String, Value>>(),
+            ),
+            _ => Fluent::new(),
+        }
+    }
+
+    /// Get the given input keys as a [`Fluent`] instance.
+    pub fn fluent_only(&self, keys: &[&str]) -> Fluent {
+        Fluent::from(self.only(keys))
+    }
+
+    /// The input as an array — Laravel's `toArray()`.
+    pub fn to_array(&self) -> Value {
+        self.all()
     }
 
     /// Get an input item from the request using "dot" notation (body first,
@@ -845,25 +1224,50 @@ impl Request {
     // Files
     // ------------------------------------------------------------------
 
-    /// Get an uploaded file.
+    /// Get an uploaded file. Nested files may be read with "dot" notation:
+    /// `file("user.avatar")` finds the `user[avatar]` upload, and
+    /// `file("photos.1")` the second of the `photos[]` uploads.
     pub fn file(&self, key: &str) -> Option<UploadedFile> {
-        self.inner
-            .files
-            .read()
-            .unwrap()
-            .get(key)
-            .and_then(|files| files.first().cloned())
+        let files = self.inner.files.read().unwrap();
+        if let Some(list) = files.get(key) {
+            return list.first().cloned();
+        }
+        let (name, index) = Self::file_key(key);
+        files.get(&name).and_then(|list| list.get(index.unwrap_or(0)).cloned())
     }
 
     /// Get every uploaded file for the given key.
     pub fn files(&self, key: &str) -> Vec<UploadedFile> {
-        self.inner
-            .files
-            .read()
-            .unwrap()
-            .get(key)
-            .cloned()
-            .unwrap_or_default()
+        let files = self.inner.files.read().unwrap();
+        if let Some(list) = files.get(key) {
+            return list.clone();
+        }
+        let (name, index) = Self::file_key(key);
+        match (files.get(&name), index) {
+            (Some(list), None) => list.clone(),
+            (Some(list), Some(index)) => list.get(index).cloned().into_iter().collect(),
+            (None, _) => Vec::new(),
+        }
+    }
+
+    /// Translate a dot notation key (`user.avatar`, `photos.1`) into the
+    /// stored bracketed name (`user[avatar]`, `photos`) and a list index.
+    fn file_key(key: &str) -> (String, Option<usize>) {
+        let mut segments: Vec<&str> = key.split('.').collect();
+        let index = match segments.last() {
+            Some(last) if segments.len() > 1 && last.chars().all(|c| c.is_ascii_digit()) => {
+                last.parse().ok()
+            }
+            _ => None,
+        };
+        if index.is_some() {
+            segments.pop();
+        }
+        let mut name = segments[0].to_string();
+        for segment in &segments[1..] {
+            name.push_str(&format!("[{segment}]"));
+        }
+        (name, index)
     }
 
     /// Get all of the uploaded files.
@@ -1113,6 +1517,122 @@ mod tests {
         let request = Request::create_with("/", "GET", json!({}), headers);
         assert_eq!(request.bearer_token().as_deref(), Some("secret-token"));
         assert_eq!(request.cookie("theme").as_deref(), Some("dark"));
+    }
+
+    fn accepting(accept: &str) -> Request {
+        let mut headers = HeaderMap::new();
+        headers.insert("accept", HeaderValue::from_str(accept).unwrap());
+        Request::create_with("/", "GET", json!({}), headers)
+    }
+
+    #[test]
+    fn content_negotiation_follows_quality_order() {
+        let request = accepting("text/html;q=0.5, application/json");
+        assert!(request.wants_json());
+        assert!(request.accepts_json());
+        assert!(request.accepts_html());
+        assert!(!request.accepts_markdown());
+        assert!(!request.accepts_any_content_type());
+        assert_eq!(request.format("html"), "json");
+
+        let request = accepting("application/vnd.api+json");
+        assert!(request.wants_json());
+        assert!(!request.accepts_json());
+        assert!(request.accepts(&["application/vnd.api+json"]));
+
+        let request = accepting("*/*");
+        assert!(request.accepts_any_content_type());
+        assert!(request.accepts(&["anything/at-all"]));
+        assert_eq!(request.prefers(&["text/html", "application/json"]).as_deref(), Some("text/html"));
+
+        let request = Request::create("/", "GET");
+        assert!(request.acceptable_content_types().is_empty());
+        assert!(request.accepts_any_content_type());
+        assert!(request.accepts_markdown());
+        assert_eq!(request.prefers(&["json"]), None);
+        assert_eq!(request.format("html"), "html");
+
+        let request = accepting("text/*");
+        assert!(request.accepts(&["text/markdown"]));
+        assert_eq!(request.prefers(&["json", "markdown"]).as_deref(), Some("markdown"));
+        assert!(!request.wants_markdown());
+        assert!(accepting("text/markdown; charset=UTF-8").wants_markdown());
+    }
+
+    #[test]
+    fn server_variables_follow_php() {
+        let mut headers = HeaderMap::new();
+        headers.insert("host", HeaderValue::from_static("example.com:8080"));
+        headers.insert("content-type", HeaderValue::from_static("application/json"));
+        headers.insert("x-custom-header", HeaderValue::from_static("yes"));
+        let request = Request::create_with("/a?b=c", "POST", json!({}), headers);
+        assert_eq!(request.server("SERVER_NAME"), json!("example.com"));
+        assert_eq!(request.server("SERVER_PORT"), json!(8080));
+        assert_eq!(request.server("HTTP_HOST"), json!("example.com:8080"));
+        assert_eq!(request.server("CONTENT_TYPE"), json!("application/json"));
+        assert_eq!(request.server("HTTP_X_CUSTOM_HEADER"), json!("yes"));
+        assert_eq!(request.server("QUERY_STRING"), json!("b=c"));
+        assert_eq!(request.server("SERVER_PROTOCOL"), json!("HTTP/1.1"));
+        assert_eq!(request.server("REMOTE_ADDR"), json!("127.0.0.1"));
+        assert_eq!(request.server("HTTPS"), json!(null));
+        assert_eq!(request.scheme_and_http_host(), "http://example.com:8080");
+    }
+
+    #[test]
+    fn nested_files_are_found_with_dot_notation() {
+        let request = Request::create("/", "POST");
+        request.attach_file("user[avatar]", UploadedFile::fake().create("me.jpg", 1));
+        request.attach_file("photos", UploadedFile::fake().create("a.jpg", 1));
+        request.attach_file("photos", UploadedFile::fake().create("b.jpg", 1));
+        assert_eq!(request.file("user.avatar").unwrap().client_original_name(), "me.jpg");
+        assert_eq!(request.file("photos.1").unwrap().client_original_name(), "b.jpg");
+        assert_eq!(request.files("photos").len(), 2);
+        assert_eq!(request.files("photos.0").len(), 1);
+        assert!(request.file("photos.2").is_none());
+        assert!(request.file("user.missing").is_none());
+        assert!(request.has_file("user.avatar"));
+    }
+
+    #[test]
+    fn multipart_requests_spoof_methods_and_carry_files() {
+        let mut files = IndexMap::new();
+        files.insert("photos[]".to_string(), vec![UploadedFile::fake().create("a.jpg", 1)]);
+        let request = Request::create_multipart(
+            "/photos/1",
+            "POST",
+            json!({"_method": "PUT", "title": "Hello"}),
+            files,
+            HeaderMap::new(),
+        );
+        assert_eq!(request.method(), Method::PUT);
+        assert_eq!(request.files("photos").len(), 1);
+        assert_eq!(request.input("title"), json!("Hello"));
+        assert!(request.content().contains("name=\"photos[]\"; filename=\"a.jpg\""));
+        assert_eq!(request.header("content-length").unwrap(), request.body().len().to_string());
+    }
+
+    #[test]
+    fn duplicates_are_independent_copies() {
+        let request = Request::create_with("/?page=1", "POST", json!({"name": "Taylor"}), HeaderMap::new());
+        request.set_attribute("role", "admin");
+        request.set_extension(Arc::new(7u8));
+        let copy = request.duplicate_with(Some(json!({"page": "2"})), None);
+        copy.set_attribute("role", "guest");
+        copy.set_header("x-copy", "1");
+        assert_eq!(copy.query("page"), json!("2"));
+        assert_eq!(copy.input("name"), json!("Taylor"));
+        assert_eq!(request.attribute("role"), json!("admin"));
+        assert!(!request.has_header("x-copy"));
+        assert_eq!(*copy.extension::<u8>().unwrap(), 7);
+        assert_eq!(copy.fluent().get("name"), json!("Taylor"));
+        assert_eq!(copy.to_array(), json!({"page": "2", "name": "Taylor"}));
+    }
+
+    #[test]
+    fn fluent_keys_wrap_lists_by_index() {
+        let request = Request::create_with("/", "POST", json!({"tags": ["a", "b"], "name": "x"}), HeaderMap::new());
+        assert_eq!(request.fluent_key("tags").get("1"), json!("b"));
+        assert_eq!(request.fluent_key("name").get("anything"), json!(null));
     }
 
     #[test]

@@ -268,13 +268,21 @@ impl FilesystemManager {
         let fake = fake.keep_alive(directory);
 
         let url = self.config.string_or("app.url", "http://localhost");
-        fake.build_temporary_urls_using(move |path, expiration: Carbon, _| {
-            Ok(format!(
+        let fake_url = move |path: &str, expiration: Carbon| {
+            format!(
                 "{}/{}?expiration={}",
                 url.trim_end_matches('/'),
                 path.trim_start_matches('/'),
                 expiration.timestamp()
-            ))
+            )
+        };
+        let upload_url = fake_url.clone();
+        fake.build_temporary_urls_using(move |path, expiration: Carbon, _| Ok(fake_url(path, expiration)));
+        fake.build_temporary_upload_urls_using(move |path, expiration: Carbon, _| {
+            Ok(crate::adapter::TemporaryUploadUrl {
+                url: upload_url(path, expiration),
+                headers: Vec::new(),
+            })
         });
 
         let fake = Arc::new(fake);
@@ -575,6 +583,32 @@ impl Storage {
 
     pub fn temporary_url(path: &str, expiration: Carbon) -> Result<String> {
         Self::default_disk()?.temporary_url(path, expiration)
+    }
+
+    pub fn provides_temporary_urls() -> Result<bool> {
+        Ok(Self::default_disk()?.provides_temporary_urls())
+    }
+
+    pub fn temporary_upload_url(
+        path: &str,
+        expiration: Carbon,
+    ) -> Result<crate::adapter::TemporaryUploadUrl> {
+        Self::default_disk()?.temporary_upload_url(path, expiration)
+    }
+
+    pub fn provides_temporary_upload_urls() -> Result<bool> {
+        Ok(Self::default_disk()?.provides_temporary_upload_urls())
+    }
+
+    pub async fn read_stream(path: &str) -> Result<illuminate_http::BodyStream> {
+        Self::default_disk()?.read_stream(path).await
+    }
+
+    pub async fn write_stream(
+        path: &str,
+        contents: impl futures::Stream<Item = Result<bytes::Bytes>> + Send + 'static,
+    ) -> Result<bool> {
+        Self::default_disk()?.write_stream(path, contents).await
     }
 
     pub async fn files(directory: &str) -> Result<Vec<String>> {

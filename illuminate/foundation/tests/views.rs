@@ -184,3 +184,23 @@ async fn views_can_be_cached_and_cleared() {
         .assert_successful()
         .await;
 }
+
+#[tokio::test]
+async fn custom_pagination_views_are_rendered_with_blade() {
+    use illuminate_pagination::{LengthAwarePaginator, PaginatorOptions};
+
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "resources/views/pagination/links.blade.html",
+        r#"<nav>Page {{ $paginator['current_page'] }} of {{ $paginator['total'] }}@if ($paginator['has_more_pages']) <a href="{{ $paginator['next_page_url'] }}">Next</a>@endif</nav>"#,
+    );
+    let _app = TestApp::new(Application::configure_detached(dir.path()));
+
+    let paginator = LengthAwarePaginator::new(vec![1, 2], 6, 2, 2, PaginatorOptions::path("/users"));
+
+    assert_eq!(
+        paginator.links_with("pagination.links").to_string().trim(),
+        r#"<nav>Page 2 of 6 <a href="/users?page=3">Next</a></nav>"#
+    );
+}

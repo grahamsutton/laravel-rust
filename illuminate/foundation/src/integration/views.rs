@@ -221,7 +221,8 @@ fn register_functions(factory: &Factory) {
     blade.function("Gate::denies", move |args| Ok((!gate_check(args)?.truthy()).into()));
 }
 
-/// Render views for `Route::view`, error pages, and maintenance mode.
+/// Render views for `Route::view`, error pages, maintenance mode, and
+/// custom pagination views.
 fn register_renderers(factory: &Factory) {
     let render = {
         let factory = factory.clone();
@@ -237,6 +238,16 @@ fn register_renderers(factory: &Factory) {
         handler.render_views_using(render.clone());
     }
     super::set_view_renderer(render);
+
+    // Paginators render while the application is running, so they use the
+    // current application's views.
+    illuminate_pagination::render_views_using(|name, data| {
+        let factory = illuminate_container::try_app::<Factory>()?;
+        if !factory.exists(name) {
+            return None;
+        }
+        factory.make(name, data).render().ok()
+    });
 
     if let Some(router) = illuminate_container::try_app::<illuminate_routing::Router>() {
         let factory = factory.clone();

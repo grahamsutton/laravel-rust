@@ -290,6 +290,21 @@ app.get_json("/api/users/1")
     });
 ```
 
+Uploads are faked the way Laravel fakes them, with real files (fake images
+decode):
+
+```rust
+let disk = Storage::fake("avatars").unwrap();
+let file = UploadedFile::fake().image("avatar.jpg", 200, 200);
+
+app.attach("avatar", file.clone())
+    .post("/avatar", json!({"name": "Taylor"}))
+    .await
+    .assert_ok();
+
+disk.assert_exists(format!("avatars/{}", file.hash_name()).as_str()).await;
+```
+
 Views and components can be rendered and tested on their own
 (`app.view("welcome", data).assert_see("Laravel")`), and fakes are
 available for mail, notifications, the queue, events, HTTP requests,

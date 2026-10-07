@@ -55,7 +55,10 @@ pub mod provider;
 pub mod serve;
 pub mod uploaded;
 
-pub use adapter::{FilesystemAdapter, TemporaryUrlCallback};
+pub use adapter::{
+    FilesystemAdapter, ServeCallback, TemporaryUploadUrl, TemporaryUploadUrlCallback,
+    TemporaryUrlCallback,
+};
 pub use driver::{Driver, LocalDriver, Permissions, StorageAttributes, Visibility, WriteOptions};
 pub use exceptions::{
     CorruptedPathDetected, FileNotFoundException, FilesystemException, PathTraversalDetected,
@@ -64,7 +67,7 @@ pub use filesystem::{File, Filesystem};
 pub use manager::{DiskCreator, FilesystemManager, Storage};
 pub use path::{IntoPaths, normalize_path};
 pub use provider::FilesystemServiceProvider;
-pub use serve::{ServeFile, ServedDisk, UrlSigner};
+pub use serve::{ReceiveFile, ServeFile, ServedDisk, UrlSigner};
 pub use uploaded::UploadedFileExt;
 
 /// The facades provided by this component.

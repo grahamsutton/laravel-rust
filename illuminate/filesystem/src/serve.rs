@@ -58,6 +58,13 @@ impl ServedDisk {
     pub fn route_uri(&self) -> String {
         format!("{}/{{path}}", self.uri)
     }
+
+    /// The name of the route receiving uploads for this disk
+    /// (`storage.{disk}.upload`): a `PUT` to [`route_uri`](Self::route_uri)
+    /// handled by [`ReceiveFile`].
+    pub fn upload_route_name(&self) -> String {
+        format!("storage.{}.upload", self.disk)
+    }
 }
 
 /// Serves a file from a local disk: Laravel's `ServeFile` route action.
@@ -87,7 +94,7 @@ impl ServeFile {
         if !self.has_valid_signature(request) {
             return Err(HttpException::new(if self.is_production { 404 } else { 403 }).into());
         }
-        match self.serve(path).await {
+        match self.serve(request, path).await {
             Err(error) if error.is::<PathTraversalDetected>() => {
                 Err(HttpException::new(404).into())
             }
@@ -95,36 +102,84 @@ impl ServeFile {
         }
     }
 
-    async fn serve(&self, path: &str) -> Result<Response> {
+    async fn serve(&self, request: &Request, path: &str) -> Result<Response> {
         let disk = Storage::disk(&self.disk)?;
         if !disk.exists(path).await? {
             return Err(HttpException::new(404).into());
         }
-        let mut response = disk.response(path, None).await?;
-        response.set_header(
-            "cache-control",
-            "no-store, no-cache, must-revalidate, max-age=0",
-        );
-        response.set_header(
-            "content-security-policy",
-            "default-src 'none'; style-src 'unsafe-inline'; sandbox",
-        );
+        let headers = [
+            ("cache-control", "no-store, no-cache, must-revalidate, max-age=0"),
+            (
+                "content-security-policy",
+                "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+            ),
+        ];
+        let mut response = disk.serve(request, path, None, &headers).await?;
+        for (name, value) in headers {
+            response.set_header(name, value);
+        }
         Ok(response)
     }
 
     fn has_valid_signature(&self, request: &Request) -> bool {
-        let upload = match request.query("upload") {
-            Value::String(value) => matches!(
-                value.to_ascii_lowercase().as_str(),
-                "1" | "true" | "on" | "yes"
-            ),
-            other => other.truthy(),
-        };
+        let upload = is_upload(request);
         let public = self.config.get("visibility").and_then(Value::as_str) == Some("public");
         !upload
             && (public
                 || try_app::<dyn UrlSigner>()
                     .is_some_and(|signer| signer.has_valid_relative_signature(request)))
+    }
+}
+
+/// Receives files uploaded to a local disk's temporary upload URLs:
+/// Laravel's `ReceiveFile` route action, for the `PUT` route named
+/// `storage.{disk}.upload`.
+#[derive(Debug, Clone)]
+pub struct ReceiveFile {
+    disk: String,
+    is_production: bool,
+}
+
+impl ReceiveFile {
+    /// Create a new upload receiver for the given disk.
+    pub fn new(disk: impl Into<String>, _config: Value, is_production: bool) -> Self {
+        Self {
+            disk: disk.into(),
+            is_production,
+        }
+    }
+
+    /// Store the request's body at the given path. Requests without a
+    /// valid upload signature are rejected (`403`, or `404` in production),
+    /// and traversal attempts are a `404`. Success is `204 No Content`.
+    pub async fn handle(&self, request: &Request, path: &str) -> Result<Response> {
+        if !self.has_valid_signature(request) {
+            return Err(HttpException::new(if self.is_production { 404 } else { 403 }).into());
+        }
+        let disk = Storage::disk(&self.disk)?;
+        match disk.put(path, request.body()).await {
+            Ok(_) => Ok(Response::no_content()),
+            Err(error) if error.is::<PathTraversalDetected>() => Err(HttpException::new(404).into()),
+            Err(error) => Err(error),
+        }
+    }
+
+    fn has_valid_signature(&self, request: &Request) -> bool {
+        is_upload(request)
+            && try_app::<dyn UrlSigner>()
+                .is_some_and(|signer| signer.has_valid_relative_signature(request))
+    }
+}
+
+/// Whether the request's `upload` query parameter is truthy (PHP's
+/// `FILTER_VALIDATE_BOOLEAN`).
+fn is_upload(request: &Request) -> bool {
+    match request.query("upload") {
+        Value::String(value) => matches!(
+            value.to_ascii_lowercase().as_str(),
+            "1" | "true" | "on" | "yes"
+        ),
+        other => other.truthy(),
     }
 }
 

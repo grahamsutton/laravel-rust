@@ -13,7 +13,7 @@ use illuminate_http::{
     with_request,
 };
 use illuminate_support::error::RuntimeException;
-use illuminate_support::{Error, Result, Value};
+use illuminate_support::{Error, Map, Result, Str, Value};
 
 use crate::exceptions::{
     MiddlewareNotFoundException, RecursiveMiddlewareGroupException, UrlGenerationException,
@@ -67,6 +67,8 @@ pub struct GroupAttributes {
     pub missing: Option<RouteHandler>,
     /// Whether nested bindings are scoped.
     pub scope_bindings: Option<bool>,
+    /// Metadata for every route in the group.
+    pub metadata: Map<String, Value>,
 }
 
 impl std::fmt::Debug for GroupAttributes {
@@ -78,6 +80,7 @@ impl std::fmt::Debug for GroupAttributes {
             .field("middleware", &self.middleware)
             .field("excluded_middleware", &self.excluded_middleware)
             .field("wheres", &self.wheres)
+            .field("metadata", &self.metadata)
             .finish_non_exhaustive()
     }
 }
@@ -119,6 +122,9 @@ impl GroupAttributes {
         let mut excluded_middleware = old.excluded_middleware.clone();
         excluded_middleware.extend(new.excluded_middleware.clone());
 
+        let mut metadata = old.metadata.clone();
+        crate::route::merge_metadata(&mut metadata, new.metadata.clone());
+
         Self {
             prefix,
             name,
@@ -128,6 +134,7 @@ impl GroupAttributes {
             wheres,
             missing: new.missing.clone().or_else(|| old.missing.clone()),
             scope_bindings: new.scope_bindings.or(old.scope_bindings),
+            metadata,
         }
     }
 }
@@ -324,6 +331,11 @@ impl Router {
                 if state.scope_bindings.is_none() {
                     state.scope_bindings = group.scope_bindings;
                 }
+                if !group.metadata.is_empty() {
+                    let mut metadata = group.metadata.clone();
+                    crate::route::merge_metadata(&mut metadata, std::mem::take(&mut state.metadata));
+                    state.metadata = metadata;
+                }
             });
             if let Some(domain) = &group.domain
                 && route.get_domain().is_none()
@@ -483,6 +495,28 @@ impl Router {
         }
     }
 
+    /// Register many resource controllers that allow soft deleted models
+    /// to be bound (`with_trashed`) at once.
+    pub fn soft_deletable_resources(&self, resources: Vec<(&str, Arc<dyn ResourceController>)>) {
+        for (name, controller) in resources {
+            PendingResourceRegistration::new(self.clone(), name, controller, false).with_trashed(&[]);
+        }
+    }
+
+    /// Register many singleton resource controllers at once.
+    pub fn singletons(&self, singletons: Vec<(&str, Arc<dyn ResourceController>)>) {
+        for (name, controller) in singletons {
+            PendingSingletonResourceRegistration::new(self.clone(), name, controller, false);
+        }
+    }
+
+    /// Register many API singleton resource controllers at once.
+    pub fn api_singletons(&self, singletons: Vec<(&str, Arc<dyn ResourceController>)>) {
+        for (name, controller) in singletons {
+            PendingSingletonResourceRegistration::new(self.clone(), name, controller, true);
+        }
+    }
+
     /// Register a singleton resource controller (`show`, `edit` and `update`).
     pub fn singleton<C: ResourceController>(
         &self,
@@ -538,6 +572,11 @@ impl Router {
             .last()
             .and_then(|group| group.prefix.clone())
             .unwrap_or_default()
+    }
+
+    /// Start a group (or route) with metadata.
+    pub fn metadata(&self, metadata: Value) -> RouteRegistrar {
+        RouteRegistrar::new(self.clone()).metadata(metadata)
     }
 
     /// Start a group (or route) with a URI prefix.
@@ -1006,9 +1045,10 @@ impl Router {
         let method = request.method().as_str().to_ascii_uppercase();
         let path = crate::compiled::normalize_path(&request.decoded_path());
         let host = request.host();
+        let secure = request.secure();
 
         let routes = self.inner.routes.read().unwrap();
-        if let Some(found) = match_against(&routes, &method, &path, &host, true)? {
+        if let Some(found) = match_against(&routes, &method, &path, &host, secure, true)? {
             return Ok(found);
         }
 
@@ -1019,7 +1059,7 @@ impl Router {
                 .filter(|route| route.has_method(verb))
                 .cloned()
                 .collect();
-            if match_against(&candidates, verb, &path, &host, false)?.is_some() {
+            if match_against(&candidates, verb, &path, &host, secure, false)?.is_some() {
                 others.push(verb.to_string());
             }
         }
@@ -1116,6 +1156,18 @@ impl Router {
         self.current().map(|route| route.action_name())
     }
 
+    /// Determine if the current route's action matches any of the patterns
+    /// (`"UserController@*"`).
+    pub fn uses(&self, patterns: &[&str]) -> bool {
+        self.current_route_action()
+            .is_some_and(|action| patterns.iter().any(|pattern| Str::is(pattern, &action)))
+    }
+
+    /// Determine if the current route's action is exactly the given one.
+    pub fn current_route_uses(&self, action: &str) -> bool {
+        self.current_route_action().as_deref() == Some(action)
+    }
+
     /// Determine if the current route's name matches any of the patterns.
     pub fn current_route_named(&self, patterns: &[&str]) -> bool {
         self.current().is_some_and(|route| route.named(patterns))
@@ -1127,11 +1179,14 @@ fn match_against(
     method: &str,
     path: &str,
     host: &str,
+    secure: bool,
     including_method: bool,
 ) -> Result<Option<(RouteDefinition, IndexMap<String, String>)>> {
     let mut fallback = None;
     for route in routes {
-        if let Some(parameters) = route.matches_parts(method, path, host, including_method)? {
+        if let Some(parameters) =
+            route.matches_parts(method, path, host, secure, including_method)?
+        {
             if route.is_fallback() {
                 if fallback.is_none() {
                     fallback = Some((route.clone(), parameters));

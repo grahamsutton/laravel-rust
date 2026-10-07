@@ -307,7 +307,7 @@ fn wire_validation() {
 /// Local disks configured with `serve => true` hand out signed URLs, and get
 /// a `storage.{disk}` route serving their files.
 fn wire_filesystem() {
-    use illuminate_filesystem::{ServeFile, Storage, UrlSigner};
+    use illuminate_filesystem::{ReceiveFile, ServeFile, Storage, UrlSigner};
     use illuminate_http::Request;
     use illuminate_routing::{Path, Route, URL};
     use illuminate_support::{Carbon, Result};
@@ -343,5 +343,13 @@ fn wire_filesystem() {
         })
         .where_("path", ".*")
         .name(&disk.route_name());
+
+        let receive = Arc::new(ReceiveFile::new(disk.disk.clone(), disk.config.clone(), is_production));
+        Route::put(&disk.route_uri(), move |request: Request, Path(path): Path<String>| {
+            let receive = receive.clone();
+            async move { receive.handle(&request, &path).await }
+        })
+        .where_("path", ".*")
+        .name(&disk.upload_route_name());
     }
 }

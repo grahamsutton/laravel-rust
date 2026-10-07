@@ -6,7 +6,7 @@ use indexmap::IndexMap;
 
 use illuminate_container::{Container, LocalInstanceGuard};
 use illuminate_cookie::CookieValuePrefix;
-use illuminate_http::{HeaderMap, HeaderName, HeaderValue, Request};
+use illuminate_http::{HeaderMap, HeaderName, HeaderValue, Request, UploadedFile};
 use illuminate_session::SessionManager;
 use illuminate_support::{Map, Result, Str, Value, json};
 
@@ -33,6 +33,7 @@ pub struct TestApp {
     pub(super) cookies: IndexMap<String, String>,
     unencrypted_cookies: IndexMap<String, String>,
     pending_session: Map<String, Value>,
+    pending_files: IndexMap<String, Vec<UploadedFile>>,
     follow_redirects: bool,
     pub(super) time_traveled: bool,
     _guard: LocalInstanceGuard,
@@ -84,6 +85,7 @@ impl TestApp {
             cookies: IndexMap::new(),
             unencrypted_cookies: IndexMap::new(),
             pending_session: Map::new(),
+            pending_files: IndexMap::new(),
             follow_redirects: false,
             time_traveled: false,
             _guard: guard,
@@ -181,6 +183,42 @@ impl TestApp {
         self.pending_session
             .insert("_previous".into(), json!({ "url": url.clone() }));
         self.with_header("referer", &url)
+    }
+
+    /// Upload a file with the next request — Laravel's
+    /// `$this->post('/avatar', ['avatar' => $file])`.
+    ///
+    /// The next `post`, `put`, `patch` (or any other) request is sent as a
+    /// `multipart/form-data` request carrying the file alongside its data;
+    /// JSON requests carry the file next to their JSON body. Attaching
+    /// several files under the same name (or a `photos[]` name) uploads a
+    /// list of files.
+    ///
+    /// ```ignore
+    /// Storage::fake("avatars")?;
+    /// let file = UploadedFile::fake().image("avatar.jpg", 200, 200);
+    ///
+    /// app.attach("avatar", file.clone())
+    ///     .post("/avatar", json!({"name": "Taylor"}))
+    ///     .await
+    ///     .assert_ok();
+    ///
+    /// Storage::disk("avatars")?.assert_exists(file.hash_name()).await;
+    /// ```
+    pub fn attach(&mut self, name: &str, file: UploadedFile) -> &mut Self {
+        self.pending_files
+            .entry(name.trim_end_matches("[]").to_string())
+            .or_default()
+            .push(file);
+        self
+    }
+
+    /// Upload several files under one name with the next request.
+    pub fn attach_many(&mut self, name: &str, files: impl IntoIterator<Item = UploadedFile>) -> &mut Self {
+        for file in files {
+            self.attach(name, file);
+        }
+        self
     }
 
     /// Automatically follow redirects.
@@ -293,7 +331,20 @@ impl TestApp {
 
         let uri = if uri.starts_with('/') || uri.starts_with("http") { uri.to_string() } else { format!("/{uri}") };
         let parameters = if data.is_null() { Value::Object(Map::new()) } else { data };
-        let request = Request::create_with(&uri, method, parameters, headers);
+        let files = std::mem::take(&mut self.pending_files);
+        let request = if files.is_empty() {
+            Request::create_with(&uri, method, parameters, headers)
+        } else if json {
+            let request = Request::create_with(&uri, method, parameters, headers);
+            for (name, list) in files {
+                for file in list {
+                    request.attach_file(&name, file);
+                }
+            }
+            request
+        } else {
+            Request::create_multipart(&uri, method, parameters, files, headers)
+        };
 
         let response = self.app.handle_request(request.clone()).await;
 

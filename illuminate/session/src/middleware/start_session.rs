@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
+use illuminate_cache::Cache;
 use illuminate_config::Repository;
 use illuminate_container::try_app;
 use illuminate_cookie::CookieQueue;
 use illuminate_http::{
     Cookie, Middleware, Next, Request, Response, async_trait, current_request, with_request,
 };
+use illuminate_routing::CurrentRoute;
 use illuminate_support::{Map, Result, Value, to_value};
 
 use crate::manager::{SessionConfig, SessionManager};
@@ -55,14 +57,51 @@ impl StartSession {
         Ok(session)
     }
 
+    /// Handle the request while holding the session's lock, so other
+    /// requests using the same session wait their turn (`Route::block`).
+    async fn handle_request_while_blocking(
+        &self,
+        manager: &SessionManager,
+        request: Request,
+        session: Arc<Store>,
+        next: Next,
+    ) -> Result<Response> {
+        // Only matched routes can block; anything else runs as usual.
+        let Some(route) = request.extension::<CurrentRoute>() else {
+            return self.handle_stateful_request(manager, request, session, next).await;
+        };
+        let lock_for = route
+            .route()
+            .locks_for()
+            .filter(|seconds| *seconds > 0)
+            .unwrap_or_else(|| manager.default_route_block_lock_seconds());
+        let wait_for = route
+            .route()
+            .waits_for()
+            .unwrap_or_else(|| manager.default_route_block_wait_seconds());
+
+        let lock = Cache::manager()?
+            .driver(manager.block_driver().as_deref())?
+            .lock(&format!("session:{}", session.id()), lock_for)
+            .between_blocked_attempts_sleep_for(50);
+
+        let result = match lock.block(wait_for).await {
+            Ok(_) => self.handle_stateful_request(manager, request, session, next).await,
+            Err(error) => Err(error),
+        };
+        // Releasing a lock we never acquired is a no-op.
+        let _ = lock.release().await;
+        result
+    }
+
     async fn handle_stateful_request(
         &self,
         manager: &SessionManager,
         request: Request,
+        session: Arc<Store>,
         next: Next,
     ) -> Result<Response> {
         let config = manager.get_session_config();
-        let session = self.get_session(manager, &request)?;
 
         // Start the session so its data is ready for the application.
         session.set_request_on_handler(&request);
@@ -155,7 +194,16 @@ impl Middleware for StartSession {
         if !manager.session_configured() {
             return Ok(next.run(request).await);
         }
-        self.handle_stateful_request(&manager, request, next).await
+        let session = self.get_session(&manager, &request)?;
+        let route_blocks = request
+            .extension::<CurrentRoute>()
+            .is_some_and(|route| route.route().locks_for().is_some());
+        if manager.should_block() || route_blocks {
+            return self
+                .handle_request_while_blocking(&manager, request, session, next)
+                .await;
+        }
+        self.handle_stateful_request(&manager, request, session, next).await
     }
 }
 

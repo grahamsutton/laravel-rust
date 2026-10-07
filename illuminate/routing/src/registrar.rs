@@ -162,6 +162,33 @@ impl RouteRegistrar {
         self
     }
 
+    /// Add metadata to every route in the group (merged recursively with
+    /// the metadata of enclosing groups and of the routes themselves).
+    ///
+    /// ```
+    /// use std::sync::Arc;
+    /// use illuminate_container::Container;
+    /// use illuminate_routing::Route;
+    /// use illuminate_support::json;
+    ///
+    /// let _guard = Container::set_local_instance(Arc::new(Container::new()));
+    ///
+    /// Route::metadata(json!({"docs": {"group": "Billing"}})).group(|| {
+    ///     Route::get("/invoices", || async { "Invoices" })
+    ///         .name("invoices")
+    ///         .metadata(json!({"docs": {"summary": "List invoices"}}));
+    /// });
+    ///
+    /// let route = Route::get_by_name("invoices").unwrap();
+    /// assert_eq!(route.get_metadata(), json!({"docs": {"group": "Billing", "summary": "List invoices"}}));
+    /// ```
+    pub fn metadata(mut self, metadata: Value) -> Self {
+        if let Value::Object(metadata) = metadata {
+            crate::route::merge_metadata(&mut self.attributes.metadata, metadata);
+        }
+        self
+    }
+
     /// Define the group: every route registered inside the callback
     /// receives the collected attributes.
     pub fn group(self, routes: impl FnOnce()) {

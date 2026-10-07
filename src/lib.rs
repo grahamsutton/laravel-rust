@@ -176,8 +176,8 @@ pub mod prelude {
     pub use illuminate_foundation::{Application, ApplicationBuilder, ConfigFile, Inspiring};
     pub use illuminate_foundation::scheduling::ScheduleJobs;
     pub use illuminate_http::{
-        HttpException, IntoResponse, Json, Middleware, Next, Request, Response, StatusCode,
-        UploadedFile,
+        HttpException, IntoResponse, Json, Middleware, Next, Request, Response, StatusCode, StreamedEvent,
+        StreamedJson, UploadedFile,
     };
     pub use illuminate_broadcasting::{
         Channel, EncryptedPrivateChannel, PresenceChannel, PrivateChannel, ShouldBroadcast, broadcast,
@@ -191,7 +191,7 @@ pub mod prelude {
     pub use illuminate_auth::{AuthResponse, AuthUser, Authenticatable, MustVerifyEmail, Policy, RequestAuthExt};
     pub use illuminate_console::{Command, Console};
     pub use illuminate_database::{Blueprint, Migration, Seeder};
-    pub use illuminate_session::RequestSessionExt;
+    pub use illuminate_session::{RedirectSessionExt, RequestSessionExt};
     pub use illuminate_view::{Component, View};
     pub use illuminate_support::error::Context as _;
     pub use illuminate_validation::{
