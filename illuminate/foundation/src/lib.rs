@@ -19,6 +19,7 @@ pub mod integration;
 pub mod logging;
 pub mod providers;
 pub mod scheduling;
+pub mod session_cache;
 pub mod testing;
 pub mod vite;
 

@@ -42,6 +42,7 @@ pub fn boot() {
     wire_context();
     crate::scheduling::boot();
     crate::logging::boot();
+    crate::session_cache::boot();
 }
 
 /// The `Context` travels with the jobs a request dispatches, and is

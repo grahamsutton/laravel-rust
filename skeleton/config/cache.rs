@@ -25,7 +25,8 @@ pub fn config() -> Value {
         | same cache driver to group types of items stored in your caches.
         |
         | Supported drivers: "array", "database", "file", "memcached",
-        |                    "redis", "dynamodb", "null"
+        |                    "redis", "dynamodb", "storage", "session",
+        |                    "failover", "null"
         |
         */
 
@@ -47,6 +48,12 @@ pub fn config() -> Value {
                 "driver": "file",
                 "path": storage_path("framework/cache/data"),
                 "lock_path": storage_path("framework/cache/data"),
+            },
+
+            "storage": {
+                "driver": "storage",
+                "disk": env("CACHE_STORAGE_DISK", Value::Null),
+                "path": env("CACHE_STORAGE_PATH", "framework/cache/data"),
             },
 
             "memcached": {
@@ -81,6 +88,11 @@ pub fn config() -> Value {
                 "region": env("AWS_DEFAULT_REGION", "us-east-1"),
                 "table": env("DYNAMODB_CACHE_TABLE", "cache"),
                 "endpoint": env("DYNAMODB_ENDPOINT", Value::Null),
+            },
+
+            "failover": {
+                "driver": "failover",
+                "stores": ["database", "array"],
             },
 
             "null": {

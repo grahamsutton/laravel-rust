@@ -14,12 +14,14 @@ use illuminate_database::{Connection, DatabaseManager};
 use crate::array_store::ArrayStore;
 use crate::database_store::{DEFAULT_LOCK_LOTTERY, DEFAULT_LOCK_TIMEOUT, DatabaseStore};
 use crate::dynamodb_store::{DynamoDbClient, DynamoDbStore};
+use crate::failover_store::FailoverStore;
 use crate::file_store::FileStore;
 use crate::memcached::Memcached;
 use crate::memcached_store::MemcachedStore;
 use crate::null_store::NullStore;
 use crate::redis_store::{RedisStore, redis_manager};
 use crate::repository::Repository;
+use crate::storage_store::StorageStore;
 use crate::store::Store;
 
 /// Creates a cache repository for a custom driver from the store's configuration.
@@ -139,10 +141,12 @@ impl CacheManager {
             )),
             "database" => Arc::new(self.create_database_store(&config)),
             "dynamodb" => Arc::new(self.create_dynamodb_store(&config)),
+            "failover" => Arc::new(Self::create_failover_store(&config)),
             "file" => Arc::new(self.create_file_store(&config)?),
             "memcached" => Arc::new(self.create_memcached_store(&config)?),
             "null" => Arc::new(NullStore),
             "redis" => Arc::new(self.create_redis_store(&config)),
+            "storage" => Arc::new(self.create_storage_store(&config)?),
             other => {
                 return Err(InvalidArgumentException::new(format!(
                     "Driver [{other}] is not supported."
@@ -151,6 +155,27 @@ impl CacheManager {
             }
         };
         Ok(Repository::from_arc(store).with_name(name))
+    }
+
+    /// Create the `failover` store, trying the configured `stores` in order.
+    fn create_failover_store(config: &Value) -> FailoverStore {
+        let stores = config
+            .get("stores")
+            .and_then(Value::as_array)
+            .map(|stores| stores.iter().map(ValueExt::to_string_lossy).collect())
+            .unwrap_or_default();
+        FailoverStore::new(stores, Arc::new(|name: &str| crate::facade::manager()?.store(name)))
+    }
+
+    /// Create the `storage` store, on the configured filesystem `disk` (the
+    /// default disk when unset).
+    fn create_storage_store(&self, config: &Value) -> Result<StorageStore> {
+        let disk = match config.get("disk").and_then(Value::as_str).filter(|disk| !disk.is_empty()) {
+            Some(disk) => illuminate_filesystem::Storage::disk(disk)?,
+            None => illuminate_filesystem::Storage::default_disk()?,
+        };
+        let path = config.get("path").and_then(Value::as_str).unwrap_or_default();
+        Ok(StorageStore::new(disk, path, self.get_prefix(config)))
     }
 
     fn create_file_store(&self, config: &Value) -> Result<FileStore> {

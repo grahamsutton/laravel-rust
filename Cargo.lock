@@ -1174,10 +1174,12 @@ name = "illuminate-cache"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures",
  "hex",
  "illuminate-config",
  "illuminate-container",
  "illuminate-database",
+ "illuminate-events",
  "illuminate-filesystem",
  "illuminate-http",
  "illuminate-http-client",

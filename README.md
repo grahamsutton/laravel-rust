@@ -284,7 +284,7 @@ processes, and more: `Queue::fake()`, `Bus::assert_dispatched::<T>()`,
 | Authentication, gates, and policies | `illuminate-auth` |
 | Sanctum: API tokens and SPA authentication | `laravel-sanctum` (the `sanctum` feature) |
 | Sessions, cookies, encryption, hashing | `illuminate-session`, `-cookie`, `-encryption`, `-hashing` |
-| Cache (array, file, database, Redis, Memcached, DynamoDB) and rate limiting | `illuminate-cache` |
+| Cache (array, file, database, Redis, Memcached, DynamoDB, storage, session, failover) and rate limiting | `illuminate-cache` |
 | Redis (with cache, queue, and session drivers) | `illuminate-redis` |
 | Queues (database, Redis, SQS, Beanstalkd), jobs, chains, and batches | `illuminate-queue` |
 | Broadcasting (Pusher, Reverb, Ably) | `illuminate-broadcasting` |

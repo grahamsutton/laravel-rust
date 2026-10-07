@@ -143,6 +143,7 @@ pub fn cache() -> Value {
         "default": env("CACHE_STORE", "database"),
         "stores": {
             "array": {"driver": "array", "serialize": false},
+            "session": {"driver": "session", "key": env("SESSION_CACHE_KEY", "_cache")},
             "database": {
                 "driver": "database",
                 "connection": env("DB_CACHE_CONNECTION", Value::Null),
@@ -154,6 +155,11 @@ pub fn cache() -> Value {
                 "driver": "file",
                 "path": storage_path("framework/cache/data"),
                 "lock_path": storage_path("framework/cache/data"),
+            },
+            "storage": {
+                "driver": "storage",
+                "disk": env("CACHE_STORAGE_DISK", Value::Null),
+                "path": env("CACHE_STORAGE_PATH", "framework/cache/data"),
             },
             "memcached": {
                 "driver": "memcached",
@@ -178,6 +184,10 @@ pub fn cache() -> Value {
                 "region": env("AWS_DEFAULT_REGION", "us-east-1"),
                 "table": env("DYNAMODB_CACHE_TABLE", "cache"),
                 "endpoint": env("DYNAMODB_ENDPOINT", Value::Null),
+            },
+            "failover": {
+                "driver": "failover",
+                "stores": ["database", "array"],
             },
             "null": {"driver": "null"},
         },
