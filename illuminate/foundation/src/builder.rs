@@ -178,6 +178,17 @@ impl ApplicationBuilder {
         self.tap(move |app| app.booted(move |_| register()))
     }
 
+    /// Register the broadcasting routes and the application's channels
+    /// (`routes/channels.rs`).
+    ///
+    /// ```ignore
+    /// .with_broadcasting(routes::channels)
+    /// ```
+    pub fn with_broadcasting(mut self, channels: impl Fn() + Send + Sync + 'static) -> Self {
+        self.routing.channels(channels);
+        self
+    }
+
     /// Run a callback against the application once it is created (used by
     /// framework extensions such as console commands and migrations).
     pub fn tap(mut self, callback: impl FnOnce(&Arc<Application>) + Send + 'static) -> Self {
@@ -245,6 +256,15 @@ fn load_routes(app: &Application, routing: &Routing) {
     for routes in &routing.api {
         let routes = routes.clone();
         router.prefix(&prefix).middleware("api").group(move || routes());
+    }
+
+    // Broadcast channels: the `/broadcasting/auth` routes, then the
+    // channels' authorization callbacks.
+    if !routing.channels.is_empty() {
+        illuminate_broadcasting::Broadcast::routes(None);
+        for channels in &routing.channels {
+            channels();
+        }
     }
 
     for routes in &routing.then {

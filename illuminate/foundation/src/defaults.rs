@@ -14,6 +14,7 @@ pub fn all() -> Vec<ConfigFile> {
     vec![
         ConfigFile::new("app", app),
         ConfigFile::new("auth", auth),
+        ConfigFile::new("broadcasting", broadcasting),
         ConfigFile::new("cache", cache),
         ConfigFile::new("cors", cors),
         ConfigFile::new("database", database),
@@ -90,6 +91,52 @@ pub fn auth() -> Value {
     })
 }
 
+pub fn broadcasting() -> Value {
+    let https = |scheme: &str| env(scheme, "https").to_string_lossy() == "https";
+    json!({
+        "default": env("BROADCAST_CONNECTION", "null"),
+        "connections": {
+            "reverb": {
+                "driver": "reverb",
+                "key": env("REVERB_APP_KEY", Value::Null),
+                "secret": env("REVERB_APP_SECRET", Value::Null),
+                "app_id": env("REVERB_APP_ID", Value::Null),
+                "options": {
+                    "host": env("REVERB_HOST", Value::Null),
+                    "port": env("REVERB_PORT", 443),
+                    "scheme": env("REVERB_SCHEME", "https"),
+                    "useTLS": https("REVERB_SCHEME"),
+                },
+                "client_options": {},
+            },
+            "pusher": {
+                "driver": "pusher",
+                "key": env("PUSHER_APP_KEY", Value::Null),
+                "secret": env("PUSHER_APP_SECRET", Value::Null),
+                "app_id": env("PUSHER_APP_ID", Value::Null),
+                "options": {
+                    "cluster": env("PUSHER_APP_CLUSTER", Value::Null),
+                    "host": match env("PUSHER_HOST", Value::Null) {
+                        Value::Null => Value::String(format!("api-{}.pusher.com", env("PUSHER_APP_CLUSTER", "mt1").to_string_lossy())),
+                        host => host,
+                    },
+                    "port": env("PUSHER_PORT", 443),
+                    "scheme": env("PUSHER_SCHEME", "https"),
+                    "encrypted": true,
+                    "useTLS": https("PUSHER_SCHEME"),
+                },
+                "client_options": {},
+            },
+            "ably": {
+                "driver": "ably",
+                "key": env("ABLY_KEY", Value::Null),
+            },
+            "log": {"driver": "log"},
+            "null": {"driver": "null"},
+        },
+    })
+}
+
 pub fn cache() -> Value {
     json!({
         "default": env("CACHE_STORE", "database"),
@@ -106,6 +153,11 @@ pub fn cache() -> Value {
                 "driver": "file",
                 "path": storage_path("framework/cache/data"),
                 "lock_path": storage_path("framework/cache/data"),
+            },
+            "redis": {
+                "driver": "redis",
+                "connection": env("REDIS_CACHE_CONNECTION", "cache"),
+                "lock_connection": env("REDIS_CACHE_LOCK_CONNECTION", "default"),
             },
             "null": {"driver": "null"},
         },
@@ -348,6 +400,14 @@ pub fn queue() -> Value {
                 "table": env("DB_QUEUE_TABLE", "jobs"),
                 "queue": env("DB_QUEUE", "default"),
                 "retry_after": env("DB_QUEUE_RETRY_AFTER", 90).to_i64_lossy().unwrap_or(90),
+                "after_commit": false,
+            },
+            "redis": {
+                "driver": "redis",
+                "connection": env("REDIS_QUEUE_CONNECTION", "default"),
+                "queue": env("REDIS_QUEUE", "default"),
+                "retry_after": env("REDIS_QUEUE_RETRY_AFTER", 90).to_i64_lossy().unwrap_or(90),
+                "block_for": Value::Null,
                 "after_commit": false,
             },
             "deferred": {"driver": "deferred"},

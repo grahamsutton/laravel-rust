@@ -96,7 +96,7 @@ impl Command for AboutCommand {
             (
                 "Drivers",
                 vec![
-                    ("Broadcasting", config.string_or("broadcasting.default", "log")),
+                    ("Broadcasting", config.string_or("broadcasting.default", "null")),
                     ("Cache", config.string("cache.default")),
                     ("Database", config.string("database.default")),
                     ("Logs", log_driver(&config.get("logging.default"), &config.get("logging.channels"))),

@@ -141,6 +141,7 @@ illuminate-view.workspace = true
 illuminate-auth.workspace = true
 illuminate-queue.workspace = true
 illuminate-redis.workspace = true
+illuminate-broadcasting.workspace = true
 illuminate-process.workspace = true
 illuminate-concurrency.workspace = true
 illuminate-http-client.workspace = true

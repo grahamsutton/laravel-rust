@@ -26,6 +26,7 @@
 // ---------------------------------------------------------------------------
 
 pub use illuminate_auth as auth;
+pub use illuminate_broadcasting as broadcasting;
 pub use illuminate_cache as cache;
 pub use illuminate_config as config;
 pub use illuminate_console as console;
@@ -77,6 +78,7 @@ pub use illuminate_support::{Error, Result, Value, json};
 /// Laravel's facades: static, expressive access to framework services.
 pub mod facades {
     pub use illuminate_auth::facades::{Auth, Gate, Password};
+    pub use illuminate_broadcasting::Broadcast;
     pub use illuminate_cache::facades::{Cache, RateLimiter};
     pub use illuminate_config::Config;
     pub use illuminate_console::{Artisan, Schedule};
@@ -163,6 +165,9 @@ pub mod prelude {
         HttpException, IntoResponse, Json, Middleware, Next, Request, Response, StatusCode,
         UploadedFile,
     };
+    pub use illuminate_broadcasting::{
+        Channel, EncryptedPrivateChannel, PresenceChannel, PrivateChannel, ShouldBroadcast, broadcast,
+    };
     pub use illuminate_http_resources::prelude::*;
     pub use illuminate_pagination::{LengthAwarePaginator, Paginator};
     pub use illuminate_queue::{Dispatchable, InteractsWithQueue, ShouldQueue};
@@ -188,6 +193,9 @@ pub mod prelude {
 
 /// Register job types so queue workers can run them: `register_job!(ProcessPodcast);`
 pub use illuminate_queue::register_job;
+
+/// Register events broadcast when dispatched: `register_broadcast!(OrderShipped);`
+pub use illuminate_broadcasting::register_broadcast;
 
 // ---------------------------------------------------------------------------
 // Application conventions
