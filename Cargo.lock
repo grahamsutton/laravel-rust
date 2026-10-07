@@ -1353,6 +1353,7 @@ dependencies = [
  "illuminate-cache",
  "illuminate-config",
  "illuminate-container",
+ "illuminate-database",
  "illuminate-http",
  "illuminate-support",
  "indexmap",

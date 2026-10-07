@@ -36,6 +36,7 @@
 pub mod connection;
 pub mod de;
 mod driver;
+pub mod eloquent;
 pub mod error;
 pub mod expression;
 mod facade;
@@ -69,6 +70,32 @@ pub use seeder::{Seeder, SeederRegistry};
 
 /// Re-exported for implementing [`Migration`] and [`Seeder`].
 pub use async_trait::async_trait;
+
+/// Build Eloquent [`Attributes`](eloquent::Attributes) from `key => value`
+/// pairs of mixed types (dates are stored in storage format).
+///
+/// ```
+/// use illuminate_database::attrs;
+/// use illuminate_support::json;
+///
+/// let attributes = attrs! { "name" => "Taylor", "votes" => 10, "admin" => true };
+/// assert_eq!(attributes.get("votes"), Some(&json!(10)));
+/// ```
+#[macro_export]
+macro_rules! attrs {
+    ($($key:expr => $value:expr),* $(,)?) => {{
+        #[allow(unused_mut)]
+        let mut attributes = $crate::eloquent::Attributes::new();
+        $( attributes.insert($key, $value); )*
+        attributes
+    }};
+}
+
+/// Re-exports used by the code `#[derive(Model)]` generates. Not public API.
+#[doc(hidden)]
+pub mod __private {
+    pub use illuminate_support as support;
+}
 
 /// The most commonly used database types, for glob imports.
 pub mod prelude {

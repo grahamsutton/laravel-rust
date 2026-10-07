@@ -12,6 +12,8 @@ rust-version.workspace = true
 illuminate-support.workspace = true
 illuminate-container.workspace = true
 illuminate-config.workspace = true
+illuminate-macros.workspace = true
+illuminate-pagination.workspace = true
 sqlx.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -22,6 +24,7 @@ futures.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 regex.workspace = true
+rand.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

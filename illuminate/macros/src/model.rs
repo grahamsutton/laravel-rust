@@ -74,14 +74,20 @@ fn string_arg(meta: &Meta) -> syn::Result<String> {
             },
             other => Err(syn::Error::new_spanned(other, "expected a string")),
         },
-        Meta::Path(path) => Err(syn::Error::new_spanned(path, "expected a value, e.g. #[table(\"users\")]")),
+        Meta::Path(path) => Err(syn::Error::new_spanned(
+            path,
+            "expected a value, e.g. #[table(\"users\")]",
+        )),
     }
 }
 
 fn list_arg(meta: &Meta) -> syn::Result<Vec<String>> {
     match meta {
         Meta::List(list) => Ok(list.parse_args::<NameList>()?.0),
-        other => Err(syn::Error::new_spanned(other, "expected a list, e.g. #[hidden(password)]")),
+        other => Err(syn::Error::new_spanned(
+            other,
+            "expected a list, e.g. #[hidden(password)]",
+        )),
     }
 }
 
@@ -98,7 +104,10 @@ fn parse_options(input: &DeriveInput) -> syn::Result<ModelOptions> {
             "primary_key" => options.primary_key = Some(string_arg(meta)?),
             "route_key" => options.route_key = Some(string_arg(meta)?),
             "fillable" => options.fillable.extend(list_arg(meta)?),
-            "guarded" => options.guarded.get_or_insert_with(Vec::new).extend(list_arg(meta)?),
+            "guarded" => options
+                .guarded
+                .get_or_insert_with(Vec::new)
+                .extend(list_arg(meta)?),
             "hidden" => options.hidden.extend(list_arg(meta)?),
             "visible" => options.visible.extend(list_arg(meta)?),
             "appends" => options.appends.extend(list_arg(meta)?),
@@ -117,15 +126,22 @@ fn parse_options(input: &DeriveInput) -> syn::Result<ModelOptions> {
             }
             "use_factory" => {
                 let Meta::List(list) = meta else {
-                    return Err(syn::Error::new_spanned(meta, "expected #[use_factory(UserFactory)]"));
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "expected #[use_factory(UserFactory)]",
+                    ));
                 };
                 options.factory = Some(list.parse_args::<Path>()?);
             }
             "observed_by" => {
                 let Meta::List(list) = meta else {
-                    return Err(syn::Error::new_spanned(meta, "expected #[observed_by(UserObserver)]"));
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "expected #[observed_by(UserObserver)]",
+                    ));
                 };
-                let observers = list.parse_args_with(Punctuated::<Expr, Token![,]>::parse_terminated)?;
+                let observers =
+                    list.parse_args_with(Punctuated::<Expr, Token![,]>::parse_terminated)?;
                 options.observers.extend(observers);
             }
             _ => {}
@@ -136,10 +152,16 @@ fn parse_options(input: &DeriveInput) -> syn::Result<ModelOptions> {
 
 fn parse_fields(input: &DeriveInput) -> syn::Result<Vec<FieldInfo>> {
     let Data::Struct(data) = &input.data else {
-        return Err(syn::Error::new_spanned(&input.ident, "#[derive(Model)] only supports structs"));
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "#[derive(Model)] only supports structs",
+        ));
     };
     let Fields::Named(named) = &data.fields else {
-        return Err(syn::Error::new_spanned(&input.ident, "#[derive(Model)] requires named fields"));
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "#[derive(Model)] requires named fields",
+        ));
     };
     let mut fields = Vec::new();
     for field in &named.named {
@@ -170,7 +192,9 @@ fn parse_fields(input: &DeriveInput) -> syn::Result<Vec<FieldInfo>> {
 /// Does the type look like a string key (String, Uuid, Ulid, or an Option of one)?
 fn is_string_key(ty: &Type) -> bool {
     let Type::Path(path) = ty else { return false };
-    let Some(last) = path.path.segments.last() else { return false };
+    let Some(last) = path.path.segments.last() else {
+        return false;
+    };
     match last.ident.to_string().as_str() {
         "String" | "Uuid" | "Ulid" | "str" => true,
         "Option" => match &last.arguments {
@@ -202,12 +226,16 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
     let primary_key = options
         .primary_key
         .clone()
-        .or_else(|| fields.iter().find(|f| f.primary_key).map(|f| f.name.clone()))
+        .or_else(|| {
+            fields
+                .iter()
+                .find(|f| f.primary_key)
+                .map(|f| f.name.clone())
+        })
         .unwrap_or_else(|| "id".to_string());
     let key_field = fields.iter().find(|f| f.name == primary_key);
-    let string_key = options.has_uuids
-        || options.has_ulids
-        || key_field.is_some_and(|f| is_string_key(&f.ty));
+    let string_key =
+        options.has_uuids || options.has_ulids || key_field.is_some_and(|f| is_string_key(&f.ty));
 
     let table = match &options.table {
         Some(table) => quote!(::std::string::String::from(#table)),
@@ -221,7 +249,10 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
         None => quote!(::core::option::Option::None),
     };
 
-    let persisted: Vec<&FieldInfo> = fields.iter().filter(|f| !f.relation && !f.computed).collect();
+    let persisted: Vec<&FieldInfo> = fields
+        .iter()
+        .filter(|f| !f.relation && !f.computed)
+        .collect();
     let readable: Vec<&FieldInfo> = fields.iter().filter(|f| !f.relation).collect();
     let relations: Vec<&FieldInfo> = fields.iter().filter(|f| f.relation).collect();
 
@@ -244,7 +275,11 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 
     let columns: Vec<String> = persisted.iter().map(|f| f.name.clone()).collect();
     let relation_names: Vec<String> = relations.iter().map(|f| f.name.clone()).collect();
-    let hashed: Vec<String> = persisted.iter().filter(|f| f.hashed).map(|f| f.name.clone()).collect();
+    let hashed: Vec<String> = persisted
+        .iter()
+        .filter(|f| f.hashed)
+        .map(|f| f.name.clone())
+        .collect();
     let fillable = str_slice(&options.fillable);
     let guarded = if options.unguarded {
         quote!(&[])
@@ -259,7 +294,10 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
     let visible = str_slice(&options.visible);
     let appends = str_slice(&options.appends);
     let per_page = options.per_page.unwrap_or(15);
-    let route_key = options.route_key.clone().unwrap_or_else(|| primary_key.clone());
+    let route_key = options
+        .route_key
+        .clone()
+        .unwrap_or_else(|| primary_key.clone());
     let columns_tokens = str_slice(&columns);
     let relation_tokens = str_slice(&relation_names);
     let hashed_tokens = str_slice(&hashed);
@@ -359,6 +397,25 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
             #name => ::core::option::Option::Some(#eloquent::Relation::into_dyn(Self::template().#ident())),
         }
     });
+
+    let loaded_relations = if relations.is_empty() {
+        quote!(::std::vec::Vec::new())
+    } else {
+        let checks = relations.iter().map(|f| {
+            let ident = &f.ident;
+            let name = &f.name;
+            quote! {
+                if #eloquent::RelationValue::is_loaded(&self.#ident) {
+                    loaded.push(#name);
+                }
+            }
+        });
+        quote! {
+            let mut loaded = ::std::vec::Vec::new();
+            #(#checks)*
+            loaded
+        }
+    };
 
     let observers = &options.observers;
     let boot = quote! {
@@ -487,6 +544,10 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
                     #(#relation_arms)*
                     _ => ::core::option::Option::None,
                 }
+            }
+
+            fn loaded_relations(&self) -> ::std::vec::Vec<&'static str> {
+                #loaded_relations
             }
 
             #boot

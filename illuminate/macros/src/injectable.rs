@@ -28,7 +28,10 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let Data::Struct(data) = &input.data else {
-        return Err(syn::Error::new_spanned(ident, "#[derive(Injectable)] only supports structs"));
+        return Err(syn::Error::new_spanned(
+            ident,
+            "#[derive(Injectable)] only supports structs",
+        ));
     };
 
     let resolve = |ty: &Type| match arc_inner(ty) {
