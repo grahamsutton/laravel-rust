@@ -474,6 +474,7 @@ version = "0.1.0"
 dependencies = [
  "laravel",
  "laravel-build",
+ "serde",
  "tokio",
 ]
 

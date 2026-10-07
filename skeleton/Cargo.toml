@@ -25,6 +25,7 @@ path = "tests/unit/main.rs"
 
 [dependencies]
 laravel.workspace = true
+serde.workspace = true
 tokio.workspace = true
 
 [build-dependencies]
