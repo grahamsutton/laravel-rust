@@ -95,6 +95,7 @@ macro_rules! attrs {
 #[doc(hidden)]
 pub mod __private {
     pub use illuminate_support as support;
+    pub use inventory;
 }
 
 /// The most commonly used database types, for glob imports.

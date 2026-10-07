@@ -1,5 +1,6 @@
 //! Eloquent's shared state: booted models, event listeners, global scopes,
-//! the password hasher hook, mass assignment guarding and the morph map.
+//! the password hasher hook, the event dispatcher and exception reporter
+//! hooks, mass assignment guarding and the morph map.
 //!
 //! The state lives in the service container, so every application (and
 //! every test with its own container) gets an isolated set of listeners.
@@ -11,16 +12,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use illuminate_container::{Container, try_app};
+use illuminate_support::Error;
 use indexmap::IndexMap;
 
 use super::builder::Builder;
-use super::events::Listener;
+use super::events::{EventDispatcher, Listener};
 use super::model::Model;
 
 /// A global scope: a closure that constrains every query for a model.
 pub(crate) type ScopeFn<M> = Arc<dyn Fn(Builder<M>) -> Builder<M> + Send + Sync>;
 
 type Hasher = Arc<dyn Fn(&str) -> String + Send + Sync>;
+
+type Reporter = Arc<dyn Fn(&Error) + Send + Sync>;
 
 tokio::task_local! {
     static EVENTS_MUTED: bool;
@@ -48,6 +52,8 @@ pub(crate) struct EloquentState {
     booted: Mutex<HashSet<TypeId>>,
     registries: RwLock<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
     hasher: RwLock<Option<Hasher>>,
+    dispatcher: RwLock<Option<Arc<dyn EventDispatcher>>>,
+    reporter: RwLock<Option<Reporter>>,
     unguarded: AtomicBool,
     morph_map: RwLock<IndexMap<String, String>>,
 }
@@ -124,6 +130,18 @@ impl EloquentState {
             .map(|hasher| hasher(value))
     }
 
+    pub(crate) fn event_dispatcher(&self) -> Option<Arc<dyn EventDispatcher>> {
+        self.dispatcher.read().unwrap().clone()
+    }
+
+    pub(crate) fn set_event_dispatcher(&self, dispatcher: Option<Arc<dyn EventDispatcher>>) {
+        *self.dispatcher.write().unwrap() = dispatcher;
+    }
+
+    pub(crate) fn reporter(&self) -> Option<Reporter> {
+        self.reporter.read().unwrap().clone()
+    }
+
     pub(crate) fn is_unguarded(&self) -> bool {
         self.unguarded.load(Ordering::SeqCst) || UNGUARDED.try_with(|u| *u).unwrap_or(false)
     }
@@ -152,6 +170,22 @@ impl EloquentState {
 /// ```
 pub fn hash_using(hasher: impl Fn(&str) -> String + Send + Sync + 'static) {
     *EloquentState::resolve().hasher.write().unwrap() = Some(Arc::new(hasher));
+}
+
+/// Report the exceptions Eloquent recovers from with the given closure
+/// (Laravel reports them through the exception handler).
+///
+/// Pruning uses it: when pruning one model fails, the error is reported and
+/// pruning carries on with the next model. Without a reporter, the error
+/// is returned instead. The framework wires this to `report()`.
+///
+/// ```
+/// use illuminate_database::eloquent::report_exceptions_using;
+///
+/// report_exceptions_using(|error| eprintln!("{error}"));
+/// ```
+pub fn report_exceptions_using(reporter: impl Fn(&Error) + Send + Sync + 'static) {
+    *EloquentState::resolve().reporter.write().unwrap() = Some(Arc::new(reporter));
 }
 
 /// Determine whether a value is already a bcrypt or Argon2 hash.

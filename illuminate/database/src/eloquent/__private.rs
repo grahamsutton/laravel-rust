@@ -41,3 +41,52 @@ pub fn cast_attribute<T: DeserializeOwned>(value: Value, key: &str, class: &str)
 pub fn is_visible(key: &str, hidden: &[&str], visible: &[&str]) -> bool {
     (visible.is_empty() || visible.contains(&key)) && !hidden.contains(&key)
 }
+
+/// Detects, at the derive's expansion site, whether a model implements
+/// [`Prunable`](super::Prunable) or [`MassPrunable`](super::MassPrunable)
+/// (autoref specialization: `(&&&PruneProbe::<M>::new()).pruner()`).
+pub struct PruneProbe<M>(std::marker::PhantomData<fn() -> M>);
+
+impl<M> PruneProbe<M> {
+    /// A probe for the model `M`.
+    #[allow(clippy::new_without_default)]
+    pub const fn new() -> Self {
+        Self(std::marker::PhantomData)
+    }
+}
+
+/// Picked when the model implements `Prunable`.
+pub trait ViaPrunable {
+    /// The model's pruner.
+    fn pruner(&self) -> Option<super::registry::Pruner>;
+}
+
+impl<M: super::Prunable> ViaPrunable for &&PruneProbe<M> {
+    fn pruner(&self) -> Option<super::registry::Pruner> {
+        Some(super::registry::Pruner::prunable::<M>())
+    }
+}
+
+/// Picked when the model implements `MassPrunable`.
+pub trait ViaMassPrunable {
+    /// The model's pruner.
+    fn pruner(&self) -> Option<super::registry::Pruner>;
+}
+
+impl<M: super::MassPrunable> ViaMassPrunable for &PruneProbe<M> {
+    fn pruner(&self) -> Option<super::registry::Pruner> {
+        Some(super::registry::Pruner::mass_prunable::<M>())
+    }
+}
+
+/// Picked when the model isn't prunable.
+pub trait ViaNotPrunable {
+    /// No pruner.
+    fn pruner(&self) -> Option<super::registry::Pruner>;
+}
+
+impl<M> ViaNotPrunable for PruneProbe<M> {
+    fn pruner(&self) -> Option<super::registry::Pruner> {
+        None
+    }
+}

@@ -14,7 +14,6 @@ pub struct Paths {
     /// Path to the Eloquent module (`::laravel::database::eloquent`).
     pub eloquent: TokenStream,
     /// Path to the database crate root (`::laravel::database`).
-    #[allow(dead_code)]
     pub database: TokenStream,
     /// Path to the support crate (`::laravel::support`).
     pub support: TokenStream,
@@ -26,8 +25,11 @@ pub struct Paths {
 fn path_for(found: FoundCrate, crate_ident: &str) -> TokenStream {
     match found {
         FoundCrate::Itself => {
+            // Doc tests are compiled as their own crates, with the
+            // documented crate's environment.
             let compiling = std::env::var("CARGO_CRATE_NAME").unwrap_or_default();
-            if compiling == crate_ident {
+            let doctest = std::env::var_os("UNSTABLE_RUSTDOC_TEST_PATH").is_some();
+            if compiling == crate_ident && !doctest {
                 quote!(crate)
             } else {
                 let ident = Ident::new(crate_ident, Span::call_site());

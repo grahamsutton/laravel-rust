@@ -21,6 +21,8 @@
 //!
 //!     #[relation]
 //!     pub posts: Option<Vec<Post>>,
+//!
+//!     pub original: Original,
 //! }
 //!
 //! impl User {
@@ -33,15 +35,22 @@
 //! let users = User::where_("active", true).with("posts").latest().get().await?;
 //! ```
 //!
-//! ## Plain structs, no hidden state
+//! ## Plain structs
 //!
-//! Models carry no hidden state, which shapes a few behaviours:
+//! Models are plain structs, which shapes a few behaviours:
 //!
-//! - Eloquent can't track "dirty" attributes: saving an existing model
-//!   writes every persisted column except the primary key.
-//! - A model "exists" when its key is set (non-null, non-zero, non-empty).
-//!   Models with non-incrementing keys (UUIDs, ULIDs, natural keys) check
-//!   the database before deciding between an insert and an update.
+//! - Eloquent tracks "dirty" attributes only for models with an
+//!   [`Original`] field: `is_dirty`, `get_dirty`, `was_changed`,
+//!   `get_original`, ... report what changed since the model was retrieved,
+//!   and `save()` writes only the dirty columns, skipping the `UPDATE` (and
+//!   the `updating` / `updated` events) when nothing changed. Without the
+//!   field, saving an existing model writes every persisted column except
+//!   the primary key.
+//! - A model with an `Original` field "exists" once it has been retrieved
+//!   or saved. Without one, a model exists when its key is set (non-null,
+//!   non-zero, non-empty), and models with non-incrementing keys (UUIDs,
+//!   ULIDs, natural keys) check the database before deciding between an
+//!   insert and an update.
 //! - On insert, `None` attributes are left out so the database applies its
 //!   column defaults; other fields are written with their Rust value (use an
 //!   `Option` field to rely on a column default).
@@ -54,6 +63,21 @@
 //! `create`, `fill`, `update`, `first_or_create`, ... accept anything that
 //! converts into [`Attributes`]: a `json!` object, a map, pairs, or the
 //! [`attrs!`](crate::attrs) macro.
+//!
+//! ## Events
+//!
+//! Models fire events through their lifecycle (`creating`, `updated`,
+//! `deleted`, ...). Listen with closures (`User::created(|user| ...)`),
+//! [`Observer`]s (`User::observe(...)` or `#[observed_by(...)]`), or — once
+//! the framework has set an [`EventDispatcher`] — named listeners on the
+//! `Event` facade (`eloquent.created: User`).
+//!
+//! ## Scopes, pruning, and the registry
+//!
+//! Global scopes are closures (`add_global_scope`) or [`Scope`] objects
+//! (`add_global_scope_object`, `#[scoped_by(...)]`). Models implementing
+//! [`Prunable`] or [`MassPrunable`] are pruned by `model:prune`, and every
+//! model is listed in the [`registry`] that powers `model:show`.
 
 #[macro_use]
 mod forward;
@@ -65,7 +89,11 @@ mod events;
 pub mod factories;
 pub mod faker;
 mod model;
+mod original;
+mod prunable;
+pub mod registry;
 pub mod relations;
+mod scope;
 mod state;
 
 #[doc(hidden)]
@@ -77,17 +105,24 @@ use std::pin::Pin;
 pub use builder::{Builder, TrashedMode};
 pub use collection::EloquentCollection;
 pub use errors::{MassAssignmentException, ModelNotFoundException, RelationNotFoundException};
-pub use events::{EventOutcome, ModelEvent, Observer};
+pub use events::{
+    EventDispatcher, EventOutcome, ModelEvent, Observer, has_event_dispatcher,
+    set_event_dispatcher, unset_event_dispatcher,
+};
 pub use factories::{Factory, FactoryBuilder, HasFactory, Sequence};
 pub use faker::Faker;
 pub use model::Model;
+pub use original::{IntoAttributeNames, Original};
+pub use prunable::{MassPrunable, Prunable, PruneKind};
 pub use relations::{
     BelongsTo, BelongsToMany, Constraint, DynRelation, EagerSpec, FromEager, HasMany,
     HasManyThrough, HasOne, HasOneOrMany, HasOneOrManyThrough, HasOneThrough, MorphMany, MorphOne,
     MorphTo, Relation, RelationKind, RelationValue, SyncChanges,
 };
+pub use scope::{Scope, scope_name};
 pub use state::{
-    hash_using, is_hashed, is_unguarded, morph_map, reguard, unguard, unguarded, without_events,
+    hash_using, is_hashed, is_unguarded, morph_map, reguard, report_exceptions_using, unguard,
+    unguarded, without_events,
 };
 
 /// `#[derive(Model)]`: turn a struct into an Eloquent model.

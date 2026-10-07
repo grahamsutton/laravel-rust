@@ -13,6 +13,7 @@ use super::errors::{ModelNotFoundException, RelationNotFoundException};
 use super::events::{ModelEvent, fire};
 use super::model::{Model, normalize_key, now};
 use super::relations::{self, Constraint, DynRelation, EagerSpec};
+use super::scope::{Scope, scope_name};
 use super::state::EloquentState;
 use super::{Attributes, IntoIds, IntoRelations};
 use crate::error::MultipleRecordsFoundException;
@@ -271,6 +272,19 @@ impl<M: Model> Builder<M> {
     pub fn without_global_scope(mut self, name: &str) -> Self {
         self.removed_scopes.push(name.to_string());
         self
+    }
+
+    /// Remove a [`Scope`] object from the query (Laravel's
+    /// `withoutGlobalScope(AncientScope::class)`).
+    ///
+    /// ```ignore
+    /// let everyone = User::query()
+    ///     .without_global_scope_object::<AncientScope>()
+    ///     .get()
+    ///     .await?;
+    /// ```
+    pub fn without_global_scope_object<S: Scope<M>>(self) -> Self {
+        self.without_global_scope(&scope_name::<S>())
     }
 
     /// Remove every global scope (including the soft delete scope).
@@ -1107,9 +1121,16 @@ fn nest_wheres_from(mut query: QueryBuilder, wheres: usize, bindings: usize) -> 
     query.add_nested_where_query(nested, "and")
 }
 
-/// Hydrate models from rows.
+/// Hydrate models from rows. Models that track their originals start out
+/// clean and existing.
 pub(crate) fn hydrate<M: Model>(rows: Vec<Map<String, Value>>) -> Result<Vec<M>> {
-    rows.into_iter().map(M::from_attributes).collect()
+    rows.into_iter()
+        .map(|row| {
+            let mut model = M::from_attributes(row)?;
+            super::original::hydrated(&mut model);
+            Ok(model)
+        })
+        .collect()
 }
 
 /// Fire `retrieved` and eager load relationships on freshly hydrated models.

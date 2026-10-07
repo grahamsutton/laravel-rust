@@ -31,6 +31,8 @@ mod paths;
 ///
 ///     #[relation]
 ///     pub posts: Option<Vec<Post>>,
+///
+///     pub original: Original,
 /// }
 ///
 /// impl User {
@@ -49,11 +51,22 @@ mod paths;
 /// `#[guarded(...)]`, `#[unguarded]`, `#[hidden(...)]`, `#[visible(...)]`,
 /// `#[appends(...)]`, `#[without_incrementing]`, `#[without_timestamps]`,
 /// `#[soft_deletes]`, `#[has_uuids]`, `#[has_ulids]`, `#[route_key("...")]`,
-/// `#[per_page(25)]`, `#[use_factory(UserFactory)]`, and
-/// `#[observed_by(UserObserver)]`. Field attributes: `#[relation]` (an
-/// eager-loadable relationship whose loader is the method of the same name),
-/// `#[hashed]` (hash the value when saving), `#[computed]` (read from queries
-/// such as `with_count`, never saved) and `#[primary_key]`.
+/// `#[per_page(25)]`, `#[use_factory(UserFactory)]`,
+/// `#[observed_by(UserObserver)]` and `#[scoped_by(ActiveScope)]` (global
+/// scope objects, applied when the model boots). Field attributes:
+/// `#[relation]` (an eager-loadable relationship whose loader is the method
+/// of the same name), `#[hashed]` (hash the value when saving),
+/// `#[computed]` (read from queries such as `with_count`, never saved) and
+/// `#[primary_key]`.
+///
+/// A field of type `Original` turns on dirty tracking: it is never a
+/// column, and Eloquent keeps it in sync so `is_dirty`, `was_changed`,
+/// `get_original`, ... work and `save()` only writes the dirty columns.
+///
+/// Every non-generic model is also registered in Eloquent's model registry
+/// (`eloquent::registry`), which powers `model:show` and `model:prune`;
+/// models implementing `Prunable` or `MassPrunable` are detected
+/// automatically.
 #[proc_macro_derive(
     Model,
     attributes(
@@ -75,6 +88,7 @@ mod paths;
         per_page,
         use_factory,
         observed_by,
+        scoped_by,
         relation,
         computed,
         hashed

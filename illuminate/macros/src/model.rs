@@ -51,6 +51,7 @@ struct ModelOptions {
     per_page: Option<u64>,
     factory: Option<Path>,
     observers: Vec<Expr>,
+    scopes: Vec<Expr>,
 }
 
 struct FieldInfo {
@@ -61,6 +62,8 @@ struct FieldInfo {
     computed: bool,
     hashed: bool,
     primary_key: bool,
+    /// The `Original` attributes tracker (never a column).
+    original: bool,
 }
 
 /// Parse a single string argument: `#[table("users")]` or `#[table = "users"]`.
@@ -144,6 +147,17 @@ fn parse_options(input: &DeriveInput) -> syn::Result<ModelOptions> {
                     list.parse_args_with(Punctuated::<Expr, Token![,]>::parse_terminated)?;
                 options.observers.extend(observers);
             }
+            "scoped_by" => {
+                let Meta::List(list) = meta else {
+                    return Err(syn::Error::new_spanned(
+                        meta,
+                        "expected #[scoped_by(ActiveScope)]",
+                    ));
+                };
+                let scopes =
+                    list.parse_args_with(Punctuated::<Expr, Token![,]>::parse_terminated)?;
+                options.scopes.extend(scopes);
+            }
             _ => {}
         }
     }
@@ -163,9 +177,19 @@ fn parse_fields(input: &DeriveInput) -> syn::Result<Vec<FieldInfo>> {
             "#[derive(Model)] requires named fields",
         ));
     };
-    let mut fields = Vec::new();
+    let mut fields: Vec<FieldInfo> = Vec::new();
     for field in &named.named {
         let ident = field.ident.clone().expect("named field");
+        let original = is_original(&field.ty);
+        if original && let Some(existing) = fields.iter().find(|f| f.original) {
+            return Err(syn::Error::new_spanned(
+                &field.ty,
+                format!(
+                    "a model tracks its original attributes once: `{}` is already an `Original` field",
+                    existing.name
+                ),
+            ));
+        }
         let mut info = FieldInfo {
             name: ident.unraw().to_string(),
             ident,
@@ -174,6 +198,7 @@ fn parse_fields(input: &DeriveInput) -> syn::Result<Vec<FieldInfo>> {
             computed: false,
             hashed: false,
             primary_key: false,
+            original,
         };
         for attr in &field.attrs {
             match attr.path().get_ident().map(|i| i.to_string()).as_deref() {
@@ -187,6 +212,54 @@ fn parse_fields(input: &DeriveInput) -> syn::Result<Vec<FieldInfo>> {
         fields.push(info);
     }
     Ok(fields)
+}
+
+/// Is the type Eloquent's `Original` attributes tracker (`Original`,
+/// `eloquent::Original`, ...)?
+fn is_original(ty: &Type) -> bool {
+    let Type::Path(path) = ty else { return false };
+    path.qself.is_none()
+        && path.path.segments.last().is_some_and(|last| {
+            last.ident == "Original" && matches!(last.arguments, syn::PathArguments::None)
+        })
+}
+
+/// A type as written, tidied up: `Option < Vec < Post > >` becomes
+/// `Option<Vec<Post>>`.
+fn type_string(ty: &Type) -> String {
+    let raw = quote!(#ty).to_string();
+    let chars: Vec<char> = raw.chars().collect();
+    let word = |c: char| c.is_alphanumeric() || c == '_' || c == '\'';
+    let mut out = String::with_capacity(raw.len());
+    let mut index = 0;
+    while index < chars.len() {
+        let c = chars[index];
+        if c.is_whitespace() {
+            let next = chars[index..].iter().find(|c| !c.is_whitespace()).copied();
+            let previous = out.chars().last();
+            if let (Some(previous), Some(next)) = (previous, next)
+                && word(previous)
+                && word(next)
+            {
+                out.push(' ');
+            }
+            while index < chars.len() && chars[index].is_whitespace() {
+                index += 1;
+            }
+            continue;
+        }
+        out.push(c);
+        if c == ',' || c == ';' {
+            out.push(' ');
+        }
+        index += 1;
+    }
+    out.trim().replace('+', " + ").replace("->", " -> ")
+}
+
+fn expr_string(expr: &Expr) -> String {
+    let raw = quote!(#expr).to_string();
+    raw.split_whitespace().collect::<Vec<_>>().join("")
 }
 
 /// Does the type look like a string key (String, Uuid, Ulid, or an Option of one)?
@@ -251,10 +324,14 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
 
     let persisted: Vec<&FieldInfo> = fields
         .iter()
-        .filter(|f| !f.relation && !f.computed)
+        .filter(|f| !f.relation && !f.computed && !f.original)
         .collect();
-    let readable: Vec<&FieldInfo> = fields.iter().filter(|f| !f.relation).collect();
+    let readable: Vec<&FieldInfo> = fields
+        .iter()
+        .filter(|f| !f.relation && !f.original)
+        .collect();
     let relations: Vec<&FieldInfo> = fields.iter().filter(|f| f.relation).collect();
+    let original_field = fields.iter().find(|f| f.original);
 
     let has_created_at = persisted.iter().any(|f| f.name == "created_at");
     let has_updated_at = persisted.iter().any(|f| f.name == "updated_at");
@@ -314,7 +391,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
     let from_fields = fields.iter().map(|f| {
         let ident = &f.ident;
         let name = &f.name;
-        if f.relation {
+        if f.relation || f.original {
             quote!(#ident: ::core::default::Default::default())
         } else {
             quote!(#ident: #eloquent::__private::take_attribute(&mut attributes, #name, #class_name)?)
@@ -417,12 +494,72 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
+    let original_accessors = original_field.map(|f| {
+        let ident = &f.ident;
+        quote! {
+            fn original_state(&self) -> ::core::option::Option<&#eloquent::Original> {
+                ::core::option::Option::Some(&self.#ident)
+            }
+
+            fn original_state_mut(&mut self) -> ::core::option::Option<&mut #eloquent::Original> {
+                ::core::option::Option::Some(&mut self.#ident)
+            }
+        }
+    });
+
     let observers = &options.observers;
+    let scopes = &options.scopes;
     let boot = quote! {
         fn boot() {
             #( <Self as #eloquent::Model>::observe(#observers); )*
+            #( <Self as #eloquent::Model>::add_global_scope_object(#scopes); )*
         }
     };
+
+    // Register the model (generic models can't be registered: there is no
+    // single type to describe).
+    let registration = input.generics.params.is_empty().then(|| {
+        let database = &paths.database;
+        let field_entries = fields.iter().filter(|f| !f.original).map(|f| {
+            let name = &f.name;
+            let rust_type = type_string(&f.ty);
+            let hashed = f.hashed;
+            let kind = if f.relation {
+                quote!(#eloquent::registry::FieldKind::Relation)
+            } else if f.computed {
+                quote!(#eloquent::registry::FieldKind::Computed)
+            } else {
+                quote!(#eloquent::registry::FieldKind::Column)
+            };
+            quote!(#eloquent::registry::Field::new(#name, #rust_type, #kind, #hashed))
+        });
+        let observer_names: Vec<String> = options.observers.iter().map(expr_string).collect();
+        let scope_names: Vec<String> = options.scopes.iter().map(expr_string).collect();
+        quote! {
+            const _: () = {
+                const FIELDS: &[#eloquent::registry::Field] = &[#(#field_entries),*];
+
+                #[allow(clippy::needless_borrow)]
+                fn pruner() -> ::core::option::Option<#eloquent::registry::Pruner> {
+                    #[allow(unused_imports)]
+                    use #eloquent::__private::{
+                        ViaMassPrunable as _, ViaNotPrunable as _, ViaPrunable as _,
+                    };
+                    (&&&#eloquent::__private::PruneProbe::<#ident>::new()).pruner()
+                }
+
+                #database::__private::inventory::submit! {
+                    #eloquent::registry::RegisteredModel::new::<#ident>(
+                        ::core::module_path!(),
+                        FIELDS,
+                        &[#(#observer_names),*],
+                        &[#(#scope_names),*],
+                        pruner,
+                    )
+                }
+            };
+        }
+    });
 
     let factory_impl = options.factory.as_ref().map(|factory| {
         quote! {
@@ -550,6 +687,8 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
                 #loaded_relations
             }
 
+            #original_accessors
+
             #boot
         }
 
@@ -562,5 +701,105 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
         #factory_impl
 
         #routing_impls
+
+        #registration
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ty(source: &str) -> Type {
+        syn::parse_str(source).unwrap()
+    }
+
+    #[test]
+    fn types_are_described_as_written() {
+        assert_eq!(type_string(&ty("u64")), "u64");
+        assert_eq!(type_string(&ty("Option<Carbon>")), "Option<Carbon>");
+        assert_eq!(
+            type_string(&ty("Option < Vec < Post > >")),
+            "Option<Vec<Post>>"
+        );
+        assert_eq!(
+            type_string(&ty("HashMap<String,i64>")),
+            "HashMap<String, i64>"
+        );
+        assert_eq!(type_string(&ty("&'static str")), "&'static str");
+        assert_eq!(type_string(&ty("[u8; 32]")), "[u8; 32]");
+        assert_eq!(
+            type_string(&ty("chrono::DateTime<Utc>")),
+            "chrono::DateTime<Utc>"
+        );
+        assert_eq!(
+            type_string(&ty("Box<dyn Fn() + Send>")),
+            "Box<dyn Fn() + Send>"
+        );
+        assert_eq!(type_string(&ty("fn(i64)->bool")), "fn(i64) -> bool");
+    }
+
+    #[test]
+    fn original_fields_are_detected_by_type() {
+        assert!(is_original(&ty("Original")));
+        assert!(is_original(&ty("eloquent::Original")));
+        assert!(is_original(&ty("::laravel::eloquent::Original")));
+        assert!(!is_original(&ty("Option<Original>")));
+        assert!(!is_original(&ty("Original<T>")));
+        assert!(!is_original(&ty("OriginalName")));
+    }
+
+    #[test]
+    fn a_model_tracks_its_originals_once() {
+        let input: DeriveInput = syn::parse_str(
+            "struct User { id: u64, original: Original, again: eloquent::Original }",
+        )
+        .unwrap();
+        let error = parse_fields(&input).err().unwrap();
+        assert!(
+            error
+                .to_string()
+                .contains("`original` is already an `Original` field")
+        );
+    }
+
+    #[test]
+    fn scoped_by_requires_a_list() {
+        let input: DeriveInput = syn::parse_str("#[scoped_by] struct User { id: u64 }").unwrap();
+        let error = parse_options(&input).err().unwrap();
+        assert!(error.to_string().contains("#[scoped_by(ActiveScope)]"));
+
+        let input: DeriveInput =
+            syn::parse_str("#[scoped_by(ActiveScope, MinimumVotes(5))] struct User { id: u64 }")
+                .unwrap();
+        let options = parse_options(&input).unwrap();
+        let names: Vec<String> = options.scopes.iter().map(expr_string).collect();
+        assert_eq!(names, ["ActiveScope", "MinimumVotes(5)"]);
+    }
+
+    #[test]
+    fn generated_code_registers_the_model() {
+        let input: DeriveInput = syn::parse_str(
+            "#[observed_by(UserObserver)] struct User { id: u64, original: Original }",
+        )
+        .unwrap();
+        let code = derive(input).unwrap().to_string();
+        assert!(code.contains("inventory :: submit !"));
+        assert!(code.contains("RegisteredModel :: new :: < User >"));
+        assert!(code.contains("\"UserObserver\""));
+        assert!(code.contains("fn original_state"));
+        assert!(
+            !code.contains("\"original\""),
+            "the Original field is never an attribute"
+        );
+
+        let generic: DeriveInput =
+            syn::parse_str("struct Wrapper<T> { id: u64, value: T }").unwrap();
+        let code = derive(generic).unwrap().to_string();
+        assert!(
+            !code.contains("inventory"),
+            "generic models aren't registered"
+        );
+        assert!(!code.contains("fn original_state"));
+    }
 }

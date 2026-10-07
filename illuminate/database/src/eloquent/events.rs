@@ -1,9 +1,10 @@
-//! Model events: observers and closure listeners.
+//! Model events: observers, closure listeners, and the application's event
+//! dispatcher.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use illuminate_support::Result;
+use illuminate_support::{Result, Value};
 
 use super::model::Model;
 use super::state::{EloquentState, events_muted};
@@ -63,6 +64,45 @@ impl ModelEvent {
             Self::Trashed => "trashed",
             Self::Replicating => "replicating",
         }
+    }
+
+    /// The name the event is dispatched under for the model `M`, as
+    /// Laravel spells it: `eloquent.{event}: {class}`.
+    ///
+    /// ```
+    /// use illuminate_database::eloquent::{Model, ModelEvent};
+    ///
+    /// #[derive(Debug, Clone, Default, Model)]
+    /// struct User {
+    ///     id: u64,
+    /// }
+    ///
+    /// assert_eq!(ModelEvent::Created.name_for::<User>(), "eloquent.created: User");
+    /// assert_eq!(ModelEvent::ForceDeleted.name_for::<User>(), "eloquent.forceDeleted: User");
+    /// ```
+    pub fn name_for<M: Model>(&self) -> String {
+        format!("eloquent.{}: {}", self.name(), M::class_name())
+    }
+
+    /// Every model event, in lifecycle order.
+    pub fn all() -> [ModelEvent; 15] {
+        [
+            Self::Retrieved,
+            Self::Creating,
+            Self::Created,
+            Self::Updating,
+            Self::Updated,
+            Self::Saving,
+            Self::Saved,
+            Self::Deleting,
+            Self::Deleted,
+            Self::Trashed,
+            Self::ForceDeleting,
+            Self::ForceDeleted,
+            Self::Restoring,
+            Self::Restored,
+            Self::Replicating,
+        ]
     }
 
     /// Whether listeners may cancel the operation by returning `false`.
@@ -218,14 +258,15 @@ type ClosureListener<M> = Arc<dyn Fn(&mut M) -> Result<bool> + Send + Sync>;
 /// A registered listener.
 pub(crate) enum Listener<M: Model> {
     Closure(ModelEvent, ClosureListener<M>),
-    Observer(Arc<dyn Observer<M>>),
+    /// An observer and its type's name.
+    Observer(&'static str, Arc<dyn Observer<M>>),
 }
 
 impl<M: Model> Clone for Listener<M> {
     fn clone(&self) -> Self {
         match self {
             Self::Closure(event, callback) => Self::Closure(*event, callback.clone()),
-            Self::Observer(observer) => Self::Observer(observer.clone()),
+            Self::Observer(name, observer) => Self::Observer(name, observer.clone()),
         }
     }
 }
@@ -244,9 +285,12 @@ pub(crate) fn listen<M: Model, O: EventOutcome>(
 }
 
 /// Register an observer.
-pub(crate) fn observe<M: Model>(observer: impl Observer<M>) {
+pub(crate) fn observe<M: Model, O: Observer<M>>(observer: O) {
     let state = EloquentState::resolve();
-    state.add_listener::<M>(Listener::Observer(Arc::new(observer)));
+    state.add_listener::<M>(Listener::Observer(
+        std::any::type_name::<O>(),
+        Arc::new(observer),
+    ));
 }
 
 async fn dispatch<M: Model>(
@@ -274,8 +318,11 @@ async fn dispatch<M: Model>(
     Ok(proceed)
 }
 
-/// Fire a model event. Returns `false` when a listener cancelled a halting
-/// event.
+/// Fire a model event: the model's observers and closure listeners run
+/// first, then the event is dispatched as `eloquent.{event}: {class}`
+/// through the application's [`EventDispatcher`], when one is set.
+///
+/// Returns `false` when a listener cancelled a halting event.
 pub(crate) async fn fire<M: Model>(event: ModelEvent, model: &mut M) -> Result<bool> {
     if events_muted() {
         return Ok(true);
@@ -283,16 +330,93 @@ pub(crate) async fn fire<M: Model>(event: ModelEvent, model: &mut M) -> Result<b
     let state = EloquentState::resolve();
     state.boot::<M>();
     let listeners = state.listeners::<M>();
+    let dispatcher = state.event_dispatcher();
     drop(state);
     for listener in listeners {
         let proceed = match &listener {
             Listener::Closure(registered, callback) if *registered == event => callback(model)?,
             Listener::Closure(..) => true,
-            Listener::Observer(observer) => dispatch(observer.as_ref(), event, model).await?,
+            Listener::Observer(_, observer) => dispatch(observer.as_ref(), event, model).await?,
         };
         if !proceed && event.is_halting() {
             return Ok(false);
         }
     }
+    if let Some(dispatcher) = dispatcher {
+        let name = event.name_for::<M>();
+        if dispatcher.has_listeners(&name) {
+            let payload = Value::Object(model.to_attributes());
+            let proceed = dispatcher.until(&name, payload).await?;
+            if !proceed && event.is_halting() {
+                return Ok(false);
+            }
+        }
+    }
     Ok(true)
+}
+
+/// The application's event dispatcher, as Eloquent sees it.
+///
+/// Besides running a model's observers and closure listeners, Eloquent
+/// dispatches every model event by name — `eloquent.created: User`,
+/// `eloquent.updating: Post`, ... — through the dispatcher set with
+/// [`set_event_dispatcher`], with the model's attributes as the payload.
+/// Returning `Ok(false)` from [`until`](EventDispatcher::until) cancels a
+/// halting ("-ing") event, exactly like an observer returning `false`.
+///
+/// The framework installs one that forwards to the `Event` facade, so
+/// `Event::listen_named("eloquent.created: User", ...)` and `Event::fake()`
+/// see model events:
+///
+/// ```
+/// use illuminate_database::eloquent::{EventDispatcher, async_trait, set_event_dispatcher};
+/// use illuminate_support::{Result, Value};
+///
+/// struct LogModelEvents;
+///
+/// #[async_trait]
+/// impl EventDispatcher for LogModelEvents {
+///     fn has_listeners(&self, event: &str) -> bool {
+///         event.starts_with("eloquent.created: ")
+///     }
+///
+///     async fn until(&self, event: &str, payload: Value) -> Result<bool> {
+///         println!("{event}: {payload}");
+///         Ok(true)
+///     }
+/// }
+///
+/// set_event_dispatcher(LogModelEvents);
+/// ```
+#[async_trait]
+pub trait EventDispatcher: Send + Sync + 'static {
+    /// Whether anyone listens for the named event. Eloquent skips building
+    /// the payload (and the dispatch) when nobody does.
+    fn has_listeners(&self, event: &str) -> bool {
+        let _ = event;
+        true
+    }
+
+    /// Dispatch the named event, returning `Ok(false)` when a listener
+    /// halted it.
+    async fn until(&self, event: &str, payload: Value) -> Result<bool>;
+}
+
+/// Dispatch model events through the given dispatcher (Laravel's
+/// `Model::setEventDispatcher`). See [`EventDispatcher`].
+pub fn set_event_dispatcher(dispatcher: impl EventDispatcher) {
+    EloquentState::resolve().set_event_dispatcher(Some(Arc::new(dispatcher)));
+}
+
+/// Stop dispatching model events through an event dispatcher (Laravel's
+/// `Model::unsetEventDispatcher`). Observers and closure listeners still
+/// run.
+pub fn unset_event_dispatcher() {
+    EloquentState::resolve().set_event_dispatcher(None);
+}
+
+/// Determine whether model events are dispatched through an event
+/// dispatcher.
+pub fn has_event_dispatcher() -> bool {
+    EloquentState::resolve().event_dispatcher().is_some()
 }

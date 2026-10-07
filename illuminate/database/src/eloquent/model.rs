@@ -8,10 +8,12 @@ use illuminate_support::{Carbon, Collection, Map, Result, Str, Value, ValueExt};
 use super::builder::Builder;
 use super::errors::{MassAssignmentException, ModelNotFoundException};
 use super::events::{self, EventOutcome, ModelEvent, Observer, fire};
+use super::original::{self, IntoAttributeNames, Original, has_changes, is_equivalent};
 use super::relations::{
     BelongsTo, BelongsToMany, DynRelation, EagerSpec, HasMany, HasManyThrough, HasOne,
     HasOneThrough, MorphMany, MorphOne, MorphTo,
 };
+use super::scope::{Scope, scope_name};
 use super::state::{self, EloquentState};
 use super::{Attributes, BoxFuture, IntoIds, IntoRelations, KeyType, UniqueIds};
 use crate::expression::{Ident, Operand};
@@ -131,6 +133,17 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
     /// The names of the relationships currently loaded on the model.
     fn loaded_relations(&self) -> Vec<&'static str> {
         Vec::new()
+    }
+
+    /// The model's [`Original`] attributes tracker: generated for models
+    /// with an `Original` field, `None` otherwise.
+    fn original_state(&self) -> Option<&Original> {
+        None
+    }
+
+    /// The model's [`Original`] attributes tracker, mutably.
+    fn original_state_mut(&mut self) -> Option<&mut Original> {
+        None
     }
 
     // ------------------------------------------------------------------
@@ -443,7 +456,7 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
 
     /// Register an observer.
     fn observe(observer: impl Observer<Self>) {
-        events::observe::<Self>(observer);
+        events::observe::<Self, _>(observer);
     }
 
     /// Listen for the `retrieved` event.
@@ -541,6 +554,37 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
         state.add_global_scope::<Self>(name.to_string(), std::sync::Arc::new(scope));
     }
 
+    /// Register a [`Scope`] object as a global scope (Laravel's
+    /// `addGlobalScope(new AncientScope)`). It is named after its type, so
+    /// `without_global_scope("AncientScope")` removes it too.
+    ///
+    /// ```ignore
+    /// User::add_global_scope_object(AncientScope);
+    /// ```
+    fn add_global_scope_object<S: Scope<Self>>(scope: S) {
+        let state = EloquentState::resolve();
+        state.boot::<Self>();
+        state.add_global_scope::<Self>(
+            scope_name::<S>(),
+            std::sync::Arc::new(move |query| scope.apply(query)),
+        );
+    }
+
+    /// Begin a query without the given [`Scope`] object.
+    fn without_global_scope_object<S: Scope<Self>>() -> Builder<Self> {
+        Self::query().without_global_scope_object::<S>()
+    }
+
+    /// Determine whether the model has the named global scope.
+    fn has_global_scope(name: &str) -> bool {
+        let state = EloquentState::resolve();
+        state.boot::<Self>();
+        state
+            .global_scopes::<Self>()
+            .iter()
+            .any(|(registered, _)| registered == name)
+    }
+
     // ------------------------------------------------------------------
     // Route model binding
     // ------------------------------------------------------------------
@@ -594,13 +638,25 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
         self.get_attribute(Self::primary_key())
     }
 
-    /// Whether the model exists in the database: its key is set (non-null,
-    /// non-zero and non-empty).
+    /// Whether the model exists in the database.
     ///
-    /// Models carry no hidden state, so this is inferred from the key: a
+    /// A model with an [`Original`] field exists once it has been retrieved
+    /// or saved (and until it is deleted). Without one, this is inferred
+    /// from the key: the key is set (non-null, non-zero and non-empty), so a
     /// model whose key you assign yourself "exists" until it is saved.
     fn exists(&self) -> bool {
-        key_is_set(&self.get_key())
+        match self.original_state() {
+            Some(original) => original.exists,
+            None => key_is_set(&self.get_key()),
+        }
+    }
+
+    /// Whether the model was inserted while the current process held it
+    /// (Laravel's `wasRecentlyCreated`). Always `false` for models without
+    /// an [`Original`] field.
+    fn was_recently_created(&self) -> bool {
+        self.original_state()
+            .is_some_and(|original| original.recently_created)
     }
 
     /// Whether the attribute may be mass assigned.
@@ -671,6 +727,225 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
         !self.is(other)
     }
 
+    // ------------------------------------------------------------------
+    // Dirty tracking
+    // ------------------------------------------------------------------
+
+    /// Whether any attribute changed since the model was retrieved or last
+    /// saved.
+    ///
+    /// Eloquent tracks changes for models with an [`Original`] field. Without
+    /// one, it can't tell what changed, so every attribute is considered
+    /// dirty (which is exactly what `save()` writes) and this is always
+    /// `true`.
+    ///
+    /// ```ignore
+    /// let mut user = User::find_or_fail(1).await?;
+    /// assert!(!user.is_dirty());
+    ///
+    /// user.title = "Painter".into();
+    /// assert!(user.is_dirty());
+    /// ```
+    fn is_dirty(&self) -> bool {
+        !self.get_dirty().is_empty()
+    }
+
+    /// Whether any of the given attributes changed since the model was
+    /// retrieved or last saved (Laravel's `isDirty('title')`).
+    ///
+    /// ```ignore
+    /// user.title = "Painter".into();
+    ///
+    /// assert!(user.is_dirty_any("title"));
+    /// assert!(!user.is_dirty_any("first_name"));
+    /// assert!(user.is_dirty_any(["first_name", "title"]));
+    /// ```
+    fn is_dirty_any(&self, attributes: impl IntoAttributeNames) -> bool {
+        has_changes(&self.get_dirty(), &attributes.into_attribute_names())
+    }
+
+    /// Whether every attribute remained the same since the model was
+    /// retrieved or last saved (the inverse of [`is_dirty`](Model::is_dirty)).
+    fn is_clean(&self) -> bool {
+        !self.is_dirty()
+    }
+
+    /// Whether all of the given attributes remained the same (Laravel's
+    /// `isClean('title')`).
+    ///
+    /// ```ignore
+    /// user.title = "Painter".into();
+    ///
+    /// assert!(user.is_clean_all("first_name"));
+    /// assert!(!user.is_clean_all(["first_name", "title"]));
+    /// ```
+    fn is_clean_all(&self, attributes: impl IntoAttributeNames) -> bool {
+        !self.is_dirty_any(attributes)
+    }
+
+    /// Whether any attribute changed when the model was last saved.
+    ///
+    /// ```ignore
+    /// user.title = "Painter".into();
+    /// user.save().await?;
+    ///
+    /// assert!(user.was_changed());
+    /// ```
+    fn was_changed(&self) -> bool {
+        !self.get_changes().is_empty()
+    }
+
+    /// Whether any of the given attributes changed when the model was last
+    /// saved (Laravel's `wasChanged('title')`).
+    fn was_changed_any(&self, attributes: impl IntoAttributeNames) -> bool {
+        has_changes(&self.get_changes(), &attributes.into_attribute_names())
+    }
+
+    /// The attributes that changed since the model was retrieved or last
+    /// saved, in storage format. Every attribute, for models without an
+    /// [`Original`] field and for models that were never saved.
+    fn get_dirty(&self) -> Map<String, Value> {
+        let current = self.to_attributes();
+        match self.original_state().and_then(|o| o.attributes.as_ref()) {
+            None => current,
+            Some(original) => current
+                .into_iter()
+                .filter(|(key, value)| !is_equivalent(original.get(key), value))
+                .collect(),
+        }
+    }
+
+    /// The attributes that changed when the model was last saved.
+    fn get_changes(&self) -> Map<String, Value> {
+        self.original_state()
+            .map(|original| original.changes.clone())
+            .unwrap_or_default()
+    }
+
+    /// The values the changed attributes had before the model was last
+    /// saved.
+    ///
+    /// ```ignore
+    /// user.update(json!({"name": "Jack"})).await?;
+    ///
+    /// assert_eq!(user.get_changes()["name"], json!("Jack"));
+    /// assert_eq!(user.get_previous()["name"], json!("John"));
+    /// ```
+    fn get_previous(&self) -> Map<String, Value> {
+        self.original_state()
+            .map(|original| original.previous.clone())
+            .unwrap_or_default()
+    }
+
+    /// The model's original attributes (as of the last retrieve or save),
+    /// in storage format. Empty for models without an [`Original`] field.
+    fn get_original(&self) -> Map<String, Value> {
+        self.original_state()
+            .and_then(|original| original.attributes.clone())
+            .unwrap_or_default()
+    }
+
+    /// An attribute's original value (`Null` when unknown).
+    ///
+    /// ```ignore
+    /// let mut user = User::find_or_fail(1).await?;
+    /// user.name = "Jack".into();
+    ///
+    /// assert_eq!(user.get_original_attribute("name"), json!("John"));
+    /// ```
+    fn get_original_attribute(&self, key: &str) -> Value {
+        self.original_state()
+            .and_then(|original| original.attributes.as_ref())
+            .and_then(|attributes| attributes.get(key).cloned())
+            .unwrap_or(Value::Null)
+    }
+
+    /// Whether an attribute's current value is equivalent to its original
+    /// one (Laravel's `originalIsEquivalent`).
+    fn original_is_equivalent(&self, key: &str) -> bool {
+        let original = self
+            .original_state()
+            .and_then(|original| original.attributes.as_ref());
+        match (original, self.to_attributes().get(key)) {
+            (Some(original), Some(current)) => is_equivalent(original.get(key), current),
+            _ => false,
+        }
+    }
+
+    /// Record the current attributes as the originals: the model is clean
+    /// again.
+    fn sync_original(&mut self) -> &mut Self {
+        if self.original_state().is_some() {
+            let attributes = self.to_attributes();
+            if let Some(original) = self.original_state_mut() {
+                original.attributes = Some(attributes);
+            }
+        }
+        self
+    }
+
+    /// Record the current value of the given attributes as their originals.
+    fn sync_original_attributes(&mut self, attributes: impl IntoAttributeNames) -> &mut Self {
+        if self.original_state().is_some() {
+            let mut current = self.to_attributes();
+            let names = attributes.into_attribute_names();
+            if let Some(original) = self.original_state_mut() {
+                let originals = original.attributes.get_or_insert_with(Map::new);
+                for name in names {
+                    if let Some(value) = current.remove(&name) {
+                        originals.insert(name, value);
+                    }
+                }
+            }
+        }
+        self
+    }
+
+    /// Record the dirty attributes as the model's changes (what
+    /// [`get_changes`](Model::get_changes) and
+    /// [`was_changed`](Model::was_changed) report), along with their
+    /// previous values.
+    fn sync_changes(&mut self) -> &mut Self {
+        if self.original_state().is_some() {
+            let changes = self.get_dirty();
+            let originals = self.get_original();
+            let previous = changes
+                .keys()
+                .filter_map(|key| originals.get(key).map(|value| (key.clone(), value.clone())))
+                .collect();
+            if let Some(original) = self.original_state_mut() {
+                original.changes = changes;
+                original.previous = previous;
+            }
+        }
+        self
+    }
+
+    /// Discard the attribute changes, restoring the original values.
+    ///
+    /// ```ignore
+    /// user.name = "Jack".into();
+    /// user.discard_changes()?;
+    ///
+    /// assert_eq!(user.name, "John");
+    /// ```
+    fn discard_changes(&mut self) -> Result<&mut Self> {
+        let Some(originals) = self
+            .original_state()
+            .and_then(|original| original.attributes.clone())
+        else {
+            return Ok(self);
+        };
+        for (key, value) in originals {
+            self.set_attribute(&key, value)?;
+        }
+        if let Some(original) = self.original_state_mut() {
+            original.changes.clear();
+            original.previous.clear();
+        }
+        Ok(self)
+    }
+
     /// Whether the model has been soft deleted.
     fn trashed(&self) -> bool {
         Self::soft_deletes() && !self.get_attribute(Self::deleted_at_column()).is_null()
@@ -692,6 +967,9 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
             reset.push(Self::updated_at_column().to_string());
         }
         reset.extend(except.iter().map(|e| e.to_string()));
+        if let Some(original) = clone.original_state_mut() {
+            *original = Original::default();
+        }
         async move {
             for column in reset {
                 clone.set_attribute(&column, Value::Null)?;
@@ -706,7 +984,12 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
     // ------------------------------------------------------------------
 
     /// Save the model: insert it when it doesn't exist yet, otherwise update
-    /// every persisted column but the primary key.
+    /// it.
+    ///
+    /// Models with an [`Original`] field update only their dirty columns
+    /// (and `updated_at`); when nothing changed, the `UPDATE` and the
+    /// `updating` / `updated` events are skipped entirely. Other models
+    /// update every persisted column but the primary key.
     ///
     /// Returns `false` when a `saving`, `creating` or `updating` listener
     /// cancelled the operation.
@@ -819,6 +1102,9 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
                 return Ok(());
             }
             let relations = self.loaded_relations();
+            let changes = self
+                .original_state()
+                .map(|original| (original.changes.clone(), original.previous.clone()));
             let fresh = Self::query()
                 .without_global_scopes()
                 .with_trashed()
@@ -827,6 +1113,12 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
                 .first_or_fail()
                 .await?;
             *self = fresh;
+            if let (Some((changes, previous)), Some(original)) =
+                (changes, self.original_state_mut())
+            {
+                original.changes = changes;
+                original.previous = previous;
+            }
             if !relations.is_empty() {
                 self.load(relations).await?;
             }
@@ -1051,6 +1343,12 @@ impl<M: Model> Model for Box<M> {
     fn loaded_relations(&self) -> Vec<&'static str> {
         (**self).loaded_relations()
     }
+    fn original_state(&self) -> Option<&Original> {
+        (**self).original_state()
+    }
+    fn original_state_mut(&mut self) -> Option<&mut Original> {
+        (**self).original_state_mut()
+    }
     fn created_at_column() -> &'static str {
         M::created_at_column()
     }
@@ -1131,9 +1429,10 @@ async fn save_model<M: Model>(model: &mut M) -> Result<bool> {
     if !fire(ModelEvent::Saving, model).await? {
         return Ok(false);
     }
+    let tracked = model.original_state().is_some();
     let exists = if !model.exists() {
         false
-    } else if M::incrementing() {
+    } else if tracked || M::incrementing() {
         true
     } else {
         M::get_connection()
@@ -1142,13 +1441,17 @@ async fn save_model<M: Model>(model: &mut M) -> Result<bool> {
             .exists()
             .await?
     };
-    let saved = if exists {
-        perform_update(model).await?
-    } else {
+    let saved = if !exists {
         perform_insert(model).await?
+    } else if tracked && !model.is_dirty() {
+        // Nothing changed: Laravel skips the update (and its events).
+        true
+    } else {
+        perform_update(model).await?
     };
     if saved {
         fire(ModelEvent::Saved, model).await?;
+        model.sync_original();
     }
     Ok(saved)
 }
@@ -1190,6 +1493,7 @@ async fn perform_insert<M: Model>(model: &mut M) -> Result<bool> {
     } else {
         query.insert(attributes).await?;
     }
+    original::inserted(model);
     fire(ModelEvent::Created, model).await?;
     Ok(true)
 }
@@ -1197,6 +1501,9 @@ async fn perform_insert<M: Model>(model: &mut M) -> Result<bool> {
 async fn perform_update<M: Model>(model: &mut M) -> Result<bool> {
     if !fire(ModelEvent::Updating, model).await? {
         return Ok(false);
+    }
+    if model.original_state().is_some() {
+        return perform_dirty_update(model).await;
     }
     if M::timestamps() && M::uses_updated_at() {
         model.set_attribute(M::updated_at_column(), now())?;
@@ -1215,6 +1522,25 @@ async fn perform_update<M: Model>(model: &mut M) -> Result<bool> {
     Ok(true)
 }
 
+/// Update only the dirty columns of a model that tracks its originals.
+async fn perform_dirty_update<M: Model>(model: &mut M) -> Result<bool> {
+    if M::timestamps() && M::uses_updated_at() && !model.is_dirty_any(M::updated_at_column()) {
+        model.set_attribute(M::updated_at_column(), now())?;
+    }
+    hash_attributes(model)?;
+    let dirty = model.get_dirty();
+    if !dirty.is_empty() {
+        M::get_connection()
+            .table(M::table())
+            .where_(M::primary_key(), original::key_for_save_query(model))
+            .update(dirty)
+            .await?;
+        model.sync_changes();
+        fire(ModelEvent::Updated, model).await?;
+    }
+    Ok(true)
+}
+
 async fn delete_model<M: Model>(model: &mut M, force: bool) -> Result<bool> {
     if !model.exists() {
         return Ok(false);
@@ -1224,7 +1550,7 @@ async fn delete_model<M: Model>(model: &mut M, force: bool) -> Result<bool> {
     }
     let query = M::get_connection()
         .table(M::table())
-        .where_(M::primary_key(), model.get_key());
+        .where_(M::primary_key(), original::key_for_save_query(model));
     if M::soft_deletes() && !force {
         let time = now();
         model.set_attribute(M::deleted_at_column(), time.clone())?;
@@ -1234,10 +1560,13 @@ async fn delete_model<M: Model>(model: &mut M, force: bool) -> Result<bool> {
             model.set_attribute(M::updated_at_column(), time.clone())?;
             columns.insert(M::updated_at_column().to_string(), time);
         }
+        let synced: Vec<String> = columns.keys().cloned().collect();
         query.update(columns).await?;
+        model.sync_original_attributes(synced);
         fire(ModelEvent::Trashed, model).await?;
     } else {
         query.delete().await?;
+        original::deleted(model);
     }
     fire(ModelEvent::Deleted, model).await?;
     Ok(true)
@@ -1264,7 +1593,7 @@ async fn increment_model<M: Model>(
     }
     let query = M::get_connection()
         .table(M::table())
-        .where_(M::primary_key(), model.get_key());
+        .where_(M::primary_key(), original::key_for_save_query(model));
     let delta = if amount.fract() == 0.0 {
         Value::from(amount as i64)
     } else {
@@ -1287,6 +1616,12 @@ async fn increment_model<M: Model>(
         Value::from(updated)
     };
     model.set_attribute(&column, updated)?;
+    model.sync_changes();
     fire(ModelEvent::Updated, model).await?;
+    let mut synced = vec![column];
+    if M::timestamps() && M::uses_updated_at() {
+        synced.push(M::updated_at_column().to_string());
+    }
+    model.sync_original_attributes(synced);
     Ok(affected)
 }

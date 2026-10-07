@@ -25,6 +25,7 @@ thiserror.workspace = true
 anyhow.workspace = true
 regex.workspace = true
 rand.workspace = true
+inventory.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
