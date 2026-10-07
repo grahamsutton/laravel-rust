@@ -147,9 +147,10 @@ async fn users_can_log_in() {
 }
 ```
 
-Fakes are available for the queue, events, processes, and more, along with
-Laravel's assertions: `Queue::fake()`, `Bus::assert_dispatched::<T>()`,
-`Process::fake()`, `Event::fake()`.
+Fakes are available for the queue, events, HTTP requests, processes, and
+more, along with Laravel's assertions: `Queue::fake()`,
+`Bus::assert_dispatched::<T>()`, `Http::fake()`, `Process::fake()`,
+`Event::fake()`.
 
 ## What's included
 
@@ -168,6 +169,7 @@ Laravel's assertions: `Queue::fake()`, `Bus::assert_dispatched::<T>()`,
 | Events, logging, filesystem, localization | `illuminate-events`, `-log`, `-filesystem`, `-translation` |
 | Artisan and task scheduling | `illuminate-console` |
 | Processes and concurrency | `illuminate-process`, `illuminate-concurrency` |
+| The HTTP client | `illuminate-http-client` |
 | Collections, strings, dates, and helpers | `illuminate-support` |
 | The application, kernels, exception handling, testing | `illuminate-foundation` |
 
@@ -176,8 +178,8 @@ component and provides the prelude.
 
 Still to come:
 
-- **Mail, notifications, and the HTTP client** are being built in
-  `illuminate-mail`, `illuminate-notifications`, and `illuminate-http-client`.
+- **Mail and notifications** are being built in `illuminate-mail` and
+  `illuminate-notifications`.
 - **Redis**, and the queue and cache drivers built on it, aren't ported
   yet; neither are SQS and Beanstalkd.
 - **Broadcasting**, Laravel's first-party packages (Sanctum, Horizon, and
