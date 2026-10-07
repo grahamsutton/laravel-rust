@@ -85,9 +85,11 @@ impl Command for AboutCommand {
             (
                 "Cache",
                 vec![
-                    ("Config", "NOT CACHED".to_string()),
-                    ("Events", "NOT CACHED".to_string()),
-                    ("Routes", "NOT CACHED".to_string()),
+                    // Configuration, listeners, and routes are compiled
+                    // into the application.
+                    ("Config", "COMPILED".to_string()),
+                    ("Events", "COMPILED".to_string()),
+                    ("Routes", "COMPILED".to_string()),
                     ("Views", "NOT CACHED".to_string()),
                 ],
             ),
@@ -134,6 +136,7 @@ impl Command for AboutCommand {
                     "ENABLED" => "<fg=yellow;options=bold>ENABLED</>".to_string(),
                     "OFF" => "OFF".to_string(),
                     "NOT CACHED" => "<fg=yellow;options=bold>NOT CACHED</>".to_string(),
+                    "COMPILED" => "<fg=green;options=bold>COMPILED</>".to_string(),
                     _ => value,
                 };
                 cmd.components().two_column_detail(key, styled);
@@ -158,11 +161,13 @@ fn log_driver(default: &Value, channels: &Value) -> String {
     default
 }
 
+/// The version of the compiler the application was built with.
 fn rustc_version() -> String {
-    option_env!("CARGO_PKG_RUST_VERSION")
+    Some(env!("LARAVEL_RUSTC_VERSION"))
         .filter(|v| !v.is_empty())
-        .map(|v| format!("{v}+"))
-        .unwrap_or_else(|| "stable".to_string())
+        .or(option_env!("CARGO_PKG_RUST_VERSION"))
+        .unwrap_or("stable")
+        .to_string()
 }
 
 /// `config:show` — Display all of the values for a given configuration file or key.
