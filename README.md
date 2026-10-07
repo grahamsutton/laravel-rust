@@ -264,6 +264,7 @@ requests, processes, and more, along with Laravel's assertions: `Queue::fake()`,
 | The HTTP client | `illuminate-http-client` |
 | Mail (SMTP, sendmail, Postmark, Resend, Mailgun, SES) and Markdown mail | `illuminate-mail` |
 | Notifications (mail, database, Slack, custom channels) | `illuminate-notifications` |
+| JSON Schema builders | `illuminate-json-schema` |
 | Collections, strings, dates, and helpers | `illuminate-support` |
 | The application, kernels, exception handling, testing | `illuminate-foundation` |
 

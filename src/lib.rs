@@ -43,6 +43,7 @@ pub use illuminate_hashing as hashing;
 pub use illuminate_http as http;
 pub use illuminate_http_client as http_client;
 pub use illuminate_http_resources as http_resources;
+pub use illuminate_json_schema as json_schema;
 pub use illuminate_log as log;
 pub use illuminate_mail as mail;
 pub use illuminate_notifications as notifications;

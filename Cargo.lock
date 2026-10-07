@@ -1433,6 +1433,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "illuminate-json-schema"
+version = "0.1.0"
+dependencies = [
+ "illuminate-support",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "illuminate-log"
 version = "0.1.0"
 dependencies = [
@@ -1789,6 +1798,7 @@ dependencies = [
  "illuminate-http",
  "illuminate-http-client",
  "illuminate-http-resources",
+ "illuminate-json-schema",
  "illuminate-log",
  "illuminate-macros",
  "illuminate-mail",

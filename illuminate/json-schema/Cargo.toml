@@ -1,0 +1,14 @@
+[package]
+name = "illuminate-json-schema"
+description = "The Illuminate JsonSchema package."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+illuminate-support.workspace = true
+serde.workspace = true
+serde_json.workspace = true
