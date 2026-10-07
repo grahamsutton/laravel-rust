@@ -16,6 +16,9 @@ pub type StubBuilder = Arc<dyn Fn(&Console, &QualifiedName) -> String + Send + S
 /// Runs after a file has been generated (extra registrations, follow-ups).
 pub type AfterGenerate = Arc<dyn Fn(&Console, &QualifiedName, &std::path::Path) -> Result<()> + Send + Sync>;
 
+/// Transforms a parsed name before generating.
+type Renamer = Arc<dyn Fn(&QualifiedName) -> QualifiedName + Send + Sync>;
+
 /// A `make:*` command.
 pub struct MakeCommand {
     signature: String,
@@ -26,7 +29,7 @@ pub struct MakeCommand {
     registration: Registration,
     build: StubBuilder,
     after: Option<AfterGenerate>,
-    file_name: Option<Arc<dyn Fn(&QualifiedName) -> QualifiedName + Send + Sync>>,
+    file_name: Option<Renamer>,
 }
 
 impl MakeCommand {
@@ -302,7 +305,7 @@ pub fn all() -> Vec<MakeCommand> {
                 .collect::<Vec<_>>()
                 .join(".")
                 .split('.')
-                .map(|s| Str::kebab(s))
+                .map(Str::kebab)
                 .collect();
             let mut segments = raw;
             let class = segments.pop().unwrap_or_default();

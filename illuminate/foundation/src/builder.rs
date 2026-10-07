@@ -13,6 +13,9 @@ use crate::configuration::{Exceptions, Middleware, Routing};
 use crate::exceptions::Handler;
 use crate::providers;
 
+/// A callback run once the application is created.
+type CreatedCallback = Box<dyn FnOnce(&Arc<Application>) + Send>;
+
 /// Configure and create a Laravel application.
 ///
 /// ```ignore
@@ -35,7 +38,7 @@ pub struct ApplicationBuilder {
     exceptions: Exceptions,
     providers: Vec<Box<dyn ServiceProvider>>,
     config_files: Vec<ConfigFile>,
-    callbacks: Vec<Box<dyn FnOnce(&Arc<Application>) + Send>>,
+    callbacks: Vec<CreatedCallback>,
 }
 
 impl Application {

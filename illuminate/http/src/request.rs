@@ -138,11 +138,10 @@ impl Request {
                         .and_then(|v| v.to_str().ok())
                         .map(str::to_string)
                 });
-            if let Some(spoofed) = spoofed {
-                if let Ok(m) = Method::from_bytes(spoofed.to_ascii_uppercase().as_bytes()) {
+            if let Some(spoofed) = spoofed
+                && let Ok(m) = Method::from_bytes(spoofed.to_ascii_uppercase().as_bytes()) {
                     method = m;
                 }
-            }
         }
 
         Self {
@@ -272,11 +271,10 @@ impl Request {
         if let Some(scheme) = self.inner.uri.scheme_str() {
             return scheme.to_string();
         }
-        if self.trusts_proxies() {
-            if let Some(proto) = self.header("x-forwarded-proto") {
+        if self.trusts_proxies()
+            && let Some(proto) = self.header("x-forwarded-proto") {
                 return proto.split(',').next().unwrap_or("http").trim().to_string();
             }
-        }
         "http".to_string()
     }
 
@@ -300,11 +298,10 @@ impl Request {
 
     /// The host name, including the port when present.
     pub fn http_host(&self) -> String {
-        if self.trusts_proxies() {
-            if let Some(host) = self.header("x-forwarded-host") {
+        if self.trusts_proxies()
+            && let Some(host) = self.header("x-forwarded-host") {
                 return host.split(',').next().unwrap_or_default().trim().to_string();
             }
-        }
         self.inner
             .uri
             .authority()
@@ -318,11 +315,10 @@ impl Request {
         if let Some(port) = self.inner.uri.port_u16() {
             return port;
         }
-        if let Some((_, port)) = self.http_host().rsplit_once(':') {
-            if let Ok(port) = port.parse() {
+        if let Some((_, port)) = self.http_host().rsplit_once(':')
+            && let Ok(port) = port.parse() {
                 return port;
             }
-        }
         if self.secure() { 443 } else { 80 }
     }
 
@@ -470,8 +466,8 @@ impl Request {
 
     /// All client IP addresses (the forwarding chain when proxies are trusted).
     pub fn ips(&self) -> Vec<String> {
-        if self.trusts_proxies() {
-            if let Some(forwarded) = self.header("x-forwarded-for") {
+        if self.trusts_proxies()
+            && let Some(forwarded) = self.header("x-forwarded-for") {
                 let ips: Vec<String> = forwarded
                     .split(',')
                     .map(|s| s.trim().to_string())
@@ -481,7 +477,6 @@ impl Request {
                     return ips;
                 }
             }
-        }
         self.inner
             .remote_addr
             .map(|addr| vec![addr.ip().to_string()])

@@ -69,8 +69,8 @@ impl Arr {
             if !current.is_object() && !current.is_array() {
                 *current = Value::Object(Map::new());
             }
-            if let Value::Array(items) = current {
-                if segment.parse::<usize>().is_err() {
+            if let Value::Array(items) = current
+                && segment.parse::<usize>().is_err() {
                     // Convert the list into an object keyed by index.
                     let map: Map<String, Value> = std::mem::take(items)
                         .into_iter()
@@ -79,7 +79,6 @@ impl Arr {
                         .collect();
                     *current = Value::Object(map);
                 }
-            }
             match current {
                 Value::Array(items) => {
                     let index = segment.parse::<usize>().unwrap_or_default();
@@ -115,11 +114,10 @@ impl Arr {
 
     /// Remove an item using "dot" notation.
     pub fn forget(array: &mut Value, key: &str) {
-        if let Value::Object(map) = array {
-            if map.shift_remove(key).is_some() {
+        if let Value::Object(map) = array
+            && map.shift_remove(key).is_some() {
                 return;
             }
-        }
         let (parent_key, last) = match key.rsplit_once('.') {
             Some((parent, last)) => (Some(parent), last),
             None => (None, key),
@@ -136,11 +134,10 @@ impl Arr {
                 map.shift_remove(last);
             }
             Value::Array(items) => {
-                if let Ok(index) = last.parse::<usize>() {
-                    if index < items.len() {
+                if let Ok(index) = last.parse::<usize>()
+                    && index < items.len() {
                         items.remove(index);
                     }
-                }
             }
             _ => {}
         }

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use illuminate_http::Response;
-use illuminate_support::{Error, Map, Result, Value, ValueExt, json};
+use illuminate_support::{Map, Result, Value, ValueExt, json};
 use illuminate_view::{Factory, ViewObject, ViewValue};
 
 use crate::helpers;
@@ -252,8 +252,7 @@ impl ViewObject for UrlObject {
             "previousPath" => Ok(URL::previous_path().into()),
             "to" => Ok(URL::to(&arg_string(args, 0).unwrap_or_default()).into()),
             "route" => URL::route(&arg_string(args, 0).unwrap_or_default(), arg_json(args, 1))
-                .map(ViewValue::from)
-                .map_err(Error::from),
+                .map(ViewValue::from),
             "asset" => Ok(illuminate_routing::asset(&arg_string(args, 0).unwrap_or_default()).into()),
             _ => return None,
         };

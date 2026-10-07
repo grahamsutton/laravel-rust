@@ -253,11 +253,10 @@ impl TestApp {
     }
 
     async fn send(&mut self, method: &str, uri: &str, data: Value, json: bool) -> TestResponse {
-        if !self.pending_session.is_empty() {
-            if let Err(error) = self.start_session_with_pending_data().await {
+        if !self.pending_session.is_empty()
+            && let Err(error) = self.start_session_with_pending_data().await {
                 panic!("Unable to seed the session: {error}");
             }
-        }
 
         let mut headers = self.headers.clone();
         if json {
@@ -270,11 +269,10 @@ impl TestApp {
             .chain(self.unencrypted_cookies.iter())
             .map(|(name, value)| format!("{name}={value}"))
             .collect();
-        if !cookie_header.is_empty() {
-            if let Ok(value) = HeaderValue::try_from(cookie_header.join("; ")) {
+        if !cookie_header.is_empty()
+            && let Ok(value) = HeaderValue::try_from(cookie_header.join("; ")) {
                 headers.insert("cookie", value);
             }
-        }
 
         let uri = if uri.starts_with('/') || uri.starts_with("http") { uri.to_string() } else { format!("/{uri}") };
         let parameters = if data.is_null() { Value::Object(Map::new()) } else { data };

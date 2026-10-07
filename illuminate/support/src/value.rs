@@ -78,11 +78,10 @@ fn coercions(value: &Value) -> Vec<Value> {
                 out.push(json!(i));
             } else if let Ok(u) = trimmed.parse::<u64>() {
                 out.push(json!(u));
-            } else if let Ok(f) = trimmed.parse::<f64>() {
-                if f.is_finite() {
+            } else if let Ok(f) = trimmed.parse::<f64>()
+                && f.is_finite() {
                     out.push(json!(f));
                 }
-            }
             match trimmed.to_ascii_lowercase().as_str() {
                 "1" | "true" | "on" | "yes" => out.push(Value::Bool(true)),
                 "0" | "false" | "off" | "no" | "" => out.push(Value::Bool(false)),
@@ -91,13 +90,11 @@ fn coercions(value: &Value) -> Vec<Value> {
             if s.is_empty() {
                 out.push(Value::Null);
             }
-            if (trimmed.starts_with('{') && trimmed.ends_with('}'))
-                || (trimmed.starts_with('[') && trimmed.ends_with(']'))
-            {
-                if let Ok(decoded) = serde_json::from_str::<Value>(trimmed) {
+            if ((trimmed.starts_with('{') && trimmed.ends_with('}'))
+                || (trimmed.starts_with('[') && trimmed.ends_with(']')))
+                && let Ok(decoded) = serde_json::from_str::<Value>(trimmed) {
                     out.push(decoded);
                 }
-            }
         }
         Value::Array(items) => {
             out.push(Value::String(value.to_string()));
@@ -222,11 +219,10 @@ impl ValueExt for Value {
         if key.is_empty() {
             return Some(self);
         }
-        if let Value::Object(map) = self {
-            if let Some(v) = map.get(key) {
+        if let Value::Object(map) = self
+            && let Some(v) = map.get(key) {
                 return Some(v);
             }
-        }
         let mut current = self;
         for segment in key.split('.') {
             current = match current {

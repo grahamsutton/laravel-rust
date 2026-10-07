@@ -20,6 +20,7 @@ type ViewRenderer = Arc<dyn Fn(&str, Value) -> Option<String> + Send + Sync>;
 type Context = Arc<dyn Fn(&Error) -> Value + Send + Sync>;
 
 /// What an exception means for the HTTP response, once "prepared".
+#[allow(clippy::large_enum_variant)]
 pub enum Prepared {
     /// A ready-made response.
     Response(Response),
@@ -105,7 +106,7 @@ impl Exceptions {
         F: Fn(&E) -> bool + Send + Sync + 'static,
     {
         self.report_callbacks.push(Arc::new(move |error| {
-            error.downcast_ref::<E>().map(|e| callback(e)).unwrap_or(true)
+            error.downcast_ref::<E>().map(&callback).unwrap_or(true)
         }));
         self
     }

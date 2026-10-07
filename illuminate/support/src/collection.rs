@@ -209,13 +209,13 @@ impl<T> Collection<T> {
     }
 
     /// Determine if any item passes the given truth test.
-    pub fn contains_fn(&self, mut callback: impl FnMut(&T) -> bool) -> bool {
-        self.items.iter().any(|item| callback(item))
+    pub fn contains_fn(&self, callback: impl FnMut(&T) -> bool) -> bool {
+        self.items.iter().any(callback)
     }
 
     /// Determine if all items pass the given truth test.
-    pub fn every(&self, mut callback: impl FnMut(&T) -> bool) -> bool {
-        self.items.iter().all(|item| callback(item))
+    pub fn every(&self, callback: impl FnMut(&T) -> bool) -> bool {
+        self.items.iter().all(callback)
     }
 
     /// Partition the collection into two collections using the given callback.
@@ -348,13 +348,13 @@ impl<T> Collection<T> {
 
     /// Sort the collection by the given key.
     pub fn sort_by<K: Ord>(mut self, mut key: impl FnMut(&T) -> K) -> Self {
-        self.items.sort_by(|a, b| key(a).cmp(&key(b)));
+        self.items.sort_by_key(|a| key(a));
         self
     }
 
     /// Sort the collection in descending order by the given key.
     pub fn sort_by_desc<K: Ord>(mut self, mut key: impl FnMut(&T) -> K) -> Self {
-        self.items.sort_by(|a, b| key(b).cmp(&key(a)));
+        self.items.sort_by_key(|item| std::cmp::Reverse(key(item)));
         self
     }
 
@@ -426,8 +426,8 @@ impl<T> Collection<T> {
 
     /// Search the collection for the first item passing the truth test,
     /// returning its index.
-    pub fn search_fn(&self, mut callback: impl FnMut(&T) -> bool) -> Option<usize> {
-        self.items.iter().position(|item| callback(item))
+    pub fn search_fn(&self, callback: impl FnMut(&T) -> bool) -> Option<usize> {
+        self.items.iter().position(callback)
     }
 
     /// Get the one and only item passing the truth test, or an error.
@@ -662,7 +662,7 @@ impl<T: Copy + Into<f64>> Collection<T> {
         let mut values: Vec<f64> = self.items.iter().map(|i| (*i).into()).collect();
         values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
         let mid = values.len() / 2;
-        Some(if values.len() % 2 == 0 {
+        Some(if values.len().is_multiple_of(2) {
             (values[mid - 1] + values[mid]) / 2.0
         } else {
             values[mid]

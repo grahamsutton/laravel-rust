@@ -46,12 +46,11 @@ impl Command for KeyGenerateCommand {
 
         let app = Application::current();
         let current = app.config_repository().string("app.key");
-        if !current.is_empty() && app.is_production() && !cmd.option_bool("force") {
-            if !cmd.confirm("Are you sure you want to run this command?", false) {
+        if !current.is_empty() && app.is_production() && !cmd.option_bool("force")
+            && !cmd.confirm("Are you sure you want to run this command?", false) {
                 cmd.components().warn("Command cancelled.");
                 return Ok(());
             }
-        }
 
         let path = app.environment_file_path();
         let contents = match std::fs::read_to_string(&path) {
@@ -160,11 +159,10 @@ impl Command for DownCommand {
 
 /// Prerender a maintenance view (a plain HTML file path, or a view hook).
 fn render_template(view: &str) -> Value {
-    if let Some(renderer) = crate::integration::view_renderer() {
-        if let Some(html) = renderer(view, json!({})) {
+    if let Some(renderer) = crate::integration::view_renderer()
+        && let Some(html) = renderer(view, json!({})) {
             return Value::String(html);
         }
-    }
     std::fs::read_to_string(view)
         .map(Value::String)
         .unwrap_or(Value::Null)

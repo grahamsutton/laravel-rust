@@ -89,7 +89,7 @@ impl Command for ServeCommand {
                     + status.to_string().len() + format!("~ {elapsed:.2}ms").len() + 2;
                 let width = 100usize;
                 let dots = ".".repeat(width.saturating_sub(visible).max(1));
-                output.writeln(&format!("{left} <fg=gray>{dots}</> {right}"));
+                output.writeln(format!("{left} <fg=gray>{dots}</> {right}"));
                 response
             }) as BoxFuture<'static, Response>
         });

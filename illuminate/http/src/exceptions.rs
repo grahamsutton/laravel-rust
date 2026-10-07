@@ -143,11 +143,10 @@ pub fn render_exception(error: Error) -> Response {
 
 /// The default rendering used when no exception handler is bound.
 pub fn default_render(request: &Request, error: Error) -> Response {
-    if let Some(exception) = error.downcast_ref::<HttpResponseException>() {
-        if let Some(response) = exception.take_response() {
+    if let Some(exception) = error.downcast_ref::<HttpResponseException>()
+        && let Some(response) = exception.take_response() {
             return response;
         }
-    }
 
     let (status, message, headers) = match error.downcast_ref::<HttpException>() {
         Some(http) => (http.status, http.message(), http.headers.clone()),

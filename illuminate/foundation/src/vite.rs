@@ -47,8 +47,9 @@ impl fmt::Display for ViteException {
 impl std::error::Error for ViteException {}
 
 /// Manifests are read once per path.
-static MANIFESTS: LazyLock<RwLock<HashMap<String, Arc<Map<String, Value>>>>> =
-    LazyLock::new(|| RwLock::new(HashMap::new()));
+type Manifest = Arc<Map<String, Value>>;
+
+static MANIFESTS: LazyLock<RwLock<HashMap<String, Manifest>>> = LazyLock::new(|| RwLock::new(HashMap::new()));
 
 /// Per-application Vite configuration, stored in the container.
 #[derive(Debug)]

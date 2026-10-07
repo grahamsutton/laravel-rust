@@ -26,11 +26,10 @@ pub fn is_subset(expected: &Value, actual: &Value) -> bool {
 pub fn contains_fragment(fragment: &Value, haystack: &Value) -> bool {
     match haystack {
         Value::Object(map) => {
-            if let Value::Object(expected) = fragment {
-                if expected.iter().all(|(k, v)| map.get(k).is_some_and(|a| is_subset(v, a))) {
+            if let Value::Object(expected) = fragment
+                && expected.iter().all(|(k, v)| map.get(k).is_some_and(|a| is_subset(v, a))) {
                     return true;
                 }
-            }
             map.values().any(|value| contains_fragment(fragment, value))
         }
         Value::Array(items) => items.iter().any(|value| contains_fragment(fragment, value)),

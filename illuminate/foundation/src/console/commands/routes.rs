@@ -62,9 +62,9 @@ impl Command for RouteListCommand {
         match cmd.option("sort").as_deref() {
             Some("name") => routes.sort_by(|a, b| a.name.cmp(&b.name)),
             Some("action") => routes.sort_by(|a, b| a.action.cmp(&b.action)),
-            Some("method") => routes.sort_by(|a, b| a.methods.join("|").cmp(&b.methods.join("|"))),
+            Some("method") => routes.sort_by_key(|a| a.methods.join("|")),
             Some("domain") => routes.sort_by(|a, b| a.domain.cmp(&b.domain)),
-            Some("middleware") => routes.sort_by(|a, b| a.middleware.join(",").cmp(&b.middleware.join(","))),
+            Some("middleware") => routes.sort_by_key(|a| a.middleware.join(",")),
             Some("precedence") => {}
             _ => routes.sort_by(|a, b| a.uri.cmp(&b.uri)),
         }

@@ -253,13 +253,12 @@ impl TestResponse {
         match self.header(name) {
             None => self.fail(format!("Header [{name}] not present on response.")),
             Some(actual) => {
-                if let Some(expected) = value {
-                    if actual != expected {
+                if let Some(expected) = value
+                    && actual != expected {
                         self.fail(format!(
                             "Header [{name}] was found, but value [{actual}] does not match [{expected}]."
                         ));
                     }
-                }
             }
         }
         self
@@ -279,11 +278,10 @@ impl TestResponse {
         if !disposition.starts_with("attachment") {
             self.fail("Response does not offer a file download.".into());
         }
-        if let Some(filename) = filename {
-            if !disposition.contains(filename) {
+        if let Some(filename) = filename
+            && !disposition.contains(filename) {
                 self.fail(format!("Expected file [{filename}] is not present in Content-Disposition header."));
             }
-        }
         self
     }
 
@@ -657,11 +655,10 @@ impl TestResponse {
         let Some(cookie) = self.find_cookie(name) else {
             self.fail(format!("Cookie [{name}] not present on response."));
         };
-        if let Some(expected) = value {
-            if cookie.value != expected {
+        if let Some(expected) = value
+            && cookie.value != expected {
                 self.fail(format!("Cookie [{name}] was found, but value [{}] does not match [{expected}].", cookie.value));
             }
-        }
         self
     }
 

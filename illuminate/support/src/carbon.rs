@@ -175,18 +175,16 @@ impl Carbon {
             "%Y-%m-%dT%H:%M",
             "%Y/%m/%d %H:%M:%S",
         ] {
-            if let Ok(naive) = NaiveDateTime::parse_from_str(value, format) {
-                if let Some(c) = Self::from_naive(naive, tz) {
+            if let Ok(naive) = NaiveDateTime::parse_from_str(value, format)
+                && let Some(c) = Self::from_naive(naive, tz) {
                     return Ok(c);
                 }
-            }
         }
         for format in ["%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d-%m-%Y", "%B %d, %Y", "%b %d, %Y", "%d %B %Y"] {
-            if let Ok(date) = NaiveDate::parse_from_str(value, format) {
-                if let Some(c) = Self::from_naive(date.and_time(NaiveTime::MIN), tz) {
+            if let Ok(date) = NaiveDate::parse_from_str(value, format)
+                && let Some(c) = Self::from_naive(date.and_time(NaiveTime::MIN), tz) {
                     return Ok(c);
                 }
-            }
         }
         if let Ok(ts) = value.parse::<i64>() {
             return Ok(Self::from_timestamp(ts));
@@ -210,16 +208,14 @@ impl Carbon {
                 inner: dt.with_timezone(&tz),
             });
         }
-        if let Ok(naive) = NaiveDateTime::parse_from_str(value, &chrono_format) {
-            if let Some(c) = Self::from_naive(naive, tz) {
+        if let Ok(naive) = NaiveDateTime::parse_from_str(value, &chrono_format)
+            && let Some(c) = Self::from_naive(naive, tz) {
                 return Ok(c);
             }
-        }
-        if let Ok(date) = NaiveDate::parse_from_str(value, &chrono_format) {
-            if let Some(c) = Self::from_naive(date.and_time(NaiveTime::MIN), tz) {
+        if let Ok(date) = NaiveDate::parse_from_str(value, &chrono_format)
+            && let Some(c) = Self::from_naive(date.and_time(NaiveTime::MIN), tz) {
                 return Ok(c);
             }
-        }
         Err(InvalidFormatException {
             value: value.to_string(),
         }
@@ -513,12 +509,14 @@ impl Carbon {
     }
 
     /// Add a [`CarbonInterval`] / duration.
+    #[allow(clippy::should_implement_trait)]
     pub fn add(self, interval: impl Into<CarbonInterval>) -> Self {
         let interval = interval.into();
         self.add_months(interval.months).shift(interval.duration)
     }
 
     /// Subtract a [`CarbonInterval`] / duration.
+    #[allow(clippy::should_implement_trait)]
     pub fn sub(self, interval: impl Into<CarbonInterval>) -> Self {
         let interval = interval.into();
         self.add_months(-interval.months).shift(-interval.duration)
@@ -613,6 +611,7 @@ impl Carbon {
     // Comparison
     // ------------------------------------------------------------------
 
+    #[allow(clippy::should_implement_trait)]
     pub fn eq(&self, other: &Carbon) -> bool {
         self.inner == other.inner
     }

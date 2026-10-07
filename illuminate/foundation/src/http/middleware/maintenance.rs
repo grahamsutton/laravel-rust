@@ -112,15 +112,14 @@ impl Middleware for PreventRequestsDuringMaintenance {
             exception = exception.header("Refresh", refresh.to_string_lossy());
         }
 
-        if let Some(template) = data.get("template").and_then(Value::as_str) {
-            if !request.expects_json() {
+        if let Some(template) = data.get("template").and_then(Value::as_str)
+            && !request.expects_json() {
                 let mut response = Response::make(template.to_string(), status);
                 for (name, value) in &exception.headers {
                     response.set_header(name, value);
                 }
                 return Ok(response);
             }
-        }
 
         Err(exception.into())
     }
@@ -159,13 +158,11 @@ impl ServePublicFiles {
 #[async_trait]
 impl Middleware for ServePublicFiles {
     async fn handle(&self, request: Request, next: Next) -> Result<Response> {
-        if request.is_method("GET") || request.is_method("HEAD") {
-            if let Some(file) = public_file(&self.root, &request.decoded_path()) {
-                if let Ok(response) = Response::file(&file).await {
+        if (request.is_method("GET") || request.is_method("HEAD"))
+            && let Some(file) = public_file(&self.root, &request.decoded_path())
+                && let Ok(response) = Response::file(&file).await {
                     return Ok(response.with_header("Cache-Control", "public, max-age=3600"));
                 }
-            }
-        }
         Ok(next.run(request).await)
     }
 }

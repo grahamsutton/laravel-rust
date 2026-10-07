@@ -30,18 +30,16 @@ impl Command for MakeMigrationCommand {
 
         let mut table = cmd.option("table");
         let mut create = false;
-        if table.is_none() {
-            if let Some(created) = cmd.option("create") {
+        if table.is_none()
+            && let Some(created) = cmd.option("create") {
                 table = Some(created);
                 create = true;
             }
-        }
-        if table.is_none() {
-            if let Some((guessed, creating)) = TableGuesser::guess(&name) {
+        if table.is_none()
+            && let Some((guessed, creating)) = TableGuesser::guess(&name) {
                 table = Some(guessed);
                 create = creating;
             }
-        }
 
         let stub = match (&table, create) {
             (None, _) => stubs::MIGRATION,

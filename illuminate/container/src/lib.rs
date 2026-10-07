@@ -281,11 +281,10 @@ impl Container {
     ) -> Result<Arc<T>, BindingResolutionException> {
         let id = TypeId::of::<T>();
 
-        if let Some(instance) = self.instances.read().unwrap().get(&id) {
-            if let Some(arc) = instance.downcast_ref::<Arc<T>>() {
+        if let Some(instance) = self.instances.read().unwrap().get(&id)
+            && let Some(arc) = instance.downcast_ref::<Arc<T>>() {
                 return Ok(arc.clone());
             }
-        }
 
         let (factory, shared) = {
             let bindings = self.bindings.read().unwrap();

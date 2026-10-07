@@ -83,6 +83,7 @@ impl Sleep {
     }
 
     /// Sleep for the given number of seconds (PHP's `sleep`).
+    #[allow(clippy::self_named_constructors)]
     pub fn sleep(seconds: u64) -> Self {
         Self::for_duration(Duration::from_secs(seconds))
     }

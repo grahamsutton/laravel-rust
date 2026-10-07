@@ -7,7 +7,7 @@
 //!
 //! Your application's `build.rs` is a single line:
 //!
-//! ```no_run
+//! ```ignore
 //! fn main() {
 //!     laravel_build::discover();
 //! }
