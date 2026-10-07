@@ -193,3 +193,13 @@ async fn new_users_can_register() {
     let abigail = User::first_where("email", "abigail@laravel.com").await.unwrap().unwrap();
     assert!(Hash::check("password", &abigail.password));
 }
+
+#[tokio::test]
+async fn models_can_be_asserted_in_the_database() {
+    let app = app().await;
+    let taylor = taylor().await;
+
+    app.assert_model_exists(&taylor).await;
+    taylor.clone().delete().await.unwrap();
+    app.assert_model_missing(&taylor).await;
+}

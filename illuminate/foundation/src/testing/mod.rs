@@ -5,6 +5,7 @@ mod auth;
 mod database;
 pub mod json;
 mod test_app;
+mod time;
 pub mod test_response;
 
 pub use test_app::{TestApp, encrypt_cookie};

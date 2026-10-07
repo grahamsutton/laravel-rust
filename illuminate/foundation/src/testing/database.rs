@@ -2,6 +2,7 @@
 //! assertions.
 
 use illuminate_database::seeder::run_seeder;
+use illuminate_database::eloquent::Model;
 use illuminate_database::{DatabaseManager, MigrateOptions, Migrator, Seeder, SeederRegistry};
 use illuminate_support::{Value, json};
 
@@ -40,6 +41,54 @@ impl TestApp {
             .resolve(seeder)
             .unwrap_or_else(|| panic!("Target class [{seeder}] does not exist."));
         run_seeder(seeder.as_ref(), None).await.expect("Unable to seed the database");
+        self
+    }
+
+    /// Assert that the model exists in the database.
+    pub async fn assert_model_exists<M: Model>(&self, model: &M) -> &Self {
+        if model_rows(model, None).await == 0 {
+            panic!(
+                "Failed asserting that a row in the table [{}] matches the attributes {}.",
+                M::table(),
+                json!({ M::primary_key(): model.get_key() })
+            );
+        }
+        self
+    }
+
+    /// Assert that the model is missing from the database.
+    pub async fn assert_model_missing<M: Model>(&self, model: &M) -> &Self {
+        if model_rows(model, None).await > 0 {
+            panic!(
+                "Failed asserting that a row in the table [{}] does not match the attributes {}.",
+                M::table(),
+                json!({ M::primary_key(): model.get_key() })
+            );
+        }
+        self
+    }
+
+    /// Assert that the model has been soft deleted.
+    pub async fn assert_soft_deleted<M: Model>(&self, model: &M) -> &Self {
+        if model_rows(model, Some(true)).await == 0 {
+            panic!(
+                "Failed asserting that any soft deleted row in the table [{}] matches the attributes {}.",
+                M::table(),
+                json!({ M::primary_key(): model.get_key() })
+            );
+        }
+        self
+    }
+
+    /// Assert that the model has not been soft deleted.
+    pub async fn assert_not_soft_deleted<M: Model>(&self, model: &M) -> &Self {
+        if model_rows(model, Some(false)).await == 0 {
+            panic!(
+                "Failed asserting that any row in the table [{}] matches the attributes {} and is not soft deleted.",
+                M::table(),
+                json!({ M::primary_key(): model.get_key() })
+            );
+        }
         self
     }
 
@@ -116,4 +165,17 @@ async fn similar_results(table: &str) -> String {
 
 fn pretty(value: &Value) -> String {
     serde_json::to_string_pretty(value).unwrap_or_default()
+}
+
+/// Count the rows for the model, optionally only (non-)soft-deleted ones.
+async fn model_rows<M: Model>(model: &M, trashed: Option<bool>) -> i64 {
+    let mut query = M::get_connection()
+        .table(M::table())
+        .where_(M::primary_key(), model.get_key());
+    query = match trashed {
+        Some(true) => query.where_not_null(M::deleted_at_column()),
+        Some(false) => query.where_null(M::deleted_at_column()),
+        None => query,
+    };
+    query.count().await.expect("Unable to query the database") as i64
 }

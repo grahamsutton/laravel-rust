@@ -34,7 +34,16 @@ pub struct TestApp {
     unencrypted_cookies: IndexMap<String, String>,
     pending_session: Map<String, Value>,
     follow_redirects: bool,
+    pub(super) time_traveled: bool,
     _guard: LocalInstanceGuard,
+}
+
+impl Drop for TestApp {
+    fn drop(&mut self) {
+        if self.time_traveled {
+            illuminate_support::Carbon::set_thread_test_now(None);
+        }
+    }
 }
 
 impl TestApp {
@@ -76,6 +85,7 @@ impl TestApp {
             unencrypted_cookies: IndexMap::new(),
             pending_session: Map::new(),
             follow_redirects: false,
+            time_traveled: false,
             _guard: guard,
         }
     }

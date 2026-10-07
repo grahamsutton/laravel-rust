@@ -68,3 +68,30 @@ async fn it_follows_redirects() {
     app.following_redirects();
     app.post("/counter", json!({})).await.assert_ok().assert_see("1");
 }
+
+#[tokio::test]
+async fn tests_can_travel_through_time() {
+    use illuminate_support::Carbon;
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = illuminate_foundation::testing::TestApp::new(illuminate_foundation::Application::configure_detached(dir.path()));
+
+    let frozen = app.freeze_second();
+    assert_eq!(Carbon::now(), frozen);
+
+    app.travel(5).minutes();
+    assert_eq!(Carbon::now(), frozen.add_minutes(5));
+
+    app.travel(-1).days();
+    assert_eq!(Carbon::now(), frozen.add_minutes(5).add_days(-1));
+
+    let launch = Carbon::parse("2011-06-09 00:00:00").unwrap();
+    app.travel_to(launch);
+    assert_eq!(Carbon::now(), launch);
+
+    app.travel_back();
+    assert_ne!(Carbon::now(), launch);
+
+    app.travel_to(launch);
+    drop(app);
+    assert_ne!(Carbon::now(), launch, "dropping the app returns to the present");
+}
