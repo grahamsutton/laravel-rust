@@ -1,0 +1,24 @@
+[package]
+name = "illuminate-http-resources"
+description = "The Illuminate Http Resources package: transform models and collections into JSON."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-http.workspace = true
+illuminate-pagination.workspace = true
+illuminate-database.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+
+[dev-dependencies]
+illuminate-config.workspace = true
+illuminate-routing.workspace = true
+tokio.workspace = true
