@@ -1,0 +1,95 @@
+//! The scheduler, wired to the rest of the framework: cache-backed mutexes
+//! and scheduled queued jobs.
+
+use async_trait::async_trait;
+use illuminate_cache::Cache;
+use illuminate_console::scheduling::{Event, EventMutex, SchedulingMutex};
+use illuminate_queue::{Dispatchable, ShouldQueue};
+use illuminate_support::Carbon;
+
+/// Prevents events from overlapping with a lock in the default cache store,
+/// so it holds across `schedule:run` processes (Laravel's `CacheEventMutex`).
+pub struct CacheEventMutex;
+
+#[async_trait]
+impl EventMutex for CacheEventMutex {
+    async fn create(&self, event: &Event) -> bool {
+        match Cache::default_store() {
+            Ok(store) => store
+                .add(&event.mutex_name(), true, event.expires_at() * 60)
+                .await
+                .unwrap_or(false),
+            Err(_) => false,
+        }
+    }
+
+    async fn exists(&self, event: &Event) -> bool {
+        match Cache::default_store() {
+            Ok(store) => store.has(&event.mutex_name()).await.unwrap_or(false),
+            Err(_) => false,
+        }
+    }
+
+    async fn forget(&self, event: &Event) {
+        if let Ok(store) = Cache::default_store() {
+            let _ = store.forget(&event.mutex_name()).await;
+        }
+    }
+}
+
+/// Runs `on_one_server` events on a single server, with a lock per minute
+/// in the default cache store (Laravel's `CacheSchedulingMutex`).
+pub struct CacheSchedulingMutex;
+
+impl CacheSchedulingMutex {
+    fn key(event: &Event, time: &Carbon) -> String {
+        format!("{}{}", event.mutex_name(), time.format("Hi"))
+    }
+}
+
+#[async_trait]
+impl SchedulingMutex for CacheSchedulingMutex {
+    async fn create(&self, event: &Event, time: &Carbon) -> bool {
+        match Cache::default_store() {
+            Ok(store) => store.add(&Self::key(event, time), true, 3600).await.unwrap_or(false),
+            Err(_) => false,
+        }
+    }
+
+    async fn exists(&self, event: &Event, time: &Carbon) -> bool {
+        match Cache::default_store() {
+            Ok(store) => store.has(&Self::key(event, time)).await.unwrap_or(false),
+            Err(_) => false,
+        }
+    }
+}
+
+/// Schedule queued jobs: `Schedule::job(Heartbeat)`.
+///
+/// ```ignore
+/// use laravel::prelude::*;
+///
+/// Schedule::job(Heartbeat).every_five_minutes();
+/// ```
+pub trait ScheduleJobs {
+    /// Dispatch the job onto the queue on schedule.
+    fn job<J: ShouldQueue + Clone>(job: J) -> Event;
+}
+
+impl ScheduleJobs for illuminate_console::Schedule {
+    fn job<J: ShouldQueue + Clone>(job: J) -> Event {
+        let name = job.display_name();
+        illuminate_console::Schedule::call(move || {
+            let job = job.clone();
+            async move { job.dispatch().await }
+        })
+        .name(name)
+    }
+}
+
+/// Use the cache-backed mutexes for the application's schedule.
+pub(crate) fn boot() {
+    let container = illuminate_container::Container::get_instance();
+    container.singleton_if::<dyn EventMutex>(|_| std::sync::Arc::new(CacheEventMutex));
+    container.singleton_if::<dyn SchedulingMutex>(|_| std::sync::Arc::new(CacheSchedulingMutex));
+}

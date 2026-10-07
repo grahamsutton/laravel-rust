@@ -40,6 +40,7 @@ pub fn boot() {
     wire_eloquent();
     wire_transactions();
     wire_context();
+    crate::scheduling::boot();
 }
 
 /// The `Context` travels with the jobs a request dispatches, and is

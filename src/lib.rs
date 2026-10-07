@@ -161,6 +161,7 @@ pub mod prelude {
     pub use illuminate_container::{Container, Injectable as InjectableContract, ServiceProvider};
     pub use illuminate_filesystem::UploadedFileExt;
     pub use illuminate_foundation::{Application, ApplicationBuilder, ConfigFile, Inspiring};
+    pub use illuminate_foundation::scheduling::ScheduleJobs;
     pub use illuminate_http::{
         HttpException, IntoResponse, Json, Middleware, Next, Request, Response, StatusCode,
         UploadedFile,

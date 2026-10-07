@@ -17,6 +17,7 @@ pub mod http;
 pub mod inspiring;
 pub mod integration;
 pub mod providers;
+pub mod scheduling;
 pub mod testing;
 pub mod vite;
 

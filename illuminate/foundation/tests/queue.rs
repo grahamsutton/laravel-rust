@@ -275,3 +275,37 @@ async fn context_travels_with_queued_jobs() {
     assert_eq!(*SEEN_TRACE.lock().unwrap(), Some(illuminate_support::json!("8f5b0a")));
     assert!(illuminate_log::Context::missing("trace_id"), "the worker forgets the job's context");
 }
+
+#[tokio::test]
+async fn scheduled_events_lock_through_the_cache() {
+    use illuminate_console::scheduling::{EventMutex, SchedulingMutex};
+    use illuminate_foundation::scheduling::{CacheEventMutex, CacheSchedulingMutex};
+
+    let (_app, _dir) = test_app("array");
+    let event = illuminate_console::Schedule::command("inspire").without_overlapping();
+
+    assert!(CacheEventMutex.create(&event).await);
+    assert!(!CacheEventMutex.create(&event).await, "a second run overlaps");
+    assert!(CacheEventMutex.exists(&event).await);
+    CacheEventMutex.forget(&event).await;
+    assert!(!CacheEventMutex.exists(&event).await);
+
+    let now = illuminate_support::Carbon::now();
+    assert!(CacheSchedulingMutex.create(&event, &now).await);
+    assert!(!CacheSchedulingMutex.create(&event, &now).await, "another server already ran it this minute");
+}
+
+#[tokio::test]
+async fn jobs_can_be_scheduled() {
+    use illuminate_foundation::scheduling::ScheduleJobs;
+
+    let (app, _dir) = test_app("array");
+    illuminate_console::Schedule::job(ProcessPodcast { id: 5 }).every_minute();
+
+    app.artisan("schedule:run")
+        .expects_output_to_contain("ProcessPodcast")
+        .assert_successful()
+        .await;
+
+    assert_eq!(Queue::size(None).await.unwrap(), 1);
+}
