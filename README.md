@@ -9,7 +9,7 @@
 
 ## About Laravel
 
-> **Note:** This repository contains the core code of the Laravel framework, ported to Rust. It's an unofficial port, not affiliated with Laravel. If you want to build an application using Laravel in Rust, start from the [application skeleton](skeleton).
+> **Note:** This repository contains the core code of the Laravel framework, ported to Rust. It's an unofficial port, not affiliated with Laravel. If you want to build an application using Laravel in Rust, see [Getting Started](#getting-started).
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable, creative experience to be truly fulfilling. Laravel attempts to take the pain out of development by easing common tasks used in the majority of web projects, such as:
 
@@ -49,6 +49,42 @@ pub fn web() {
     .middleware("auth");
 }
 ```
+
+## Getting Started
+
+You'll need [Rust](https://rustup.rs) 1.89 or newer, and [Node.js](https://nodejs.org) if you'd like your frontend assets built. SQLite works out of the box, so there's no database to set up.
+
+Install the `laravel` installer from a clone of this repository:
+
+```shell
+git clone https://github.com/portside-labs/laravel-rust.git
+cd laravel-rust
+cargo install --path installer
+```
+
+Then create an application and start it:
+
+```shell
+laravel new example-app
+cd example-app
+cargo artisan serve
+```
+
+Open [http://localhost:8000](http://localhost:8000) and you'll see the welcome page.
+
+`laravel new` asks which database you'd like and whether to build your frontend assets, then copies the [application skeleton](skeleton), writes your `.env` with a fresh application key, builds the application, and (for SQLite) runs your migrations. To skip the questions, pass your answers: `laravel new example-app --database=sqlite --npm`. Run `laravel help new` for every option.
+
+From there, Artisan works the way you'd expect:
+
+```shell
+cargo artisan make:model Podcast --all   # a model, plus its migration, factory, seeder, policy and controller
+cargo artisan migrate                    # run your migrations
+cargo artisan route:list                 # see every route
+cargo artisan dev                        # the server, a queue worker and Vite, together
+cargo artisan test                       # run your tests
+```
+
+New applications build against the clone you installed from, so keep it around. Run `git pull` there to pick up the latest framework changes.
 
 ## Learning Laravel
 
