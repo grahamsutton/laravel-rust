@@ -1,0 +1,22 @@
+[package]
+name = "illuminate-concurrency"
+description = "The Illuminate Concurrency package: run independent tasks at the same time."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-config.workspace = true
+illuminate-process.workspace = true
+tokio.workspace = true
+futures.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

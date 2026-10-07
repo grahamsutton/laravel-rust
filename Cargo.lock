@@ -1351,6 +1351,7 @@ dependencies = [
  "illuminate-filesystem",
  "illuminate-http",
  "illuminate-log",
+ "illuminate-queue",
  "illuminate-support",
  "illuminate-translation",
  "illuminate-view",

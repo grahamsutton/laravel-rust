@@ -1,0 +1,20 @@
+[package]
+name = "illuminate-process"
+description = "The Illuminate Process package: an expressive, minimal API for invoking external processes."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+tokio.workspace = true
+futures.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tempfile.workspace = true
