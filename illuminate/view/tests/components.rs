@@ -490,3 +490,13 @@ fn missing_components_are_reported() {
         "Unable to locate a class or view for component [missing]. (View: __inline, line 2)"
     );
 }
+
+#[test]
+fn component_first_renders_the_first_view_that_exists() {
+    let views = Views::new();
+    views.add("alert", "<div class=\"{{ $type }}\">{{ $slot }}</div>");
+    assert_eq!(
+        views.inline("@componentFirst(['custom.alert', 'alert'], ['type' => 'error'])\nDenied.\n@endcomponentFirst", ()),
+        "<div class=\"error\">Denied.</div>"
+    );
+}

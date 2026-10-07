@@ -180,6 +180,23 @@ fn register_functions(factory: &Factory) {
     });
     blade.function("Vite::content", |args| Ok(Vite::content(&required(args, 0, "Vite::content")?)?.into()));
     blade.function("Vite::isRunningHot", |_| Ok(Vite::is_running_hot().into()));
+    blade.function("fonts", |args| {
+        let aliases = match args.first().map(ViewValue::to_json) {
+            None | Some(Value::Null) => None,
+            Some(Value::Array(aliases)) => Some(aliases.iter().map(ValueExt::to_string_lossy).collect::<Vec<_>>()),
+            Some(alias) => Some(vec![alias.to_string_lossy()]),
+        };
+        let aliases: Option<Vec<&str>> = aliases.as_ref().map(|aliases| aliases.iter().map(String::as_str).collect());
+        Ok(Vite::fonts(aliases.as_deref())?.into())
+    });
+
+    // Context (`@context`).
+    blade.function("context_has", |args| {
+        Ok(illuminate_log::Context::has(&required(args, 0, "context_has")?).into())
+    });
+    blade.function("context", |args| {
+        Ok(ViewValue::from(illuminate_log::Context::get(&required(args, 0, "context")?).unwrap_or(Value::Null)))
+    });
 
     // Authentication and authorization.
     blade.function("auth_check", |args| {

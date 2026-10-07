@@ -233,6 +233,9 @@ builtins!(
     "app_environment",
     "vite",
     "vite_react_refresh",
+    "fonts",
+    "context",
+    "context_has",
     "urlencode",
     "rawurlencode",
     "urldecode",
@@ -1159,7 +1162,9 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
                 environment,
             })
         }
-        "vite" | "vite_react_refresh" => ViewValue::html(""),
+        "vite" | "vite_react_refresh" | "fonts" => ViewValue::html(""),
+        "context" => ViewValue::Null,
+        "context_has" => ViewValue::Bool(false),
         "spl_object_id" => ViewValue::Int(match a0 {
             ViewValue::Object(o) => Arc::as_ptr(o) as *const () as usize as i64,
             _ => 0,

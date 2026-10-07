@@ -183,6 +183,8 @@ pub(crate) enum Cond {
     Error(Vec<Expr>),
     /// `@session('key')`: binds `$value`.
     Session(Vec<Expr>),
+    /// `@context('key')`: binds `$value`.
+    Context(Vec<Expr>),
     /// A custom `Blade::if` condition (negated for `@unless...`).
     Custom {
         name: String,
@@ -252,6 +254,7 @@ pub(crate) enum OutputDirective {
     Dd,
     Vite,
     ViteReactRefresh,
+    Fonts,
     Inject,
     Custom(String),
 }
@@ -273,7 +276,8 @@ pub(crate) enum ComponentName {
     /// `<x-dynamic-component :component="$name">`
     Dynamic,
     /// `@component('view.name', [...])`
-    Legacy { view: Expr, data: Option<Expr> },
+    /// `@component` (`first`: `@componentFirst`, rendering the first view that exists).
+    Legacy { view: Expr, data: Option<Expr>, first: bool },
 }
 
 /// An attribute on a component or slot tag.

@@ -247,3 +247,34 @@ fn nested_conditionals() {
         "C\n"
     );
 }
+
+#[test]
+fn context_directive_binds_value() {
+    let views = Views::new();
+    views.factory.blade().function("context_has", |args| {
+        Ok(matches!(args[0].to_string().as_str(), "canary" | "empty").into())
+    });
+    views.factory.blade().function("context", |args| {
+        Ok(match args[0].to_string().as_str() {
+            "canary" => "enabled".into(),
+            _ => ViewValue::Null,
+        })
+    });
+    assert_eq!(views.inline("@context('canary')\n<div>{{ $value }}</div>\n@endcontext", ()), "<div>enabled</div>\n");
+    assert_eq!(views.inline("@context('missing') x @endcontext", ()), "");
+    assert_eq!(views.inline("@context('empty') [{{ $value }}] @endcontext", ()), " [] ");
+}
+
+#[test]
+fn context_and_fonts_render_nothing_without_the_framework() {
+    assert_eq!(blade("@context('canary') x @endcontext|@fonts|@fonts('sans')", ()), "||");
+}
+
+#[test]
+fn fonts_directive_calls_the_fonts_function() {
+    let views = Views::new();
+    views.factory.blade().function("fonts", |args| {
+        Ok(ViewValue::html(format!("<fonts {}>", args.first().map(ViewValue::to_string).unwrap_or_default())))
+    });
+    assert_eq!(views.inline("@fonts\n@fonts('sans')", ()), "<fonts ><fonts sans>");
+}

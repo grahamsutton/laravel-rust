@@ -54,6 +54,8 @@ const BUILTIN: &[&str] = &[
     "enderror",
     "session",
     "endsession",
+    "context",
+    "endcontext",
     "can",
     "cannot",
     "canany",
@@ -117,6 +119,7 @@ const BUILTIN: &[&str] = &[
     "dump",
     "vite",
     "vitereactrefresh",
+    "fonts",
     "json",
     "js",
     "lang",
@@ -127,6 +130,8 @@ const BUILTIN: &[&str] = &[
     "unset",
     "component",
     "endcomponent",
+    "componentfirst",
+    "endcomponentfirst",
     "slot",
     "endslot",
     "props",
@@ -149,6 +154,7 @@ const IF_ENDS: &[&str] = &[
     "endproduction",
     "enderror",
     "endsession",
+    "endcontext",
     "endcan",
     "endcannot",
     "endcanany",
@@ -462,6 +468,10 @@ impl TemplateParser<'_> {
                 let cond = Cond::Session(args_list(&args, line)?);
                 self.if_chain(cond, "session", line).map(Some)
             }
+            "context" => {
+                let cond = Cond::Context(args_list(&args, line)?);
+                self.if_chain(cond, "context", line).map(Some)
+            }
             "can" => {
                 let cond = Cond::Can(args_list(&args, line)?);
                 self.if_chain(cond, "can", line).map(Some)
@@ -738,7 +748,8 @@ impl TemplateParser<'_> {
                 expr: required_expr(&args, line, "aware")?,
                 line,
             })),
-            "component" => {
+            "component" | "componentfirst" => {
+                let first = lowered == "componentfirst";
                 let mut list = args_list(&args, line)?;
                 if list.is_empty() {
                     return Err(ViewCompilationException::new(
@@ -748,9 +759,10 @@ impl TemplateParser<'_> {
                 }
                 let view = list.remove(0);
                 let data = list.into_iter().next();
-                let (children, _) = self.block("component", &["endcomponent"], line)?;
+                let end = if first { "endcomponentfirst" } else { "endcomponent" };
+                let (children, _) = self.block(if first { "componentFirst" } else { "component" }, &[end], line)?;
                 Ok(Some(Node::Component(Box::new(ComponentNode {
-                    name: ComponentName::Legacy { view, data },
+                    name: ComponentName::Legacy { view, data, first },
                     attrs: Vec::new(),
                     children,
                     line,
@@ -838,6 +850,7 @@ impl TemplateParser<'_> {
             "dd" => output(OutputDirective::Dd, args_list(&args, line)?),
             "vite" => output(OutputDirective::Vite, args_list(&args, line)?),
             "vitereactrefresh" => output(OutputDirective::ViteReactRefresh, Vec::new()),
+            "fonts" => output(OutputDirective::Fonts, args_list(&args, line)?),
             "inject" => {
                 let list = args_list(&args, line)?;
                 if list.len() < 2 {
@@ -874,7 +887,7 @@ impl TemplateParser<'_> {
             let Some(stop) = stop else {
                 let end = match directive {
                     "if" | "unless" | "isset" | "empty" | "auth" | "guest" | "env"
-                    | "production" | "error" | "session" | "can" | "cannot" | "canany" => {
+                    | "production" | "error" | "session" | "context" | "can" | "cannot" | "canany" => {
                         format!("end{directive}")
                     }
                     "hasSection" | "sectionMissing" | "hasstack" => "endif".to_string(),

@@ -58,6 +58,9 @@ type Manifest = Arc<Map<String, Value>>;
 
 static MANIFESTS: LazyLock<RwLock<HashMap<String, Manifest>>> = LazyLock::new(|| RwLock::new(HashMap::new()));
 
+/// Font manifests are read once per path, too.
+static FONT_MANIFESTS: LazyLock<RwLock<HashMap<String, Manifest>>> = LazyLock::new(|| RwLock::new(HashMap::new()));
+
 /// Per-application Vite configuration, stored in the container.
 #[derive(Debug)]
 struct ViteState {
@@ -67,6 +70,7 @@ struct ViteState {
     hot_file: Option<String>,
     build_directory: String,
     manifest_filename: String,
+    fonts_manifest_filename: String,
     script_tag_attributes: Map<String, Value>,
     style_tag_attributes: Map<String, Value>,
     preload_tag_attributes: Map<String, Value>,
@@ -83,6 +87,7 @@ impl Default for ViteState {
             hot_file: None,
             build_directory: "build".to_string(),
             manifest_filename: "manifest.json".to_string(),
+            fonts_manifest_filename: "fonts-manifest.json".to_string(),
             script_tag_attributes: Map::new(),
             style_tag_attributes: Map::new(),
             preload_tag_attributes: Map::new(),
@@ -331,6 +336,63 @@ impl Vite {
         write(|s| s.preload_tag_attributes.extend(object(attributes)));
     }
 
+    /// Use a different file name for the font manifest (default
+    /// `fonts-manifest.json`).
+    pub fn use_fonts_manifest_filename(filename: &str) {
+        write(|s| s.fonts_manifest_filename = filename.to_string());
+    }
+
+    /// Render the font preload links and font CSS the Laravel Vite plugin
+    /// generated (`@fonts`), for every font or only the given aliases.
+    ///
+    /// ```blade
+    /// <head>
+    ///     @fonts
+    ///     @fonts(['sans', 'mono'])
+    /// </head>
+    /// ```
+    pub fn fonts(aliases: Option<&[&str]>) -> Result<HtmlString> {
+        if read(|s| s.faked) {
+            return Ok(HtmlString::new(""));
+        }
+        let hot = Self::is_running_hot();
+        let (build_directory, filename) = read(|s| (s.build_directory.clone(), s.fonts_manifest_filename.clone()));
+        let path = if hot {
+            let hot_file = Self::hot_file();
+            let directory = std::path::Path::new(&hot_file).parent().map(|dir| dir.to_path_buf()).unwrap_or_default();
+            directory.join("fonts-manifest.dev.json").to_string_lossy().into_owned()
+        } else {
+            public_path(&format!("{build_directory}/{filename}"))
+        };
+        let Some(manifest) = font_manifest(&path)? else {
+            return Ok(HtmlString::new(""));
+        };
+        ensure_valid_font_manifest(&manifest)?;
+
+        let mut preloads: Vec<Map<String, Value>> = manifest
+            .get("preloads")
+            .and_then(Value::as_array)
+            .map(|preloads| preloads.iter().map(|preload| object(preload.clone())).collect())
+            .unwrap_or_default();
+        if let Some(aliases) = aliases {
+            ensure_valid_families(aliases, &manifest)?;
+            preloads.retain(|preload| {
+                preload
+                    .get("alias")
+                    .and_then(Value::as_str)
+                    .is_some_and(|alias| aliases.contains(&alias))
+            });
+        }
+        ensure_valid_preloads(&preloads, hot)?;
+
+        let preloads = render_font_preloads(&preloads, &build_directory);
+        let style = render_font_style(&manifest, aliases, &build_directory)?;
+        Ok(HtmlString::new(match (preloads.is_empty(), style.is_empty()) {
+            (false, false) => format!("{preloads}\n{style}"),
+            _ => format!("{preloads}{style}"),
+        }))
+    }
+
     /// The assets preloaded by the tags generated so far (for `Link`
     /// headers): the current request's, or those generated outside one.
     pub fn preloaded_assets() -> IndexMap<String, Vec<String>> {
@@ -490,21 +552,8 @@ fn make_preload_tag(url: &str, chunk: Option<&Map<String, Value>>, integrity: &O
     merge(&mut attributes, read(|s| s.preload_tag_attributes.clone()));
 
     let without_href: Vec<(String, Value)> = attributes.iter().filter(|(k, _)| k != "href").cloned().collect();
-    let preload = parse_attributes(&without_href);
     // Preloads belong to the request rendering them (for its `Link` header).
-    match illuminate_http::current_request() {
-        Some(request) => {
-            let assets = request.extension::<RequestPreloads>().unwrap_or_else(|| {
-                let assets = Arc::new(RequestPreloads::default());
-                request.set_extension(assets.clone());
-                assets
-            });
-            assets.0.lock().unwrap().insert(url.to_string(), preload);
-        }
-        None => {
-            write(|s| s.preloaded_assets.insert(url.to_string(), preload));
-        }
-    }
+    record_preload(url, parse_attributes(&without_href));
 
     format!("<link {} />", parse_attributes(&attributes).join(" "))
 }
@@ -528,6 +577,186 @@ fn parse_attributes(attributes: &[(String, Value)]) -> Vec<String> {
             other => format!("{key}=\"{}\"", other.to_string_lossy()),
         })
         .collect()
+}
+
+/// Read the font manifest at the path (`None` when there's none).
+fn font_manifest(path: &str) -> Result<Option<Manifest>> {
+    if let Some(manifest) = FONT_MANIFESTS.read().unwrap().get(path) {
+        return Ok(Some(manifest.clone()));
+    }
+    let Ok(contents) = std::fs::read_to_string(path) else {
+        return Ok(None);
+    };
+    let manifest: Value = serde_json::from_str(&contents)
+        .map_err(|_| ViteException(format!("The font manifest at [{path}] is not valid JSON.")))?;
+    let manifest = Arc::new(object(manifest));
+    FONT_MANIFESTS.write().unwrap().insert(path.to_string(), manifest.clone());
+    Ok(Some(manifest))
+}
+
+fn ensure_valid_font_manifest(manifest: &Map<String, Value>) -> Result<()> {
+    match manifest.get("version") {
+        None => return Err(ViteException("The font manifest is missing the [version] key.".into()).into()),
+        Some(version) if version != &Value::from(1) => {
+            return Err(ViteException(format!(
+                "Unsupported font manifest version [{}]. Supported versions: 1.",
+                version.to_string_lossy()
+            ))
+            .into());
+        }
+        Some(_) => {}
+    }
+    if !manifest.get("families").is_some_and(Value::is_object) {
+        return Err(ViteException("The font manifest is missing the [families] key.".into()).into());
+    }
+    Ok(())
+}
+
+fn ensure_valid_families(aliases: &[&str], manifest: &Map<String, Value>) -> Result<()> {
+    let available: Vec<String> = manifest
+        .get("families")
+        .and_then(Value::as_object)
+        .map(|families| families.keys().cloned().collect())
+        .unwrap_or_default();
+    for alias in aliases {
+        if !available.iter().any(|family| family == alias) {
+            return Err(ViteException(format!(
+                "Font alias [{alias}] is not defined in the font manifest. Available aliases: {}.",
+                available.join(", ")
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn ensure_valid_preloads(preloads: &[Map<String, Value>], hot: bool) -> Result<()> {
+    let url_key = if hot { "url" } else { "file" };
+    for (index, preload) in preloads.iter().enumerate() {
+        let Some(alias) = preload.get("alias") else {
+            return Err(ViteException(format!("Font manifest preload entry [{index}] is missing the [alias] key.")).into());
+        };
+        if !preload.contains_key(url_key) {
+            return Err(ViteException(format!(
+                "Font manifest preload entry [{index}] for alias [{}] is missing the [{url_key}] key.",
+                alias.to_string_lossy()
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn render_font_preloads(preloads: &[Map<String, Value>], build_directory: &str) -> String {
+    let already = Vite::preloaded_assets();
+    let mut tags = Vec::new();
+    for preload in preloads {
+        let url = match preload.get("url").and_then(Value::as_str) {
+            Some(url) => url.to_string(),
+            None => asset_path(&format!(
+                "{build_directory}/{}",
+                preload.get("file").map(ValueExt::to_string_lossy).unwrap_or_default()
+            )),
+        };
+        if already.contains_key(&url) {
+            continue;
+        }
+        let option = |key: &str| preload.get(key).cloned().unwrap_or(Value::Bool(false));
+        let mut attributes: Vec<(String, Value)> = vec![
+            ("rel".into(), "preload".into()),
+            ("as".into(), preload.get("as").cloned().unwrap_or_else(|| "font".into())),
+            ("href".into(), url.clone().into()),
+            ("type".into(), option("type")),
+            ("crossorigin".into(), option("crossorigin")),
+        ];
+        attributes.extend(nonce_attribute());
+        merge(&mut attributes, read(|s| s.preload_tag_attributes.clone()));
+
+        let without_href: Vec<(String, Value)> = attributes.iter().filter(|(k, _)| k != "href").cloned().collect();
+        record_preload(&url, parse_attributes(&without_href));
+        tags.push(format!("<link {} />", parse_attributes(&attributes).join(" ")));
+    }
+    tags.join("\n")
+}
+
+fn render_font_style(manifest: &Map<String, Value>, aliases: Option<&[&str]>, build_directory: &str) -> Result<String> {
+    let css = match (manifest.get("style").and_then(Value::as_object), aliases) {
+        (None, _) => String::new(),
+        (Some(style), Some(aliases)) => filtered_font_style(style, aliases)?,
+        (Some(style), None) => match (style.get("inline").and_then(Value::as_str), style.get("file").and_then(Value::as_str)) {
+            (Some(inline), _) => inline.to_string(),
+            (None, Some(file)) => {
+                let path = public_path(&format!("{build_directory}/{file}"));
+                std::fs::read_to_string(&path)
+                    .map_err(|_| ViteException(format!("Unable to locate font CSS file from manifest: {path}.")))?
+            }
+            (None, None) => String::new(),
+        },
+    };
+    if css.is_empty() {
+        return Ok(String::new());
+    }
+    let attributes = parse_attributes(&nonce_attribute());
+    let attributes = if attributes.is_empty() { String::new() } else { format!(" {}", attributes.join(" ")) };
+    Ok(format!("<style{attributes}>\n{}\n</style>", css.trim_matches('\n')))
+}
+
+fn filtered_font_style(style: &Map<String, Value>, aliases: &[&str]) -> Result<String> {
+    let family_styles = match style.get("familyStyles") {
+        None => Map::new(),
+        Some(Value::Object(styles)) => styles.clone(),
+        Some(_) => {
+            return Err(ViteException(
+                "The font manifest [style.familyStyles] must be an object keyed by alias; the manifest was likely produced by an incompatible plugin version.".into(),
+            )
+            .into());
+        }
+    };
+    let variables = match style.get("variables") {
+        None => Map::new(),
+        Some(Value::Object(variables)) => variables.clone(),
+        Some(_) => {
+            return Err(ViteException(
+                "The font manifest [style.variables] must be an object keyed by alias; the manifest was likely produced by an incompatible plugin version.".into(),
+            )
+            .into());
+        }
+    };
+
+    let mut parts: Vec<String> = aliases
+        .iter()
+        .filter_map(|alias| family_styles.get(*alias).map(ValueExt::to_string_lossy))
+        .collect();
+    if !variables.is_empty() {
+        let declarations: Vec<String> = aliases
+            .iter()
+            .filter_map(|alias| variables.get(*alias).map(|variable| format!("  {}", variable.to_string_lossy())))
+            .collect();
+        parts.push(if declarations.is_empty() {
+            String::new()
+        } else {
+            format!(":root {{\n{}\n}}", declarations.join("\n"))
+        });
+    }
+    Ok(parts.join("\n\n"))
+}
+
+/// Remember a preloaded asset: on the current request (for its `Link`
+/// header), or globally outside one.
+fn record_preload(url: &str, preload: Vec<String>) {
+    match illuminate_http::current_request() {
+        Some(request) => {
+            let assets = request.extension::<RequestPreloads>().unwrap_or_else(|| {
+                let assets = Arc::new(RequestPreloads::default());
+                request.set_extension(assets.clone());
+                assets
+            });
+            assets.0.lock().unwrap().insert(url.to_string(), preload);
+        }
+        None => {
+            write(|s| s.preloaded_assets.insert(url.to_string(), preload));
+        }
+    }
 }
 
 #[cfg(test)]

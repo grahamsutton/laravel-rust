@@ -908,6 +908,15 @@ impl Renderer {
                     (true, Some(("value", value)))
                 }
             }
+            Cond::Context(args) => {
+                let args = self.eval_all(args, scope, ctx, line)?;
+                let key = functions::arg(&args, 0).clone();
+                if call(self, "context_has", std::slice::from_ref(&key))?.truthy() {
+                    (true, Some(("value", call(self, "context", &[key])?)))
+                } else {
+                    (false, None)
+                }
+            }
             Cond::Custom { name, args, negate } => {
                 let args = self.eval_all(args, scope, ctx, line)?;
                 let handler = self
@@ -1192,8 +1201,13 @@ impl Renderer {
         let mut values = self.evaluate_attrs(&node.attrs, scope, ctx, line)?;
 
         // @component('view', [...]) — the original component syntax.
-        if let ComponentName::Legacy { view, data } = &node.name {
-            let view = self.eval(view, scope, ctx, line)?.to_string_lossy();
+        if let ComponentName::Legacy { view, data, first } = &node.name {
+            let view = self.eval(view, scope, ctx, line)?;
+            let view = if *first {
+                self.first_existing(&view)?
+            } else {
+                view.to_string_lossy()
+            };
             let mut component_data = ViewData::new();
             if let Some(data) = data {
                 let data = self.eval(data, scope, ctx, line)?;
@@ -1599,6 +1613,7 @@ impl Renderer {
             }
             OutputDirective::Vite => echo_raw(&call("vite", &args)?, out)?,
             OutputDirective::ViteReactRefresh => echo_raw(&call("vite_react_refresh", &[])?, out)?,
+            OutputDirective::Fonts => echo_raw(&call("fonts", &args)?, out)?,
             OutputDirective::Inject => {
                 let variable = a0.to_string_lossy();
                 let service = call("app", &args[1..])?;
