@@ -78,7 +78,8 @@ pub struct TrustProxies {
 }
 
 impl TrustProxies {
-    /// Trust the given proxy addresses (`"*"` trusts every proxy).
+    /// Trust the given proxy addresses or CIDR ranges (`"*"` trusts every
+    /// proxy).
     pub fn at(proxies: &[&str]) -> Self {
         Self {
             proxies: proxies.iter().map(|p| p.to_string()).collect(),
@@ -91,7 +92,7 @@ impl Middleware for TrustProxies {
     async fn handle(&self, request: Request, next: Next) -> Result<Response> {
         let remote = request.remote_addr().map(|addr| addr.ip().to_string());
         let trusted = self.proxies.iter().any(|proxy| {
-            proxy == "*" || proxy == "**" || remote.as_deref().is_some_and(|ip| ip == proxy)
+            proxy == "*" || proxy == "**" || remote.as_deref().is_some_and(|ip| super::ip_matches(ip, proxy))
         });
         if trusted {
             request.set_trust_proxies(true);

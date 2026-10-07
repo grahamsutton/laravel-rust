@@ -46,6 +46,10 @@ impl fmt::Display for ViteException {
 
 impl std::error::Error for ViteException {}
 
+/// The assets preloaded while rendering a request.
+#[derive(Default)]
+struct RequestPreloads(std::sync::Mutex<IndexMap<String, Vec<String>>>);
+
 /// Manifests are read once per path.
 type Manifest = Arc<Map<String, Value>>;
 
@@ -316,9 +320,21 @@ impl Vite {
         write(|s| s.preload_tag_attributes.extend(object(attributes)));
     }
 
-    /// The assets preloaded by the tags generated so far (for `Link` headers).
+    /// The assets preloaded by the tags generated so far (for `Link`
+    /// headers): the current request's, or those generated outside one.
     pub fn preloaded_assets() -> IndexMap<String, Vec<String>> {
+        if let Some(request) = illuminate_http::current_request() {
+            return Self::preloaded_assets_for(&request);
+        }
         read(|s| s.preloaded_assets.clone())
+    }
+
+    /// The assets preloaded while handling the given request.
+    pub fn preloaded_assets_for(request: &illuminate_http::Request) -> IndexMap<String, Vec<String>> {
+        request
+            .extension::<RequestPreloads>()
+            .map(|assets| assets.0.lock().unwrap().clone())
+            .unwrap_or_default()
     }
 
     /// Render nothing from `@vite`, for tests (`$this->withoutVite()`).
@@ -463,7 +479,21 @@ fn make_preload_tag(url: &str, chunk: Option<&Map<String, Value>>, integrity: &O
     merge(&mut attributes, read(|s| s.preload_tag_attributes.clone()));
 
     let without_href: Vec<(String, Value)> = attributes.iter().filter(|(k, _)| k != "href").cloned().collect();
-    write(|s| s.preloaded_assets.insert(url.to_string(), parse_attributes(&without_href)));
+    let preload = parse_attributes(&without_href);
+    // Preloads belong to the request rendering them (for its `Link` header).
+    match illuminate_http::current_request() {
+        Some(request) => {
+            let assets = request.extension::<RequestPreloads>().unwrap_or_else(|| {
+                let assets = Arc::new(RequestPreloads::default());
+                request.set_extension(assets.clone());
+                assets
+            });
+            assets.0.lock().unwrap().insert(url.to_string(), preload);
+        }
+        None => {
+            write(|s| s.preloaded_assets.insert(url.to_string(), preload));
+        }
+    }
 
     format!("<link {} />", parse_attributes(&attributes).join(" "))
 }

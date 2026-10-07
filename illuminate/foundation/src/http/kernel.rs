@@ -146,6 +146,10 @@ impl HttpKernel {
 /// The framework's default global middleware.
 fn default_global_middleware(app: &Application, config: &Middleware) -> Vec<RouteMiddleware> {
     let mut stack = vec![RouteMiddleware::of(ServePublicFiles::new(app.public_path("")))];
+    if let Some((hosts, subdomains)) = &config.trusted_hosts {
+        let hosts: Vec<&str> = hosts.iter().map(String::as_str).collect();
+        stack.push(RouteMiddleware::of(crate::http::middleware::TrustHosts::at(&hosts, *subdomains)));
+    }
     if let Some(proxies) = &config.trusted_proxies {
         let proxies: Vec<&str> = proxies.iter().map(String::as_str).collect();
         stack.push(RouteMiddleware::of(TrustProxies::at(&proxies)));

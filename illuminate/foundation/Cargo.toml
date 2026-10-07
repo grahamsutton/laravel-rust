@@ -53,6 +53,7 @@ md-5.workspace = true
 mime_guess.workspace = true
 subtle.workspace = true
 regex.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

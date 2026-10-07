@@ -35,6 +35,7 @@ pub struct Middleware {
     pub(crate) empty_strings_except: Vec<String>,
     pub(crate) maintenance_except: Vec<String>,
     pub(crate) trusted_proxies: Option<Vec<String>>,
+    pub(crate) trusted_hosts: Option<(Vec<String>, bool)>,
     pub(crate) redirect_guests_to: Option<String>,
     pub(crate) redirect_users_to: Option<String>,
     pub(crate) throttle_api: Option<String>,
@@ -67,6 +68,7 @@ impl Middleware {
             empty_strings_except: Vec::new(),
             maintenance_except: Vec::new(),
             trusted_proxies: None,
+            trusted_hosts: None,
             redirect_guests_to: None,
             redirect_users_to: None,
             throttle_api: None,
@@ -214,6 +216,18 @@ impl Middleware {
     /// Trust the given proxies (`&["*"]` for all).
     pub fn trust_proxies(&mut self, at: &[&str]) -> &mut Self {
         self.trusted_proxies = Some(at.iter().map(|s| s.to_string()).collect());
+        self
+    }
+
+    /// Only answer requests for the given host patterns (regular
+    /// expressions), plus every subdomain of the application URL when
+    /// `subdomains` is true.
+    ///
+    /// ```ignore
+    /// middleware.trust_hosts(&["^laravel\\.test$"], true);
+    /// ```
+    pub fn trust_hosts(&mut self, at: &[&str], subdomains: bool) -> &mut Self {
+        self.trusted_hosts = Some((at.iter().map(|s| s.to_string()).collect(), subdomains));
         self
     }
 
