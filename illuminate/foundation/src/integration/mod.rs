@@ -39,6 +39,40 @@ pub fn boot() {
     wire_events();
     wire_eloquent();
     wire_transactions();
+    wire_context();
+}
+
+/// The `Context` travels with the jobs a request dispatches, and is
+/// restored while the worker runs them.
+fn wire_context() {
+    use illuminate_log::Context;
+    use illuminate_queue::Queue;
+    use illuminate_queue::events::{JobExceptionOccurred, JobProcessed, JobProcessing};
+
+    const KEY: &str = "illuminate:log:context";
+
+    Queue::create_payload_using(|_, _, _| {
+        let mut payload = Map::new();
+        if let Some(context) = Context::dehydrate() {
+            payload.insert(KEY.to_string(), context);
+        }
+        payload
+    });
+
+    // A worker outside a request starts each job with a clean context.
+    let forget = || {
+        if current_request().is_none() {
+            Context::flush();
+        }
+    };
+    Queue::listen::<JobProcessing>(move |event| {
+        forget();
+        if let Some(context) = event.job.payload().get(KEY) {
+            Context::hydrate(context);
+        }
+    });
+    Queue::listen::<JobProcessed>(move |_| forget());
+    Queue::listen::<JobExceptionOccurred>(move |_| forget());
 }
 
 /// Jobs dispatched `after_commit` wait for the open database transaction.

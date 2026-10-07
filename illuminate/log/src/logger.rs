@@ -10,6 +10,10 @@ use crate::level::Level;
 use crate::monolog::Monolog;
 use crate::record::{Context, MessageLogged, to_context};
 
+/// Log context added with `with_context` while handling a request.
+#[derive(Default)]
+struct RequestLogContext(RwLock<Context>);
+
 /// A `MessageLogged` listener.
 pub(crate) type LogListener = Arc<dyn Fn(&MessageLogged) + Send + Sync>;
 
@@ -110,6 +114,9 @@ impl Logger {
         }
 
         let mut merged = self.context.read().unwrap().clone();
+        if let Some(scoped) = illuminate_http::current_request().and_then(|request| request.extension::<RequestLogContext>()) {
+            merged.extend(scoped.0.read().unwrap().clone());
+        }
         for (key, value) in context {
             merged.insert(key, value);
         }
@@ -144,7 +151,20 @@ impl Logger {
     }
 
     /// Add context to all future logs written to this channel.
+    ///
+    /// While handling a request, the context belongs to that request (on
+    /// every channel), so concurrent requests never log each other's
+    /// context.
     pub fn with_context(&self, context: impl Serialize) -> &Self {
+        if let Some(request) = illuminate_http::current_request() {
+            let scoped = request.extension::<RequestLogContext>().unwrap_or_else(|| {
+                let scoped = Arc::new(RequestLogContext::default());
+                request.set_extension(scoped.clone());
+                scoped
+            });
+            scoped.0.write().unwrap().extend(to_context(context));
+            return self;
+        }
         let mut current = self.context.write().unwrap();
         for (key, value) in to_context(context) {
             current.insert(key, value);
@@ -152,8 +172,11 @@ impl Logger {
         self
     }
 
-    /// Flush the channel's context.
+    /// Flush the channel's context (and the current request's).
     pub fn without_context(&self) -> &Self {
+        if let Some(scoped) = illuminate_http::current_request().and_then(|request| request.extension::<RequestLogContext>()) {
+            scoped.0.write().unwrap().clear();
+        }
         self.context.write().unwrap().clear();
         self
     }

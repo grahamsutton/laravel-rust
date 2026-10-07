@@ -234,3 +234,44 @@ async fn batches_can_be_retried_and_pruned() {
         .assert_successful()
         .await;
 }
+
+static SEEN_TRACE: std::sync::Mutex<Option<illuminate_support::Value>> = std::sync::Mutex::new(None);
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct TraceJob;
+
+illuminate_queue::register_job!(TraceJob);
+
+#[async_trait]
+impl ShouldQueue for TraceJob {
+    async fn handle(&self) -> Result<()> {
+        let job = illuminate_queue::current_job().unwrap();
+        assert_eq!(job.payload()["illuminate:log:context"]["data"]["trace_id"], "8f5b0a");
+        *SEEN_TRACE.lock().unwrap() = illuminate_log::Context::get("trace_id");
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn context_travels_with_queued_jobs() {
+    let dir = tempfile::tempdir().unwrap();
+    let builder = Application::configure_detached(dir.path()).with_routing(|routing| {
+        routing.web(|| {
+            Route::get("/import", || async {
+                illuminate_log::Context::add("trace_id", "8f5b0a");
+                TraceJob.dispatch().await?;
+                Ok::<_, illuminate_support::Error>("Queued")
+            });
+        });
+    });
+    let mut app = TestApp::new(builder);
+    app.app().override_config("queue.default", "array");
+    app.app().override_config("queue.connections.array", illuminate_support::json!({"driver": "array"}));
+
+    app.get("/import").await.assert_ok();
+    assert!(illuminate_log::Context::missing("trace_id"), "the request's context stays with the request");
+    app.artisan("queue:work --once").assert_successful().await;
+
+    assert_eq!(*SEEN_TRACE.lock().unwrap(), Some(illuminate_support::json!("8f5b0a")));
+    assert!(illuminate_log::Context::missing("trace_id"), "the worker forgets the job's context");
+}

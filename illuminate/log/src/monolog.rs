@@ -160,7 +160,7 @@ impl Monolog {
             level,
             message: message.into(),
             context,
-            extra: Context::new(),
+            extra: crate::context::Context::for_logs(),
         };
 
         // Processors only run once a handler is actually going to handle

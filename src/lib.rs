@@ -85,7 +85,7 @@ pub mod facades {
     pub use illuminate_filesystem::facades::{File, Storage};
     pub use illuminate_foundation::{App, Vite};
     pub use illuminate_hashing::Hash;
-    pub use illuminate_log::Log;
+    pub use illuminate_log::{Context, Log};
     pub use illuminate_mail::Mail;
     pub use illuminate_notifications::facades::Notification;
     pub use illuminate_concurrency::Concurrency;

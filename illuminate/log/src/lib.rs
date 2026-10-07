@@ -60,6 +60,7 @@
 //! logger built from the [`Handler`]s, [`Formatter`]s and [`Processor`]s in
 //! this crate (or your own implementations).
 
+mod context;
 mod facade;
 mod formatter;
 mod handler;
@@ -71,6 +72,7 @@ mod processor;
 mod provider;
 mod record;
 
+pub use context::{Context, ContextRepository};
 pub use facade::{Log, info, info_with, logger};
 pub use formatter::{Formatter, JsonFormatter, LineFormatter};
 pub use handler::{
@@ -83,4 +85,4 @@ pub use manager::{CustomCreator, LogManager, StackChannel};
 pub use monolog::Monolog;
 pub use processor::{Processor, PsrLogMessageProcessor};
 pub use provider::LogServiceProvider;
-pub use record::{Context, LogRecord, MessageLogged, to_context};
+pub use record::{Context as LogContext, LogRecord, MessageLogged, to_context};
