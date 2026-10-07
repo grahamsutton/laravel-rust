@@ -65,6 +65,7 @@ pub fn register_framework_commands() {
     Artisan::register(DbTableCommand);
     Artisan::register(EnvDecryptCommand);
     Artisan::register(EnvEncryptCommand);
+    Artisan::register(ChannelListCommand);
     Artisan::register(EventListCommand);
     Artisan::register(InstallBroadcastingCommand);
     Artisan::register(ModelPruneCommand);

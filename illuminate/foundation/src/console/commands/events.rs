@@ -85,3 +85,43 @@ impl Command for CacheForgetCommand {
         Ok(())
     }
 }
+
+/// `channel:list` — List all registered private broadcast channels.
+pub struct ChannelListCommand;
+
+#[async_trait]
+impl Command for ChannelListCommand {
+    fn signature(&self) -> &str {
+        "channel:list"
+    }
+
+    fn description(&self) -> &str {
+        "List all registered private broadcast channels"
+    }
+
+    async fn handle(&self, cmd: Console) -> Result<()> {
+        let mut channels = illuminate_broadcasting::Broadcast::get_channels();
+        if channels.is_empty() {
+            cmd.components()
+                .error("Your application doesn't have any private broadcasting channels.");
+            return Ok(());
+        }
+        channels.sort();
+
+        let width = cmd.output().width();
+        let longest = channels.iter().map(|(name, _)| name.chars().count()).max().unwrap_or(0);
+        cmd.new_line(1);
+        for (name, resolver) in &channels {
+            let spaces = " ".repeat((longest + 6).saturating_sub(name.chars().count()));
+            let dots = width.saturating_sub(name.chars().count() + spaces.len() + resolver.chars().count() + 6);
+            let dots = if dots == 0 { String::new() } else { format!(" {}", ".".repeat(dots)) };
+            cmd.line(format!("  <fg=blue;options=bold>{name}</> {spaces}<fg=white>{resolver}</><fg=gray>{dots}</>"));
+        }
+        cmd.new_line(1);
+        let count = channels.len();
+        let label = format!("Showing [{count}] private channels");
+        cmd.line(format!("{}<fg=blue;options=bold>{label}</>", " ".repeat(width.saturating_sub(label.len() + 2))));
+        cmd.new_line(1);
+        Ok(())
+    }
+}

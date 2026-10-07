@@ -107,3 +107,14 @@ async fn private_channels_are_authorized() {
         .await
         .assert_forbidden();
 }
+
+#[tokio::test]
+async fn channels_can_be_listed() {
+    let app = app();
+
+    app.artisan("channel:list")
+        .expects_output_to_contain("orders.{order_id}")
+        .expects_output_to_contain("Showing [1] private channels")
+        .assert_successful()
+        .await;
+}

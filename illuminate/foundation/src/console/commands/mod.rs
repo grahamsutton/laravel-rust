@@ -20,7 +20,7 @@ pub use database::{
     MigrateRollbackCommand, MigrateStatusCommand, SeedCommand, WipeCommand,
 };
 pub use environment::{DecryptCommand as EnvDecryptCommand, EncryptCommand as EnvEncryptCommand};
-pub use events::{CacheForgetCommand, EventListCommand};
+pub use events::{CacheForgetCommand, ChannelListCommand, EventListCommand};
 pub use optimize::{OptimizeClearCommand, OptimizeCommand, ViewCacheCommand, ViewClearCommand};
 pub use models::{PruneCommand as ModelPruneCommand, ShowModelCommand};
 pub use install::InstallBroadcastingCommand;
