@@ -36,6 +36,28 @@ pub fn boot() {
     wire_filesystem();
     views::boot();
     auth::boot();
+    wire_events();
+}
+
+/// Queued event listeners (`ShouldQueue`) are pushed onto the queue.
+fn wire_events() {
+    use illuminate_queue::{CallQueuedClosure, Dispatchable};
+
+    illuminate_events::Event::queue_listeners_using(|listener: illuminate_events::QueuedListener| async move {
+        let name = illuminate_support::Str::class_basename(listener.listener);
+        let (connection, queue, delay) = (listener.connection.clone(), listener.queue.clone(), listener.delay);
+        let mut pending = CallQueuedClosure::once(move || listener.handle()).name(name).dispatch();
+        if let Some(connection) = connection {
+            pending = pending.on_connection(connection);
+        }
+        if let Some(queue) = queue {
+            pending = pending.on_queue(queue);
+        }
+        if let Some(delay) = delay {
+            pending = pending.delay(delay);
+        }
+        pending.await
+    });
 }
 
 /// Report exceptions through the log, and teach the handler about the

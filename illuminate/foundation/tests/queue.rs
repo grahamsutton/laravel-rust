@@ -124,3 +124,40 @@ async fn jobs_can_be_generated() {
     assert!(job.contains("impl ShouldQueue for ProcessPodcast"));
     assert!(job.contains("laravel::register_job!(ProcessPodcast);"));
 }
+
+static SHIPPED: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Debug, Clone)]
+struct OrderShipped {
+    order_id: usize,
+}
+
+struct SendShipmentNotification;
+
+#[async_trait]
+impl illuminate_events::Listener<OrderShipped> for SendShipmentNotification {
+    async fn handle(&self, event: &OrderShipped) -> Result<()> {
+        SHIPPED.fetch_add(event.order_id, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
+impl illuminate_events::ShouldQueue for SendShipmentNotification {}
+
+#[tokio::test]
+async fn queued_listeners_are_pushed_onto_the_queue() {
+    let (app, _dir) = test_app("array");
+    illuminate_events::Event::listen_queued(SendShipmentNotification);
+
+    illuminate_events::Event::dispatch(OrderShipped { order_id: 42 }).await.unwrap();
+
+    assert_eq!(Queue::size(None).await.unwrap(), 1);
+    assert_eq!(SHIPPED.load(Ordering::SeqCst), 0);
+
+    app.artisan("queue:work --once")
+        .expects_output_to_contain("SendShipmentNotification")
+        .assert_successful()
+        .await;
+
+    assert_eq!(SHIPPED.load(Ordering::SeqCst), 42);
+}
