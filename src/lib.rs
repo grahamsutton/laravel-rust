@@ -41,6 +41,7 @@ pub use illuminate_foundation as foundation;
 pub use illuminate_hashing as hashing;
 pub use illuminate_http as http;
 pub use illuminate_http_client as http_client;
+pub use illuminate_http_resources as http_resources;
 pub use illuminate_log as log;
 pub use illuminate_mail as mail;
 pub use illuminate_notifications as notifications;
@@ -159,6 +160,7 @@ pub mod prelude {
         HttpException, IntoResponse, Json, Middleware, Next, Request, Response, StatusCode,
         UploadedFile,
     };
+    pub use illuminate_http_resources::prelude::*;
     pub use illuminate_pagination::{LengthAwarePaginator, Paginator};
     pub use illuminate_queue::{Dispatchable, InteractsWithQueue, ShouldQueue};
     pub use illuminate_routing::{

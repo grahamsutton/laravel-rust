@@ -90,6 +90,7 @@ pub fn register_framework_commands() {
     Artisan::register(generators::messaging::MakeMailCommand);
     Artisan::register(generators::messaging::MakeNotificationCommand);
     Artisan::register(generators::model::MakeModelCommand);
+    Artisan::register(generators::resource::MakeResourceCommand);
     for generator in generators::tables::MakeTableCommand::all() {
         Artisan::register(generator);
     }

@@ -11,6 +11,7 @@ pub mod component;
 pub mod messaging;
 pub mod migration;
 pub mod model;
+pub mod resource;
 pub mod tables;
 pub mod stubs;
 

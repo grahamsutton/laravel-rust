@@ -256,3 +256,24 @@ async fn mailables_and_notifications_can_be_generated() {
         .assert_successful()
         .await;
 }
+
+#[tokio::test]
+async fn resources_can_be_generated() {
+    let (app, dir) = test_app();
+    let read = |path: &str| std::fs::read_to_string(dir.path().join(path)).unwrap();
+
+    app.artisan("make:model Podcast").assert_successful().await;
+    app.artisan("make:resource PodcastResource")
+        .expects_output_to_contain("Resource [app/http/resources/podcast_resource.rs] created successfully.")
+        .assert_successful()
+        .await;
+    assert!(read("app/http/resources/podcast_resource.rs").contains("type Model = Podcast;"));
+
+    app.artisan("make:resource PodcastCollection")
+        .assert_successful()
+        .await;
+    assert!(read("app/http/resources/podcast_collection.rs").contains("type Collects = PodcastResource;"));
+
+    app.artisan("make:resource Stats --collection").assert_successful().await;
+    assert!(read("app/http/resources/stats.rs").contains("impl ResourceCollection for Stats"));
+}

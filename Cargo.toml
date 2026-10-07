@@ -140,6 +140,7 @@ illuminate-queue.workspace = true
 illuminate-process.workspace = true
 illuminate-concurrency.workspace = true
 illuminate-http-client.workspace = true
+illuminate-http-resources.workspace = true
 illuminate-mail.workspace = true
 illuminate-notifications.workspace = true
 async-trait.workspace = true

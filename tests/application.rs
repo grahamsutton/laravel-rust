@@ -36,7 +36,33 @@ impl Migration for CreateUsersTable {
     }
 }
 
+pub struct UserResource(pub User);
+
+impl JsonResource for UserResource {
+    type Model = User;
+
+    fn from_model(user: User) -> Self {
+        Self(user)
+    }
+
+    fn model(&self) -> &User {
+        &self.0
+    }
+
+    fn to_array(&self, request: &Request) -> Value {
+        json!({
+            "id": self.0.id,
+            "name": self.0.name,
+            "email": self.when(request.boolean("with_email"), || self.0.email.clone()),
+        })
+    }
+}
+
 fn routes() {
+    Route::get("/api/users/{user}", |user: User| async move { UserResource::make(user) });
+    Route::get("/api/users", || async {
+        Ok::<_, Error>(UserResource::collection(User::query().order_by("id", "asc").paginate(2).await?))
+    });
     Route::get("/users/{user}", |user: User| async move { Json(user) });
     Route::get("/users/{user:email}/name", |user: User| async move { user.name });
 
@@ -202,4 +228,33 @@ async fn models_can_be_asserted_in_the_database() {
     app.assert_model_exists(&taylor).await;
     taylor.clone().delete().await.unwrap();
     app.assert_model_missing(&taylor).await;
+}
+
+#[tokio::test]
+async fn models_are_transformed_by_api_resources() {
+    let mut app = app().await;
+    let taylor = taylor().await;
+    for name in ["Abigail", "James"] {
+        User::create(json!({"name": name, "email": format!("{}@laravel.com", name.to_lowercase()), "password": "secret"}))
+            .await
+            .unwrap();
+    }
+
+    app.get_json(&format!("/api/users/{}", taylor.id))
+        .await
+        .assert_ok()
+        .assert_exact_json(json!({"data": {"id": taylor.id, "name": "Taylor Otwell"}}));
+
+    app.get_json(&format!("/api/users/{}?with_email=1", taylor.id))
+        .await
+        .assert_json_path("data.email", "taylor@laravel.com");
+
+    app.get_json("/api/users?page=2")
+        .await
+        .assert_ok()
+        .assert_json_count(1, Some("data"))
+        .assert_json_path("data.0.name", "James")
+        .assert_json_path("meta.current_page", 2)
+        .assert_json_path("meta.total", 3)
+        .assert_json_path("links.prev", "http://localhost/api/users?page=1");
 }
