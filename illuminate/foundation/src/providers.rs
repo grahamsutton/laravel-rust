@@ -33,6 +33,7 @@ pub fn default_providers() -> Vec<Box<dyn ServiceProvider>> {
         Box::new(illuminate_database::DatabaseServiceProvider),
         Box::new(illuminate_log::LogServiceProvider),
         Box::new(illuminate_routing::RoutingServiceProvider),
+        Box::new(illuminate_redis::RedisServiceProvider),
         Box::new(illuminate_cache::CacheServiceProvider),
         Box::new(illuminate_queue::QueueServiceProvider),
         Box::new(illuminate_queue::BusServiceProvider),

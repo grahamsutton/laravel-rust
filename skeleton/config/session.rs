@@ -11,7 +11,7 @@ pub fn config() -> Value {
         | incoming requests. Laravel supports a variety of storage options to
         | persist session data. Database storage is a great default choice.
         |
-        | Supported: "file", "cookie", "database", "array"
+        | Supported: "file", "cookie", "database", "redis", "array"
         |
         */
 
@@ -84,6 +84,21 @@ pub fn config() -> Value {
         */
 
         "table": env("SESSION_TABLE", "sessions"),
+
+        /*
+        |--------------------------------------------------------------------------
+        | Session Cache Store
+        |--------------------------------------------------------------------------
+        |
+        | When using one of the framework's cache driven session backends, you may
+        | define the cache store which should be used to store the session data
+        | between requests. This must match one of your defined cache stores.
+        |
+        | Affects: "redis"
+        |
+        */
+
+        "store": env("SESSION_STORE", Value::Null),
 
         /*
         |--------------------------------------------------------------------------

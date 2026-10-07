@@ -31,6 +31,7 @@ illuminate-database.workspace = true
 illuminate-view.workspace = true
 illuminate-auth.workspace = true
 illuminate-queue.workspace = true
+illuminate-redis.workspace = true
 illuminate-process.workspace = true
 illuminate-concurrency.workspace = true
 illuminate-http-client.workspace = true

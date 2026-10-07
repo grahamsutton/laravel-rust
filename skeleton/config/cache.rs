@@ -24,7 +24,7 @@ pub fn config() -> Value {
         | well as their drivers. You may even define multiple stores for the
         | same cache driver to group types of items stored in your caches.
         |
-        | Supported drivers: "array", "database", "file", "null"
+        | Supported drivers: "array", "database", "file", "redis", "null"
         |
         */
 
@@ -40,6 +40,12 @@ pub fn config() -> Value {
                 "table": env("DB_CACHE_TABLE", "cache"),
                 "lock_connection": env("DB_CACHE_LOCK_CONNECTION", Value::Null),
                 "lock_table": env("DB_CACHE_LOCK_TABLE", Value::Null),
+            },
+
+            "redis": {
+                "driver": "redis",
+                "connection": env("REDIS_CACHE_CONNECTION", "cache"),
+                "lock_connection": env("REDIS_CACHE_LOCK_CONNECTION", "default"),
             },
 
             "file": {

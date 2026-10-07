@@ -24,7 +24,7 @@ pub fn config() -> Value {
         | used by your application. An example configuration is provided for
         | each backend supported by Laravel. You're also free to add more.
         |
-        | Drivers: "sync", "database", "deferred", "null"
+        | Drivers: "sync", "database", "redis", "deferred", "null"
         |
         */
 
@@ -39,6 +39,15 @@ pub fn config() -> Value {
                 "table": env("DB_QUEUE_TABLE", "jobs"),
                 "queue": env("DB_QUEUE", "default"),
                 "retry_after": env("DB_QUEUE_RETRY_AFTER", 90).to_i64_lossy().unwrap_or(90),
+                "after_commit": false,
+            },
+
+            "redis": {
+                "driver": "redis",
+                "connection": env("REDIS_QUEUE_CONNECTION", "default"),
+                "queue": env("REDIS_QUEUE", "default"),
+                "retry_after": env("REDIS_QUEUE_RETRY_AFTER", 90).to_i64_lossy().unwrap_or(90),
+                "block_for": Value::Null,
                 "after_commit": false,
             },
 

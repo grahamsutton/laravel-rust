@@ -49,6 +49,7 @@ pub use illuminate_pagination as pagination;
 pub use illuminate_pipeline as pipeline;
 pub use illuminate_process as process;
 pub use illuminate_queue as queue;
+pub use illuminate_redis as redis;
 pub use illuminate_routing as routing;
 pub use illuminate_session as session;
 pub use illuminate_support as support;
@@ -93,6 +94,7 @@ pub mod facades {
     pub use illuminate_http_client::Http;
     pub use illuminate_process::Process;
     pub use illuminate_queue::{Bus, Queue};
+    pub use illuminate_redis::Redis;
     pub use illuminate_routing::{Redirect, Route, URL};
     pub use illuminate_session::Session;
     pub use illuminate_translation::Lang;

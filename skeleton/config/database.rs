@@ -105,5 +105,52 @@ pub fn config() -> Value {
             "table": "migrations",
             "update_date_on_publish": true,
         },
+
+        /*
+        |--------------------------------------------------------------------------
+        | Redis Databases
+        |--------------------------------------------------------------------------
+        |
+        | Redis is an open source, fast, and advanced key-value store that also
+        | provides a richer body of commands than a typical key-value system
+        | such as Memcached. You may define your connection settings here.
+        |
+        */
+
+        "redis": {
+            "client": env("REDIS_CLIENT", "redis"),
+
+            "options": {
+                "cluster": env("REDIS_CLUSTER", "redis"),
+                "prefix": env("REDIS_PREFIX", format!("{}-database-", Str::slug(&env("APP_NAME", "laravel").to_string_lossy()))),
+                "persistent": env("REDIS_PERSISTENT", false),
+            },
+
+            "default": {
+                "url": env("REDIS_URL", Value::Null),
+                "host": env("REDIS_HOST", "127.0.0.1"),
+                "username": env("REDIS_USERNAME", Value::Null),
+                "password": env("REDIS_PASSWORD", Value::Null),
+                "port": env("REDIS_PORT", "6379"),
+                "database": env("REDIS_DB", "0"),
+                "max_retries": env("REDIS_MAX_RETRIES", 3),
+                "backoff_algorithm": env("REDIS_BACKOFF_ALGORITHM", "decorrelated_jitter"),
+                "backoff_base": env("REDIS_BACKOFF_BASE", 100),
+                "backoff_cap": env("REDIS_BACKOFF_CAP", 1000),
+            },
+
+            "cache": {
+                "url": env("REDIS_URL", Value::Null),
+                "host": env("REDIS_HOST", "127.0.0.1"),
+                "username": env("REDIS_USERNAME", Value::Null),
+                "password": env("REDIS_PASSWORD", Value::Null),
+                "port": env("REDIS_PORT", "6379"),
+                "database": env("REDIS_CACHE_DB", "1"),
+                "max_retries": env("REDIS_MAX_RETRIES", 3),
+                "backoff_algorithm": env("REDIS_BACKOFF_ALGORITHM", "decorrelated_jitter"),
+                "backoff_base": env("REDIS_BACKOFF_BASE", 100),
+                "backoff_cap": env("REDIS_BACKOFF_CAP", 1000),
+            },
+        },
     })
 }
