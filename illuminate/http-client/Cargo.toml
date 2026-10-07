@@ -1,0 +1,40 @@
+[package]
+name = "illuminate-http-client"
+description = "The Illuminate HTTP Client package."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-events.workspace = true
+tokio.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+bytes.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url.workspace = true
+percent-encoding.workspace = true
+form_urlencoded.workspace = true
+base64.workspace = true
+mime_guess.workspace = true
+futures.workspace = true
+rand.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+webpki-roots.workspace = true
+md-5.workspace = true
+sha2.workspace = true
+hex.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+multer.workspace = true
+tempfile.workspace = true
