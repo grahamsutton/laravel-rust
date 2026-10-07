@@ -80,6 +80,7 @@
 //! running listeners, so you may assert on them with
 //! [`Event::assert_dispatched`] and friends.
 
+mod defer;
 mod dispatcher;
 mod facade;
 mod fake;

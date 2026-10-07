@@ -397,6 +397,18 @@ impl Dispatcher {
     /// the framework lets listeners cancel an operation (Laravel's
     /// `Event::until(...) === false`).
     pub async fn until<E: Send + Sync + 'static>(&self, event: E) -> Result<bool> {
+        let held = crate::defer::hold(
+            type_name::<E>(),
+            Box::new(move |dispatcher: &Dispatcher| Box::pin(dispatcher.until_now(event))),
+        );
+        match held {
+            // Deferred: it will be dispatched when the deferral finishes.
+            None => Ok(true),
+            Some(event) => event(self).await,
+        }
+    }
+
+    async fn until_now<E: Send + Sync + 'static>(&self, event: E) -> Result<bool> {
         if let Some(fake) = &self.fake {
             if fake.should_fake_typed(TypeId::of::<E>()) {
                 fake.record_typed(TypeId::of::<E>(), type_name::<E>(), Arc::new(event));
@@ -444,6 +456,20 @@ impl Dispatcher {
     /// Dispatch a string-named event, returning `Ok(false)` if a listener
     /// halted it.
     pub async fn until_named(&self, event: &str, payload: Value) -> Result<bool> {
+        let name = event.to_string();
+        let held = crate::defer::hold(
+            event,
+            Box::new(move |dispatcher: &Dispatcher| {
+                Box::pin(async move { dispatcher.until_named_now(&name, payload).await })
+            }),
+        );
+        match held {
+            None => Ok(true),
+            Some(event) => event(self).await,
+        }
+    }
+
+    async fn until_named_now(&self, event: &str, payload: Value) -> Result<bool> {
         if let Some(fake) = &self.fake {
             if fake.should_fake_named(event) {
                 fake.record_named(event, payload);

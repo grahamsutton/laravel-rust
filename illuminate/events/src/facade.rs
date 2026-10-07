@@ -129,6 +129,31 @@ impl Event {
         dispatcher.until_named(event, payload).await
     }
 
+    /// Run the future, dispatching the events it fires only once it
+    /// completes (and never, if it fails).
+    ///
+    /// ```ignore
+    /// Event::defer(async {
+    ///     let user = User::create(json!({"name": "Victoria Otwell"})).await?;
+    ///     user.posts().create(json!({"title": "My first post!"})).await?;
+    ///     Ok(())
+    /// })
+    /// .await?;
+    /// ```
+    pub async fn defer<R>(callback: impl std::future::Future<Output = Result<R>>) -> Result<R> {
+        let dispatcher = Self::dispatcher();
+        dispatcher.defer(callback).await
+    }
+
+    /// Run the future, deferring only the given events.
+    pub async fn defer_only<S: Into<String>, R>(
+        events: impl IntoIterator<Item = S>,
+        callback: impl std::future::Future<Output = Result<R>>,
+    ) -> Result<R> {
+        let dispatcher = Self::dispatcher();
+        dispatcher.defer_only(events, callback).await
+    }
+
     /// Register a named event and payload to be dispatched later.
     pub fn push(event: &str, payload: Value) {
         Self::dispatcher().push(event, payload);
