@@ -12,7 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use illuminate_config::Repository as Config;
 use illuminate_container::{Container, try_app};
+use illuminate_database::DatabaseManager;
 use illuminate_support::{Carbon, Result, Value, ValueExt};
+
+mod database;
+
+pub use database::DatabaseUuidFailedJobProvider;
 
 /// A failed job record (a row of Laravel's `failed_jobs` table).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -373,11 +378,23 @@ impl FailedJobProvider for FileFailedJobProvider {
 
 /// Build the failed job provider described by `queue.failed`.
 ///
-/// `null` discards failed jobs and `file` keeps them in a JSON file;
-/// every other driver (`database-uuids`, `database`, `dynamodb`) is
-/// provided by its own component, which binds `dyn FailedJobProvider` in
-/// the container. Until then, failed jobs are kept in memory.
+/// `database-uuids` (and the legacy `database` driver) keep failed jobs in
+/// the `queue.failed.table` table (`failed_jobs`) of the
+/// `queue.failed.database` connection (the default one when absent), `file`
+/// keeps them in a JSON file and `null` discards them. Without a bound
+/// [`DatabaseManager`] — and for drivers provided by other components,
+/// which bind `dyn FailedJobProvider` themselves — failed jobs are kept in
+/// memory.
 pub fn make_failer(config: &Config) -> Arc<dyn FailedJobProvider> {
+    make_failer_with(config, try_app::<DatabaseManager>())
+}
+
+/// Build the failed job provider described by `queue.failed`, storing
+/// database failures through the given database manager.
+pub(crate) fn make_failer_with(
+    config: &Config,
+    database: Option<Arc<DatabaseManager>>,
+) -> Arc<dyn FailedJobProvider> {
     let failed = config.get("queue.failed");
     let driver = failed.get("driver");
 
@@ -397,6 +414,22 @@ pub fn make_failer(config: &Config) -> Arc<dyn FailedJobProvider> {
                 .max(1) as usize;
             Arc::new(FileFailedJobProvider::new(path, limit))
         }
+        Some(Value::String(driver)) if driver == "database-uuids" || driver == "database" => {
+            match database {
+                Some(database) => {
+                    let connection = match failed.get("database") {
+                        Some(Value::String(name)) if !name.is_empty() => database.connection(name),
+                        _ => database.default_connection(),
+                    };
+                    let table = match failed.get("table") {
+                        Some(Value::String(table)) if !table.is_empty() => table.clone(),
+                        _ => "failed_jobs".to_string(),
+                    };
+                    Arc::new(DatabaseUuidFailedJobProvider::new(connection, table))
+                }
+                None => Arc::new(InMemoryFailedJobProvider::new()),
+            }
+        }
         _ => Arc::new(InMemoryFailedJobProvider::new()),
     }
 }
@@ -408,13 +441,17 @@ pub fn failer() -> Arc<dyn FailedJobProvider> {
         return failer;
     }
     let container = Container::get_instance();
-    container.singleton_if::<dyn FailedJobProvider>(|container| {
-        let config = container
-            .try_make::<Config>()
-            .unwrap_or_else(|_| Arc::new(Config::empty()));
-        make_failer(&config)
-    });
+    container.singleton_if::<dyn FailedJobProvider>(make_container_failer);
     container.make::<dyn FailedJobProvider>()
+}
+
+/// Build the failed job provider from the container's configuration and
+/// database manager.
+pub(crate) fn make_container_failer(container: &Container) -> Arc<dyn FailedJobProvider> {
+    let config = container
+        .try_make::<Config>()
+        .unwrap_or_else(|_| Arc::new(Config::empty()));
+    make_failer_with(&config, container.try_make::<DatabaseManager>().ok())
 }
 
 #[cfg(test)]

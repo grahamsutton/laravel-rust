@@ -2,13 +2,13 @@
 
 use std::sync::Arc;
 
-use illuminate_config::Repository as Config;
 use illuminate_container::{Container, ServiceProvider};
 
+use crate::bus::database::make_batch_repository;
 use crate::bus::dispatcher::{Dispatcher, QueueingDispatcher};
-use crate::bus::repository::{BatchRepository, InMemoryBatchRepository};
+use crate::bus::repository::BatchRepository;
 use crate::deferred::DeferredCallbacks;
-use crate::failed::{FailedJobProvider, make_failer};
+use crate::failed::{FailedJobProvider, make_container_failer};
 use crate::manager::{QueueManager, make_manager};
 use crate::middleware::JobRateLimiters;
 
@@ -16,7 +16,9 @@ use crate::middleware::JobRateLimiters;
 /// provider, the job rate limiters and the deferred callbacks.
 ///
 /// Configuration is read from the `queue` key: `queue.default`,
-/// `queue.connections.*` and `queue.failed`.
+/// `queue.connections.*` and `queue.failed`. The `database` connections
+/// and the `database-uuids` failed job provider use the container's
+/// `illuminate_database::DatabaseManager`.
 ///
 /// ```
 /// use std::sync::Arc;
@@ -39,12 +41,7 @@ impl ServiceProvider for QueueServiceProvider {
     fn register(&self, app: &Container) {
         app.singleton::<QueueManager>(make_manager);
 
-        app.singleton::<dyn FailedJobProvider>(|container| {
-            let config = container
-                .try_make::<Config>()
-                .unwrap_or_else(|_| Arc::new(Config::empty()));
-            make_failer(&config)
-        });
+        app.singleton::<dyn FailedJobProvider>(make_container_failer);
 
         app.singleton::<JobRateLimiters>(|_| Arc::new(JobRateLimiters::new()));
         app.singleton::<DeferredCallbacks>(|_| Arc::new(DeferredCallbacks::new()));
@@ -54,13 +51,16 @@ impl ServiceProvider for QueueServiceProvider {
 /// Registers the bus [`Dispatcher`] (the `Bus` facade) and the batch
 /// repository.
 ///
-/// The repository is kept in memory; the database component replaces it
-/// with one backed by the `queue.batching.table` table.
+/// When `queue.batching` is configured (`database` and `table`) and an
+/// `illuminate_database::DatabaseManager` is bound, batches are stored in
+/// the database by a [`DatabaseBatchRepository`](crate::DatabaseBatchRepository);
+/// otherwise they are kept in memory. A repository already bound as
+/// `dyn BatchRepository` is left alone.
 pub struct BusServiceProvider;
 
 impl ServiceProvider for BusServiceProvider {
     fn register(&self, app: &Container) {
         app.singleton::<dyn QueueingDispatcher>(|_| Arc::new(Dispatcher::new()));
-        app.singleton_if::<dyn BatchRepository>(|_| Arc::new(InMemoryBatchRepository::new()));
+        app.singleton_if::<dyn BatchRepository>(make_batch_repository);
     }
 }

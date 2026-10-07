@@ -349,10 +349,10 @@ async fn unconfigured_connections_are_reported() {
     );
 
     let mut config = common::config();
-    config["queue"]["connections"]["database"] = json!({"driver": "database"});
+    config["queue"]["connections"]["beanstalkd"] = json!({"driver": "beanstalkd"});
     let _app = common::app_with(config);
-    let error = Queue::connection("database").err().unwrap();
-    assert_eq!(error.to_string(), "No connector for [database].");
+    let error = Queue::connection("beanstalkd").err().unwrap();
+    assert_eq!(error.to_string(), "No connector for [beanstalkd].");
 }
 
 #[tokio::test]

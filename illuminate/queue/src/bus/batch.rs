@@ -13,7 +13,7 @@ use illuminate_support::{Carbon, Conditionable, Error, Map, Result, Value, json}
 
 use super::chain::{PendingCallback, PendingChain};
 use super::dispatcher::dispatcher;
-use super::repository::{BatchRecord, BatchRepository, InMemoryBatchRepository};
+use super::repository::{BatchRecord, BatchRepository};
 use crate::callbacks::{self, BatchCallback, CallbackRef, ChainCatchCallback};
 use crate::context::current_context;
 use crate::deferred::DeferredCallbacks;
@@ -49,14 +49,16 @@ impl UpdatedBatchJobCounts {
     }
 }
 
-/// The batch repository bound in the container (an in-memory one is
-/// registered on first use).
+/// The batch repository bound in the container (registered on first use:
+/// a [`DatabaseBatchRepository`](super::DatabaseBatchRepository) when
+/// `queue.batching` is configured and a database manager is bound, an
+/// in-memory one otherwise).
 pub fn batch_repository() -> Arc<dyn BatchRepository> {
     if let Some(repository) = try_app::<dyn BatchRepository>() {
         return repository;
     }
     let container = Container::get_instance();
-    container.singleton_if::<dyn BatchRepository>(|_| Arc::new(InMemoryBatchRepository::new()));
+    container.singleton_if::<dyn BatchRepository>(super::database::make_batch_repository);
     container.make::<dyn BatchRepository>()
 }
 

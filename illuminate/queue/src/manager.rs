@@ -12,7 +12,7 @@ use illuminate_support::{Carbon, Map, Result, Value, ValueExt, json};
 
 use crate::contracts::{Queue, QueueConnector};
 use crate::drivers::{
-    ArrayQueue, BackgroundQueue, DeferredQueue, FailoverQueue, NullQueue, SyncQueue,
+    ArrayQueue, BackgroundQueue, DatabaseQueue, DeferredQueue, FailoverQueue, NullQueue, SyncQueue,
 };
 use crate::events::{
     JobExceptionOccurred, JobFailed, JobProcessed, JobProcessing, JobRetryRequested, Looping,
@@ -98,6 +98,9 @@ impl QueueManager {
                     .with_default_queue(queue)
                     .with_after_commit(after_commit(config)),
             ) as Arc<dyn Queue>)
+        });
+        self.add_connector("database", |config: &Value, name: &str| {
+            Ok(Arc::new(DatabaseQueue::from_config(config, name)) as Arc<dyn Queue>)
         });
         self.add_connector("deferred", |_: &Value, name: &str| {
             Ok(Arc::new(DeferredQueue::new(name)) as Arc<dyn Queue>)

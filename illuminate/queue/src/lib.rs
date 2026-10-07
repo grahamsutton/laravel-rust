@@ -79,10 +79,16 @@
 //!
 //! ## Connections
 //!
-//! The `sync`, `array` (in memory), `deferred`, `background`, `failover`
-//! and `null` drivers ship with the queue. Other drivers (`database`,
-//! `redis`, ...) are registered by their components with
-//! [`QueueManager::extend`].
+//! The `database` ([`DatabaseQueue`]), `sync`, `array` (in memory),
+//! `deferred`, `background`, `failover` and `null` drivers ship with the
+//! queue. Other drivers (`redis`, ...) are registered by their components
+//! with [`QueueManager::extend`].
+//!
+//! The `database` driver keeps jobs in the `jobs` table, failed jobs are
+//! logged to the `failed_jobs` table ([`DatabaseUuidFailedJobProvider`],
+//! `queue.failed.driver = "database-uuids"`) and batches live in the
+//! `job_batches` table ([`DatabaseBatchRepository`], `queue.batching`), all
+//! through the container's `illuminate_database::DatabaseManager`.
 
 pub mod bus;
 pub mod callbacks;
@@ -112,9 +118,9 @@ pub mod worker;
 pub use async_trait::async_trait;
 
 pub use bus::{
-    Batch, BatchItem, BatchRecord, BatchRepository, Dispatchable, Dispatcher,
-    InMemoryBatchRepository, PendingBatch, PendingChain, PendingDispatch, QueueingDispatcher,
-    UniqueLock, UpdatedBatchJobCounts, dispatch, dispatch_sync,
+    Batch, BatchItem, BatchRecord, BatchRepository, DatabaseBatchRepository, Dispatchable,
+    Dispatcher, InMemoryBatchRepository, PendingBatch, PendingChain, PendingDispatch,
+    QueueingDispatcher, UniqueLock, UpdatedBatchJobCounts, dispatch, dispatch_sync,
 };
 pub use callbacks::CallbackRef;
 pub use closure::{CallQueuedClosure, dispatch_closure};
@@ -123,7 +129,7 @@ pub use contracts::{QueueConnector, TransactionCallback, TransactionManager};
 pub use deferred::DeferredCallbacks;
 pub use delay::IntoDelay;
 pub use drivers::{
-    ArrayQueue, BackgroundQueue, DeferredQueue, FailoverQueue, NullQueue, SyncQueue,
+    ArrayQueue, BackgroundQueue, DatabaseQueue, DeferredQueue, FailoverQueue, NullQueue, SyncQueue,
 };
 pub use envelope::{Envelope, JobEncrypter, SerializedJob};
 pub use exceptions::{
@@ -133,8 +139,8 @@ pub use exceptions::{
 };
 pub use facades::{Bus, Queue};
 pub use failed::{
-    FailedJob, FailedJobProvider, FileFailedJobProvider, InMemoryFailedJobProvider,
-    NullFailedJobProvider,
+    DatabaseUuidFailedJobProvider, FailedJob, FailedJobProvider, FileFailedJobProvider,
+    InMemoryFailedJobProvider, NullFailedJobProvider,
 };
 pub use job::{IntoFailure, ShouldQueue};
 pub use manager::QueueManager;

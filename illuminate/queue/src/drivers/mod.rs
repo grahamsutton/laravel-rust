@@ -1,16 +1,17 @@
 //! The queue drivers that ship with the framework.
 //!
-//! The `database` driver lives with the database component: it implements
-//! [`Queue`](crate::contracts::Queue) over the `jobs` table and registers
-//! itself with [`QueueManager::extend`](crate::QueueManager::extend).
+//! Other drivers implement [`Queue`](crate::contracts::Queue) and register
+//! themselves with [`QueueManager::extend`](crate::QueueManager::extend).
 
 mod array;
+pub mod database;
 mod deferred;
 mod failover;
 mod null;
 mod sync;
 
 pub use array::ArrayQueue;
+pub use database::DatabaseQueue;
 pub use deferred::{BackgroundQueue, DeferredQueue};
 pub use failover::FailoverQueue;
 pub use null::NullQueue;

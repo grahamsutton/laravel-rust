@@ -2,6 +2,7 @@
 
 pub mod batch;
 pub mod chain;
+pub mod database;
 pub mod dispatcher;
 pub mod pending_dispatch;
 pub mod repository;
@@ -9,6 +10,7 @@ pub mod unique;
 
 pub use batch::{Batch, BatchItem, PendingBatch, UpdatedBatchJobCounts};
 pub use chain::PendingChain;
+pub use database::DatabaseBatchRepository;
 pub use dispatcher::{Dispatcher, QueueingDispatcher};
 pub use pending_dispatch::{Dispatchable, PendingDispatch, dispatch, dispatch_sync};
 pub use repository::{BatchRecord, BatchRepository, InMemoryBatchRepository};
