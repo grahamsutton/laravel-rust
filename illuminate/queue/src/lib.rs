@@ -133,9 +133,10 @@ pub mod worker;
 pub use async_trait::async_trait;
 
 pub use bus::{
-    Batch, BatchItem, BatchRecord, BatchRepository, DatabaseBatchRepository, Dispatchable,
-    Dispatcher, InMemoryBatchRepository, PendingBatch, PendingChain, PendingDispatch,
-    QueueingDispatcher, UniqueLock, UpdatedBatchJobCounts, dispatch, dispatch_sync,
+    Batch, BatchItem, BatchRecord, BatchRepository, DatabaseBatchRepository, DebounceFor,
+    DebounceLock, Dispatchable, Dispatcher, InMemoryBatchRepository, PendingBatch, PendingChain,
+    PendingDispatch, QueueingDispatcher, UniqueLock, UpdatedBatchJobCounts, dispatch,
+    dispatch_sync,
 };
 pub use callbacks::CallbackRef;
 pub use closure::{CallQueuedClosure, dispatch_closure};
@@ -173,8 +174,8 @@ pub use worker::{Worker, WorkerHandle, WorkerOptions, WorkerStopReason};
 pub mod prelude {
     pub use crate::middleware::{JobMiddleware, Next, RateLimitsJobs};
     pub use crate::{
-        Batch, Bus, Dispatchable, InteractsWithQueue, Queue, ShouldQueue, async_trait, dispatch,
-        dispatch_sync,
+        Batch, Bus, DebounceFor, Dispatchable, InteractsWithQueue, Queue, ShouldQueue, async_trait,
+        dispatch, dispatch_sync,
     };
 }
 

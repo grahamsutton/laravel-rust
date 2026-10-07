@@ -91,10 +91,8 @@ pub use message::{EventMetadata, SlackMessage};
 pub use route::SlackRoute;
 pub(crate) use route::{SlackDestination, filled};
 
-use std::fmt;
-
 /// Thrown when a Slack message breaks one of Slack's rules, or when a
-/// notification can't be routed (PHP's `LogicException`).
+/// notification can't be routed.
 ///
 /// ```
 /// use illuminate_notifications::slack::{LogicException, SlackMessage};
@@ -104,25 +102,4 @@ use std::fmt;
 /// assert!(error.is::<LogicException>());
 /// assert_eq!(error.to_string(), "Slack messages must contain at least a text message or block.");
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LogicException {
-    /// The exception's message.
-    pub message: String,
-}
-
-impl LogicException {
-    /// Create a new exception.
-    pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-        }
-    }
-}
-
-impl fmt::Display for LogicException {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for LogicException {}
+pub use illuminate_support::error::LogicException;

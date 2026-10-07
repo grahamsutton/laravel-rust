@@ -140,6 +140,15 @@ impl QueueingDispatcher for Dispatcher {
                     })
                 }));
             }
+            if let Some(owner) = job.debounce_owner().filter(|owner| !owner.is_empty()) {
+                let rollback_job = job.clone();
+                let owner = owner.to_string();
+                transactions.add_callback_for_rollback(Box::new(move || {
+                    Box::pin(async move {
+                        crate::bus::debounce::release_debounce_lock(rollback_job.job(), Some(&owner)).await;
+                    })
+                }));
+            }
             transactions.add_callback(Box::new(move || {
                 Box::pin(async move {
                     if let Err(error) = Self::push_to_queue(queue, job, queue_name).await {

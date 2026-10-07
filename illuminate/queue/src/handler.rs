@@ -9,10 +9,12 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use illuminate_support::{Error, Result};
 
 use crate::bus::batch::find_batch;
+use crate::bus::debounce::DebounceLock;
 use crate::bus::unique::UniqueLock;
 use crate::callbacks::{self, CallbackRef, ChainCatchCallback};
 use crate::context::{self, JobContext};
 use crate::envelope::{Chained, Envelope};
+use crate::events::{self, JobDebounced};
 use crate::job::ShouldQueue;
 use crate::middleware::{Next, destination};
 use crate::queued_job::QueuedJob;
@@ -29,9 +31,22 @@ pub(crate) async fn call(job: &QueuedJob) -> Result<()> {
     };
 
     let command = envelope.job_arc();
+
+    if should_be_debounced(&envelope).await {
+        // A newer dispatch superseded this one: only the latest one runs.
+        events::dispatch(JobDebounced {
+            connection_name: job.connection_name().to_string(),
+            job: job.clone(),
+            command: envelope.clone(),
+        });
+        job.delete().await?;
+        return Ok(());
+    }
+
     let context = Arc::new(JobContext::new(job.clone(), &envelope));
     let until_processing = is_unique(&*command) && command.unique_until_processing();
     let owner = envelope.unique_lock_owner.clone();
+    let debounced = envelope.debounce_owner().is_some_and(|owner| !owner.is_empty());
     let lock_released = Arc::new(AtomicBool::new(false));
 
     let middleware = command.middleware();
@@ -47,6 +62,9 @@ pub(crate) async fn call(job: &QueuedJob) -> Result<()> {
                 if until_processing && unique_lock_should_be_released(&job, owner.as_deref()) {
                     release_unique_lock(command, owner.as_deref()).await;
                     lock_released.store(true, Ordering::SeqCst);
+                }
+                if debounced && let Err(error) = DebounceLock::new(None).release_max_wait(command).await {
+                    crate::report(&error);
                 }
                 command.handle().await
             })
@@ -107,6 +125,24 @@ pub(crate) async fn failed(job: &QueuedJob, error: &Arc<Error>) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Whether a newer dispatch of the debounced job has replaced this one.
+///
+/// When the token is gone (evicted, or expired) the job runs: better to run
+/// a job twice than to lose it.
+async fn should_be_debounced(envelope: &Envelope) -> bool {
+    let Some(owner) = envelope.debounce_owner().filter(|owner| !owner.is_empty()) else {
+        return false;
+    };
+    match DebounceLock::new(None).current_owner(envelope.job()).await {
+        Ok(Some(current)) => current != owner,
+        Ok(None) => false,
+        Err(error) => {
+            crate::report(&error);
+            false
+        }
+    }
 }
 
 fn is_unique(command: &dyn ShouldQueue) -> bool {

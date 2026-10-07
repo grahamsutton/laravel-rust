@@ -75,6 +75,9 @@ pub struct SerializedJob {
     /// The owner of the job's unique lock.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub unique_lock_owner: Option<String>,
+    /// The token of the dispatch that queued this debounced job.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub debounce_owner: Option<String>,
 }
 
 /// A chained job: still in memory, or already serialized.
@@ -121,6 +124,7 @@ pub struct Envelope {
     pub(crate) chain_catch_callbacks: Vec<CallbackRef>,
     pub(crate) batch_id: Option<String>,
     pub(crate) unique_lock_owner: Option<String>,
+    pub(crate) debounce_owner: Option<String>,
 }
 
 impl Envelope {
@@ -150,6 +154,7 @@ impl Envelope {
             chain_catch_callbacks: Vec::new(),
             batch_id: None,
             unique_lock_owner: None,
+            debounce_owner: None,
         }
     }
 
@@ -243,6 +248,11 @@ impl Envelope {
     /// The owner token of the job's unique lock.
     pub fn unique_lock_owner(&self) -> Option<&str> {
         self.unique_lock_owner.as_deref()
+    }
+
+    /// The token of the dispatch that queued this debounced job.
+    pub fn debounce_owner(&self) -> Option<&str> {
+        self.debounce_owner.as_deref()
     }
 
     // ------------------------------------------------------------------
@@ -356,6 +366,7 @@ impl Envelope {
             chain_queue: self.chain_queue.clone(),
             chain_catch_callbacks: self.chain_catch_callbacks.clone(),
             unique_lock_owner: self.unique_lock_owner.clone(),
+            debounce_owner: self.debounce_owner.clone(),
         })
     }
 
@@ -404,6 +415,7 @@ impl Envelope {
         envelope.chain_queue = data.chain_queue;
         envelope.chain_catch_callbacks = data.chain_catch_callbacks;
         envelope.unique_lock_owner = data.unique_lock_owner;
+        envelope.debounce_owner = data.debounce_owner;
 
         Ok(envelope)
     }

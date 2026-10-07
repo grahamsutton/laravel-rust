@@ -54,6 +54,22 @@ impl InvalidArgumentException {
     }
 }
 
+/// Thrown when the program's logic is wrong: a mistake in how the API is
+/// used, which should be fixed in code (PHP's `LogicException`).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{message}")]
+pub struct LogicException {
+    pub message: String,
+}
+
+impl LogicException {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
 /// Return an error carrying `message` when `condition` is true.
 pub fn throw_if(condition: bool, message: impl Into<String>) -> Result<()> {
     if condition {

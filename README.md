@@ -161,8 +161,9 @@ Route::get("/orders", || async { "Orders" })
 ### Queues
 
 Jobs are serializable structs. Dispatch them, chain them, batch them, and
-run them with `cargo artisan queue:work`. The `sync`, `database`, `array`,
-`deferred`, `background`, `failover`, and `null` drivers are included.
+run them with `cargo artisan queue:work`. The `sync`, `database`, `redis`,
+`array`, `deferred`, `background`, `failover`, and `null` drivers are
+included.
 
 ```rust
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -182,6 +183,11 @@ impl ShouldQueue for ProcessPodcast {
 
 ProcessPodcast { id: 1 }.dispatch().on_queue("podcasts").delay(60).await?;
 ```
+
+What Laravel declares with interfaces and attributes, jobs declare with
+trait methods. A job that returns an id from `unique_id` is unique; one that
+returns `Some(DebounceFor::new(30))` from `debounce_for` is debounced, so
+when it's dispatched again and again, only the latest dispatch runs.
 
 ### Mail and notifications
 

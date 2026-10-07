@@ -319,6 +319,18 @@ pub struct UniqueJobSkipped {
     pub job: Envelope,
 }
 
+/// A debounced job was superseded by a newer dispatch and deleted
+/// without running.
+#[derive(Debug, Clone)]
+pub struct JobDebounced {
+    /// The connection name.
+    pub connection_name: String,
+    /// The queued job.
+    pub job: QueuedJob,
+    /// The job that was debounced.
+    pub command: Envelope,
+}
+
 /// A batch was dispatched.
 #[derive(Debug, Clone)]
 pub struct BatchDispatched {
@@ -416,6 +428,7 @@ queue_events!(
     QueueBusy,
     QueueFailedOver,
     UniqueJobSkipped,
+    JobDebounced,
     BatchDispatched,
     BatchCanceled,
     BatchFinished,

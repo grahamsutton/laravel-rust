@@ -3,9 +3,11 @@
 use std::future::IntoFuture;
 
 use illuminate_http::BoxFuture;
+use illuminate_support::error::LogicException;
 use illuminate_support::{Conditionable, Result};
 
 use super::chain::PendingChain;
+use super::debounce::DebounceLock;
 use super::dispatcher::dispatcher;
 use super::unique::UniqueLock;
 use crate::delay::IntoDelay;
@@ -162,6 +164,11 @@ impl PendingDispatch {
         let mut job = self.job;
         let mut owner = None;
 
+        let debounce = job.job().debounce_for();
+        if debounce.is_some() && job.job().unique_id().is_some() {
+            return Err(LogicException::new("A debounced job cannot also implement ShouldBeUnique.").into());
+        }
+
         if job.job().unique_id().is_some() {
             match UniqueLock::new(None).acquire(job.job()).await? {
                 Some(lock_owner) => {
@@ -172,6 +179,17 @@ impl PendingDispatch {
                     events::dispatch(UniqueJobSkipped { job });
                     return Ok(());
                 }
+            }
+        }
+
+        if let Some(debounce) = debounce {
+            let acquired = DebounceLock::new(None)
+                .acquire(job.job(), Some(debounce.seconds), debounce.max_wait)
+                .await?;
+            job.debounce_owner = Some(acquired.owner);
+            if job.delay.is_none() {
+                let seconds = if acquired.max_wait_exceeded { 0 } else { debounce.seconds };
+                job.delay = Some(std::time::Duration::from_secs(seconds));
             }
         }
 

@@ -10,6 +10,7 @@ use serde::de::DeserializeOwned;
 
 use illuminate_support::{Carbon, Error, Result, Value, class_basename};
 
+use crate::bus::debounce::DebounceFor;
 use crate::exceptions::{InvalidPayloadException, ManuallyFailedException};
 use crate::middleware::JobMiddleware;
 use crate::registry::JobRegistration;
@@ -168,6 +169,34 @@ pub trait ShouldQueue: QueueableCommand + Send + Sync + 'static {
     /// The cache store that holds the unique lock (the default store when
     /// `None`).
     fn unique_via(&self) -> Option<String> {
+        None
+    }
+
+    /// Debounce the job (Laravel's `#[DebounceFor]` attribute): when it is
+    /// dispatched again within this many seconds, only the latest dispatch
+    /// runs.
+    ///
+    /// ```ignore
+    /// fn debounce_for(&self) -> Option<DebounceFor> {
+    ///     Some(DebounceFor::new(30).max_wait(120))
+    /// }
+    /// ```
+    ///
+    /// Debounced jobs can't also be [unique](ShouldQueue::unique_id).
+    fn debounce_for(&self) -> Option<DebounceFor> {
+        None
+    }
+
+    /// The id that groups dispatches of a debounced job: dispatches with
+    /// the same id debounce each other (`self.product_id.to_string()`).
+    /// Empty by default, so every dispatch of the job class does.
+    fn debounce_id(&self) -> String {
+        String::new()
+    }
+
+    /// The cache store that tracks the debounced job (the default store
+    /// when `None`).
+    fn debounce_via(&self) -> Option<String> {
         None
     }
 
