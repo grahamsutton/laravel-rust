@@ -134,6 +134,35 @@ impl PersonalAccessToken {
                 class_name: self.tokenable_type.clone(),
             }));
         }
+        // Otherwise, find the owner through the user provider configured
+        // for its model (`auth.providers.*.model`).
+        if let Some(user) = Self::resolve_through_user_providers(&self.tokenable_type, &self.tokenable_id).await? {
+            return Ok(Some(ResolvedTokenable {
+                user,
+                class_name: self.tokenable_type.clone(),
+            }));
+        }
+        Ok(None)
+    }
+
+    /// Retrieve the owner with the user provider whose `model` is the
+    /// token's `tokenable_type` (compared by class basename).
+    async fn resolve_through_user_providers(tokenable_type: &str, id: &Value) -> Result<Option<AuthUser>> {
+        let basename = |name: &str| name.rsplit(['\\', ':']).next().unwrap_or(name).to_string();
+        let wanted = basename(tokenable_type);
+        let providers = match illuminate_config::config("auth.providers") {
+            Value::Object(providers) => providers,
+            _ => return Ok(None),
+        };
+        for (name, config) in providers {
+            let model = config.get("model").and_then(Value::as_str).map(basename);
+            if model.as_deref() != Some(wanted.as_str()) {
+                continue;
+            }
+            if let Some(provider) = illuminate_auth::manager().create_user_provider(Some(&name))? {
+                return provider.retrieve_by_id(id).await;
+            }
+        }
         Ok(None)
     }
 

@@ -117,6 +117,11 @@ crc32fast = "1"
 tempfile = "3"
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "tokio1", "tokio1-rustls-tls", "hostname"] }
 
+[features]
+default = []
+# Laravel Sanctum: API tokens and SPA authentication (`install:api` turns it on).
+sanctum = ["dep:laravel-sanctum"]
+
 [dependencies]
 illuminate-support.workspace = true
 illuminate-container.workspace = true
@@ -144,6 +149,7 @@ illuminate-auth.workspace = true
 illuminate-queue.workspace = true
 illuminate-redis.workspace = true
 illuminate-broadcasting.workspace = true
+laravel-sanctum = { workspace = true, optional = true }
 illuminate-process.workspace = true
 illuminate-concurrency.workspace = true
 illuminate-http-client.workspace = true
@@ -158,6 +164,8 @@ inventory.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+sha2.workspace = true
+hex.workspace = true
 
 [profile.dev]
 # Keep debug builds snappy while still giving dependencies a little speed.

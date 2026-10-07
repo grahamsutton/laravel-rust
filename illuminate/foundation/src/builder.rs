@@ -37,6 +37,7 @@ pub struct ApplicationBuilder {
     middleware: Middleware,
     exceptions: Exceptions,
     providers: Vec<Box<dyn ServiceProvider>>,
+    dont_discover: Vec<String>,
     config_files: Vec<ConfigFile>,
     callbacks: Vec<CreatedCallback>,
 }
@@ -62,6 +63,7 @@ impl ApplicationBuilder {
             middleware: Middleware::new(),
             exceptions: Exceptions::new(),
             providers: Vec::new(),
+            dont_discover: Vec::new(),
             config_files: Vec::new(),
             callbacks: Vec::new(),
         }
@@ -189,6 +191,13 @@ impl ApplicationBuilder {
         self
     }
 
+    /// Don't register the service providers of the given packages
+    /// automatically (`"*"` for every package) — Laravel's `dont-discover`.
+    pub fn dont_discover(mut self, packages: &[&str]) -> Self {
+        self.dont_discover.extend(packages.iter().map(|package| package.to_string()));
+        self
+    }
+
     /// Run a callback against the application once it is created (used by
     /// framework extensions such as console commands and migrations).
     pub fn tap(mut self, callback: impl FnOnce(&Arc<Application>) + Send + 'static) -> Self {
@@ -217,9 +226,15 @@ impl ApplicationBuilder {
         app.instance_arc::<Handler>(handler.clone());
         app.instance_arc::<dyn ExceptionHandler>(handler);
 
-        // Framework providers first, then the application's own.
+        // Framework providers first, then discovered packages, then the
+        // application's own.
         for provider in providers::default_providers() {
             providers::add_pending(&app, provider);
+        }
+        for package in illuminate_container::discovered_providers() {
+            if !self.dont_discover.iter().any(|name| name == package.package || name == "*") {
+                providers::add_pending(&app, (package.provider)());
+            }
         }
         for provider in self.providers {
             providers::add_pending(&app, provider);

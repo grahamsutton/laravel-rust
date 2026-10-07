@@ -58,6 +58,10 @@ pub use illuminate_translation as translation;
 pub use illuminate_validation as validation;
 pub use illuminate_view as view;
 
+/// Laravel Sanctum: API tokens and SPA authentication (the `sanctum` feature).
+#[cfg(feature = "sanctum")]
+pub use laravel_sanctum as sanctum;
+
 /// Testing helpers: `TestApp`, `TestResponse`, and friends.
 pub mod testing {
     pub use illuminate_foundation::testing::*;

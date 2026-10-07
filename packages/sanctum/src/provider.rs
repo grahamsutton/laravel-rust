@@ -81,9 +81,23 @@ impl ServiceProvider for SanctumServiceProvider {
         if let Ok(manager) = app.try_make::<AuthManager>() {
             Self::register_guard(&manager);
         }
+        app.singleton_if::<Router>(|_| Arc::new(Router::new()));
+        let router = app.make::<Router>();
+
+        // `auth:sanctum` routes can check abilities, and `stateful_api()`
+        // runs first-party SPA requests through the session.
+        for (alias, factory) in crate::http::middleware::middleware_aliases() {
+            router.alias_middleware_factory(alias, factory);
+        }
+        router.alias_middleware_instance(
+            "sanctum.stateful",
+            Arc::new(crate::http::middleware::EnsureFrontendRequestsAreStateful::new()),
+        );
+
+        illuminate_console::Artisan::register(crate::console::PruneExpired);
+
         if config::routes_enabled() {
-            app.singleton_if::<Router>(|_| Arc::new(Router::new()));
-            define_routes(&app.make::<Router>());
+            define_routes(&router);
         }
     }
 }

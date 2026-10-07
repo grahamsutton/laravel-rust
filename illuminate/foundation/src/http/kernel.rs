@@ -195,6 +195,9 @@ pub fn sync_middleware_to_router(router: &Router, config: &Middleware) {
     ));
 
     let mut api: Vec<RouteMiddleware> = Vec::new();
+    if config.stateful_api {
+        api.push(RouteMiddleware::named("sanctum.stateful"));
+    }
     if let Some(limiter) = &config.throttle_api {
         api.push(RouteMiddleware::named(format!("throttle:{limiter}")));
     }

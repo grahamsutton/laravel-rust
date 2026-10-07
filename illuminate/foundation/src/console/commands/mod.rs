@@ -23,7 +23,7 @@ pub use environment::{DecryptCommand as EnvDecryptCommand, EncryptCommand as Env
 pub use events::{CacheForgetCommand, ChannelListCommand, EventListCommand};
 pub use optimize::{OptimizeClearCommand, OptimizeCommand, ViewCacheCommand, ViewClearCommand};
 pub use models::{PruneCommand as ModelPruneCommand, ShowModelCommand};
-pub use install::InstallBroadcastingCommand;
+pub use install::{InstallApiCommand, InstallBroadcastingCommand};
 pub use inspection::{ShowCommand as DbShowCommand, TableCommand as DbTableCommand};
 pub use queue::{
     ListenCommand as QueueListenCommand, PruneBatchesCommand as QueuePruneBatchesCommand,

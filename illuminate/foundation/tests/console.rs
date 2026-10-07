@@ -277,3 +277,47 @@ async fn resources_can_be_generated() {
     app.artisan("make:resource Stats --collection").assert_successful().await;
     assert!(read("app/http/resources/stats.rs").contains("impl ResourceCollection for Stats"));
 }
+
+#[tokio::test]
+async fn the_api_can_be_installed() {
+    let (app, dir) = test_app();
+    let path = |path: &str| dir.path().join(path);
+    let read = |path: &str| std::fs::read_to_string(dir.path().join(path)).unwrap();
+    std::fs::write(path("Cargo.toml"), "[package]\nname = \"app\"\n\n[dependencies]\nlaravel = \"0.1\"\n").unwrap();
+    std::fs::create_dir_all(path("routes")).unwrap();
+    std::fs::write(path("routes/mod.rs"), "pub mod web;\n\npub use web::web;\n").unwrap();
+    std::fs::create_dir_all(path("bootstrap")).unwrap();
+    std::fs::write(
+        path("bootstrap/app.rs"),
+        "        .with_routing(|routing| {\n            routing\n                .web(routes::web)\n                .health(\"/up\");\n        })\n",
+    )
+    .unwrap();
+
+    app.artisan("install:api")
+        .expects_output_to_contain("Published API routes file.")
+        .expects_output_to_contain("Published the personal access tokens migration.")
+        .assert_successful()
+        .await;
+
+    assert!(read("Cargo.toml").contains(r#"laravel = { version = "0.1", features = ["sanctum"] }"#));
+    assert!(read("routes/api.rs").contains(r#".middleware("auth:sanctum")"#));
+    assert!(read("routes/mod.rs").contains("pub mod api;"));
+    assert!(read("routes/mod.rs").contains("pub use api::api;"));
+    assert!(read("bootstrap/app.rs").contains(".web(routes::web)\n                .api(routes::api)"));
+    let migrations = || {
+        std::fs::read_dir(path("database/migrations"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(migrations().len(), 1);
+    assert!(migrations()[0].ends_with("_create_personal_access_tokens_table.rs"));
+
+    // Installing again leaves everything as it is.
+    app.artisan("install:api")
+        .doesnt_expect_output_to_contain("Published")
+        .assert_successful()
+        .await;
+    assert_eq!(migrations().len(), 1);
+    assert_eq!(read("bootstrap/app.rs").matches("routes::api").count(), 1);
+}

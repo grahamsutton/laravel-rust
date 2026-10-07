@@ -658,3 +658,49 @@ mod tests {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Package discovery
+// ---------------------------------------------------------------------------
+
+/// A package's service provider, registered with
+/// [`discover_provider!`](crate::discover_provider) — Laravel's package
+/// discovery. The application registers every discovered provider after the
+/// framework's own, so adding a package to `Cargo.toml` is all it takes.
+pub struct PackageProvider {
+    /// The package's name (`laravel-sanctum`).
+    pub package: &'static str,
+    /// Create the package's service provider.
+    pub provider: fn() -> Box<dyn ServiceProvider>,
+}
+
+inventory::collect!(PackageProvider);
+
+/// Every discovered package provider, ordered by package name.
+pub fn discovered_providers() -> Vec<&'static PackageProvider> {
+    let mut providers: Vec<&'static PackageProvider> = inventory::iter::<PackageProvider>.into_iter().collect();
+    providers.sort_by_key(|provider| provider.package);
+    providers
+}
+
+/// Register a package's service provider for discovery.
+///
+/// ```ignore
+/// illuminate_container::discover_provider!("laravel-sanctum", SanctumServiceProvider);
+/// ```
+#[macro_export]
+macro_rules! discover_provider {
+    ($package:expr, $provider:expr) => {
+        $crate::__private::inventory::submit! {
+            $crate::PackageProvider {
+                package: $package,
+                provider: || ::std::boxed::Box::new($provider),
+            }
+        }
+    };
+}
+
+#[doc(hidden)]
+pub mod __private {
+    pub use inventory;
+}

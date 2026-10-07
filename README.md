@@ -135,6 +135,29 @@ Route::get("/api/users", || async {
 });
 ```
 
+### API authentication
+
+`cargo artisan install:api` installs Laravel Sanctum: it turns on the
+`laravel` crate's `sanctum` feature, publishes `routes/api.rs` and the
+personal access tokens migration, and loads the API routes. Packages are
+discovered the way Composer's `extra.laravel.providers` works, so there's
+no provider to register:
+
+```rust
+use laravel::sanctum::HasApiTokens;
+
+Route::post("/tokens/create", |request: Request| async move {
+    let user: User = request.user().unwrap();
+    let token = user.create_token(&request.string("token_name"), &["orders:read"]).await?;
+
+    Ok::<_, Error>(Json(json!({"token": token.plain_text_token})))
+})
+.middleware("auth");
+
+Route::get("/orders", || async { "Orders" })
+    .middleware(["auth:sanctum", "abilities:orders:read"]);
+```
+
 ### Queues
 
 Jobs are serializable structs. Dispatch them, chain them, batch them, and
@@ -223,6 +246,7 @@ requests, processes, and more, along with Laravel's assertions: `Queue::fake()`,
 | Pagination | `illuminate-pagination` |
 | Eloquent API resources | `illuminate-http-resources` |
 | Authentication, gates, and policies | `illuminate-auth` |
+| Sanctum: API tokens and SPA authentication | `laravel-sanctum` (the `sanctum` feature) |
 | Sessions, cookies, encryption, hashing | `illuminate-session`, `-cookie`, `-encryption`, `-hashing` |
 | Cache and rate limiting | `illuminate-cache` |
 | Redis (with cache, queue, and session drivers) | `illuminate-redis` |
@@ -245,8 +269,8 @@ Still to come:
 - **Drivers**: SQS and Beanstalkd queues, Memcached and DynamoDB caches,
   and the Mailgun, Postmark, Resend, and SES mail transports. Redis Cluster
   and TLS connections to Redis aren't supported yet.
-- **Packages**: Laravel's first-party packages (Horizon, Reverb's WebSocket
-  server, Scout, Socialite, and others) and the starter kits.
+- **Packages**: the rest of Laravel's first-party packages (Horizon, Reverb's
+  WebSocket server, Scout, Socialite, and others) and the starter kits.
 
 ## Contributing
 

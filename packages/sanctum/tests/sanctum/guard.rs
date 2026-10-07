@@ -312,13 +312,36 @@ async fn a_guard_provider_restricts_tokens_to_its_model() {
 }
 
 #[tokio::test]
+async fn unregistered_tokenable_types_are_resolved_through_the_user_providers() {
+    let app = app().await;
+    user_route(&app);
+    let admin = Admin::create(json!({"name": "Root"})).await.unwrap();
+    // A token issued elsewhere: this process never issued an `Admin` token,
+    // but the `admins` user provider's model is `Admin`.
+    let token = PersonalAccessToken::force_create(json!({
+        "tokenable_type": "App\\Models\\Admin",
+        "tokenable_id": admin.id,
+        "name": "imported",
+        "token": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
+        "abilities": ["*"],
+    }))
+    .await
+    .unwrap();
+    let plain = format!("{}|password", token.id);
+
+    let body = api(&app, "GET", "/api/user", &plain).await.json_body();
+    assert_eq!(body["type"], json!("Admin"));
+    assert_eq!(body["name"], json!("Root"));
+}
+
+#[tokio::test]
 async fn unknown_tokenable_types_are_resolved_by_the_application() {
     let app = app().await;
     user_route(&app);
     let admin = Admin::create(json!({"name": "Root"})).await.unwrap();
-    // A token issued elsewhere: this process never registered `Admin`.
+    // A token issued elsewhere, for a model no user provider knows.
     let token = PersonalAccessToken::force_create(json!({
-        "tokenable_type": "App\\Models\\Admin",
+        "tokenable_type": "Legacy\\Operator",
         "tokenable_id": admin.id,
         "name": "imported",
         "token": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
@@ -335,7 +358,7 @@ async fn unknown_tokenable_types_are_resolved_by_the_application() {
     );
 
     Sanctum::resolve_tokenables_using(|tokenable_type, id| async move {
-        if tokenable_type.ends_with("Admin") {
+        if tokenable_type == "Legacy\\Operator" {
             Ok(Admin::find(id).await?.map(AuthUser::new))
         } else {
             Ok(None)

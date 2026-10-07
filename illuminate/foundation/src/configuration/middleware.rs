@@ -40,6 +40,7 @@ pub struct Middleware {
     pub(crate) redirect_users_to: Option<String>,
     pub(crate) throttle_api: Option<String>,
     pub(crate) disabled_csrf: bool,
+    pub(crate) stateful_api: bool,
 }
 
 impl Default for Middleware {
@@ -69,6 +70,7 @@ impl Middleware {
             maintenance_except: Vec::new(),
             trusted_proxies: None,
             trusted_hosts: None,
+            stateful_api: false,
             redirect_guests_to: None,
             redirect_users_to: None,
             throttle_api: None,
@@ -228,6 +230,14 @@ impl Middleware {
     /// ```
     pub fn trust_hosts(&mut self, at: &[&str], subdomains: bool) -> &mut Self {
         self.trusted_hosts = Some((at.iter().map(|s| s.to_string()).collect(), subdomains));
+        self
+    }
+
+    /// Let your first-party SPA authenticate to the `api` routes with its
+    /// session cookie (Laravel Sanctum's `EnsureFrontendRequestsAreStateful`,
+    /// registered as the `sanctum.stateful` middleware).
+    pub fn stateful_api(&mut self) -> &mut Self {
+        self.stateful_api = true;
         self
     }
 

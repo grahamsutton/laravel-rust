@@ -139,3 +139,5 @@ pub mod prelude {
     pub use crate::has_api_tokens::{HasApiTokens, NewAccessToken};
     pub use crate::personal_access_token::PersonalAccessToken;
 }
+
+illuminate_container::discover_provider!("laravel-sanctum", SanctumServiceProvider);

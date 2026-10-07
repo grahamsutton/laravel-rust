@@ -10,6 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 illuminate-support.workspace = true
+inventory.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
