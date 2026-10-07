@@ -85,8 +85,9 @@ impl Command for ServeCommand {
                     Carbon::now().to_date_time_string()
                 );
                 let right = format!("<fg={color}>{status}</> <fg=gray>~ {elapsed:.2}ms</>");
+                // "  {date} {method} {path} {dots} {status} ~ {time}ms" fills the line.
                 let visible = Carbon::now().to_date_time_string().len() + method.len() + path.len() + 4
-                    + status.to_string().len() + format!("~ {elapsed:.2}ms").len() + 2;
+                    + status.to_string().len() + format!("~ {elapsed:.2}ms").len() + 3;
                 let width = output.width().min(150);
                 let dots = ".".repeat(width.saturating_sub(visible).max(1));
                 output.writeln(format!("{left} <fg=gray>{dots}</> {right}"));
