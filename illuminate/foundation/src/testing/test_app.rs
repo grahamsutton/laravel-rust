@@ -28,9 +28,9 @@ use crate::testing::TestResponse;
 /// Cookies set by responses are remembered and sent with subsequent
 /// requests, so sessions carry across requests just like a browser.
 pub struct TestApp {
-    app: Arc<Application>,
+    pub(super) app: Arc<Application>,
     headers: HeaderMap,
-    cookies: IndexMap<String, String>,
+    pub(super) cookies: IndexMap<String, String>,
     unencrypted_cookies: IndexMap<String, String>,
     pending_session: Map<String, Value>,
     follow_redirects: bool,

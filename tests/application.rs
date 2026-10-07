@@ -42,6 +42,7 @@ fn routes() {
 
     Route::get("/login", || async { "Log in" }).name("login");
     Route::post("/login", login);
+    Route::post("/register", register);
 
     Route::get("/dashboard", |request: Request| async move {
         let user: User = request.user().unwrap();
@@ -66,6 +67,23 @@ async fn login(request: Request) -> Result<Response> {
     }
 
     Ok(back().with_errors(json!({"email": "The provided credentials do not match our records."})))
+}
+
+/// Handle an incoming registration request.
+async fn register(request: Request) -> Result<Response> {
+    let validated = request
+        .validate(rules! {
+            "name" => "required|string|max:255",
+            "email" => "required|string|lowercase|email|max:255|unique:users,email",
+            "password" => "required|confirmed|min:8",
+        })
+        .await?;
+
+    let user = User::create(validated).await?;
+
+    Auth::login(&user, false).await?;
+
+    Ok(redirect("/dashboard"))
 }
 
 async fn app() -> TestApp {
@@ -119,6 +137,7 @@ async fn users_can_log_in_through_eloquent() {
     assert!(taylor.password.starts_with("$2y$"), "the password is hashed on save");
 
     app.get("/dashboard").await.assert_redirect("/login");
+    app.assert_guest().await;
 
     app.post("/login", json!({"email": "taylor@laravel.com", "password": "wrong"}))
         .await
@@ -127,6 +146,7 @@ async fn users_can_log_in_through_eloquent() {
     app.post("/login", json!({"email": "taylor@laravel.com", "password": "secret"}))
         .await
         .assert_redirect("/dashboard");
+    app.assert_authenticated_as(&taylor).await;
 
     app.get("/dashboard").await.assert_ok().assert_see("Welcome back, Taylor Otwell!");
 }
@@ -137,4 +157,39 @@ async fn tests_can_act_as_a_model() {
     let taylor = taylor().await;
 
     app.acting_as(&taylor).get("/dashboard").await.assert_see("Welcome back, Taylor Otwell!");
+}
+
+#[tokio::test]
+async fn new_users_can_register() {
+    let mut app = app().await;
+    taylor().await;
+
+    app.post(
+        "/register",
+        json!({
+            "name": "Abigail Otwell",
+            "email": "taylor@laravel.com",
+            "password": "password",
+            "password_confirmation": "password",
+        }),
+    )
+    .await
+    .assert_session_has_errors(&["email"]);
+
+    app.post(
+        "/register",
+        json!({
+            "name": "Abigail Otwell",
+            "email": "abigail@laravel.com",
+            "password": "password",
+            "password_confirmation": "password",
+        }),
+    )
+    .await
+    .assert_redirect("/dashboard");
+
+    app.assert_authenticated().await;
+    assert_eq!(User::count().await.unwrap(), 2);
+    let abigail = User::first_where("email", "abigail@laravel.com").await.unwrap().unwrap();
+    assert!(Hash::check("password", &abigail.password));
 }
