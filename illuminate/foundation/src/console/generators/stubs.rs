@@ -455,6 +455,7 @@ pub struct {{ class }} {
     pub id: u64,
     pub created_at: Option<Carbon>,
     pub updated_at: Option<Carbon>,
+    pub original: Original,
 }
 "#;
 

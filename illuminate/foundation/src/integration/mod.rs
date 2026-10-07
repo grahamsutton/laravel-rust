@@ -131,6 +131,24 @@ fn wire_eloquent() {
 
     illuminate_routing::Route::set_missing_model_detector(|error| error.is::<ModelNotFoundException>());
 
+    // Model events reach event listeners as `eloquent.created: User`.
+    struct EloquentEvents;
+
+    #[async_trait::async_trait]
+    impl eloquent::EventDispatcher for EloquentEvents {
+        fn has_listeners(&self, event: &str) -> bool {
+            let events = illuminate_events::Event::dispatcher();
+            events.is_fake() || events.has_listeners_named(event)
+        }
+
+        async fn until(&self, event: &str, payload: Value) -> illuminate_support::Result<bool> {
+            illuminate_events::Event::until_named(event, payload).await
+        }
+    }
+
+    eloquent::set_event_dispatcher(EloquentEvents);
+    eloquent::report_exceptions_using(crate::helpers::report);
+
     if let Some(handler) = try_app::<Handler>() {
         handler.configure(|exceptions| {
             exceptions.prepare_using(|error| {

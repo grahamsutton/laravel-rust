@@ -16,4 +16,5 @@ pub struct User {
     pub remember_token: Option<String>,
     pub created_at: Option<Carbon>,
     pub updated_at: Option<Carbon>,
+    pub original: Original,
 }

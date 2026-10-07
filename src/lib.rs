@@ -12,11 +12,11 @@
 //!
 //! pub fn routes() {
 //!     Route::get("/", || async {
-//!         view("welcome")
+//!         view("welcome", ())
 //!     });
 //!
 //!     Route::get("/users/{user}", |user: User| async move {
-//!         user
+//!         Json(user)
 //!     });
 //! }
 //! ```
@@ -147,8 +147,9 @@ pub mod prelude {
 
     pub use async_trait::async_trait;
     pub use illuminate_database::eloquent::{
-        BelongsTo, BelongsToMany, EloquentCollection, Factory, Faker, HasFactory, HasMany, HasManyThrough, HasOne,
-        HasOneThrough, Model, ModelNotFoundException, MorphMany, MorphOne, MorphTo, Observer,
+        BelongsTo, BelongsToMany, Builder, EloquentCollection, Factory, Faker, HasFactory, HasMany, HasManyThrough,
+        HasOne, HasOneThrough, MassPrunable, Model, ModelNotFoundException, MorphMany, MorphOne, MorphTo, Observer,
+        Original, Prunable, Scope,
     };
     pub use illuminate_macros::{Authenticatable, Injectable};
     pub use illuminate_mail::{Address, Attachment, Content, Envelope, Mailable};
