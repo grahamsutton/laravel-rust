@@ -12,11 +12,12 @@ use illuminate_http::SameSite;
 use illuminate_support::error::InvalidArgumentException;
 use illuminate_support::{Result, Str, Value, ValueExt};
 
+use illuminate_cache::Cache;
 use illuminate_database::DatabaseManager;
 
 use crate::handlers::{
-    ArraySessionHandler, CookieSessionHandler, DatabaseSessionHandler, FileSessionHandler,
-    NullSessionHandler, SessionHandler,
+    ArraySessionHandler, CacheBasedSessionHandler, CookieSessionHandler, DatabaseSessionHandler,
+    FileSessionHandler, NullSessionHandler, SessionHandler,
 };
 use crate::store::Store;
 
@@ -37,8 +38,11 @@ pub struct SessionConfig {
     pub encrypt: bool,
     /// The directory used by the `file` driver.
     pub files: PathBuf,
-    /// The database connection used by the `database` driver.
+    /// The connection used by the `database` and `redis` drivers.
     pub connection: Option<String>,
+    /// The cache store used by the cache-backed drivers (`redis`,
+    /// `memcached`, `dynamodb`, `apc`); the driver's name when unset.
+    pub store: Option<String>,
     /// The table used by the `database` driver.
     pub table: String,
     /// The garbage collection lottery: `(wins, out_of)`.
@@ -111,6 +115,7 @@ impl SessionConfig {
                 .map(PathBuf::from)
                 .unwrap_or_else(|| PathBuf::from("storage/framework/sessions")),
             connection: optional_string("session.connection"),
+            store: optional_string("session.store"),
             table: config.string_or("session.table", "sessions"),
             lottery,
             cookie,
@@ -223,19 +228,32 @@ impl SessionManager {
 
         let config = self.get_session_config();
         match name {
-            "array" => Ok(self.shared_handler(name, || Arc::new(ArraySessionHandler::new(config.lifetime)))),
-            "file" | "native" => Ok(Arc::new(FileSessionHandler::new(&config.files, config.lifetime))),
+            "array" => {
+                Ok(self
+                    .shared_handler(name, || Arc::new(ArraySessionHandler::new(config.lifetime))))
+            }
+            "file" | "native" => Ok(Arc::new(FileSessionHandler::new(
+                &config.files,
+                config.lifetime,
+            ))),
             "cookie" => {
-                let jar = try_app::<CookieJar>().unwrap_or_else(|| Arc::new(CookieJar::from_config(&self.config)));
-                Ok(Arc::new(CookieSessionHandler::new(jar, config.lifetime, config.expire_on_close)))
+                let jar = try_app::<CookieJar>()
+                    .unwrap_or_else(|| Arc::new(CookieJar::from_config(&self.config)));
+                Ok(Arc::new(CookieSessionHandler::new(
+                    jar,
+                    config.lifetime,
+                    config.expire_on_close,
+                )))
             }
             "database" => Ok(Arc::new(self.create_database_handler(&config))),
             "null" => Ok(Arc::new(NullSessionHandler)),
-            "redis" | "memcached" | "dynamodb" | "apc" => Err(InvalidArgumentException::new(format!(
-                "Session driver [{name}] is not available. Register it with `SessionManager::extend(\"{name}\", ...)`."
-            ))
-            .into()),
-            _ => Err(InvalidArgumentException::new(format!("Driver [{name}] not supported.")).into()),
+            "redis" => Ok(Arc::new(self.create_redis_handler(&config)?)),
+            "memcached" | "dynamodb" | "apc" => {
+                Ok(Arc::new(self.create_cache_handler(name, &config)?))
+            }
+            _ => {
+                Err(InvalidArgumentException::new(format!("Driver [{name}] not supported.")).into())
+            }
         }
     }
 
@@ -250,6 +268,40 @@ impl SessionManager {
             None => db.default_connection(),
         };
         DatabaseSessionHandler::new(connection, config.table.clone(), config.lifetime)
+    }
+
+    /// Create a handler keeping sessions in the cache store named by
+    /// `session.store` (the driver's own name when unset).
+    fn create_cache_handler(
+        &self,
+        driver: &str,
+        config: &SessionConfig,
+    ) -> Result<CacheBasedSessionHandler> {
+        let store = config.store.as_deref().unwrap_or(driver);
+        let cache = Cache::manager()?.store(store)?;
+        Ok(CacheBasedSessionHandler::new(cache, config.lifetime))
+    }
+
+    /// Create a handler for the `redis` driver: sessions live in the cache
+    /// store named by `session.store` (default `redis`), on the Redis
+    /// connection named by `session.connection` (the `default` connection
+    /// when unset).
+    fn create_redis_handler(&self, config: &SessionConfig) -> Result<CacheBasedSessionHandler> {
+        let store = config.store.as_deref().unwrap_or("redis");
+        let mut store_config = self.config.get(&format!("cache.stores.{store}"));
+        if !store_config.is_object() {
+            return Err(InvalidArgumentException::new(format!(
+                "Cache store [{store}] is not defined."
+            ))
+            .into());
+        }
+        store_config["store"] = Value::from(store);
+        if store_config.get("driver").and_then(Value::as_str) == Some("redis") {
+            store_config["connection"] =
+                Value::from(config.connection.as_deref().unwrap_or("default"));
+        }
+        let cache = Cache::manager()?.build(store_config)?;
+        Ok(CacheBasedSessionHandler::new(cache, config.lifetime))
     }
 
     fn shared_handler(
@@ -383,11 +435,9 @@ mod tests {
                 .handler_needs_request()
         );
 
-        let error = manager.driver_named("redis").unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("Session driver [redis] is not available")
+        assert_eq!(
+            manager.driver_named("redis").unwrap_err().to_string(),
+            "Cache store [redis] is not defined."
         );
         assert_eq!(
             manager.driver_named("nope").unwrap_err().to_string(),
@@ -410,6 +460,45 @@ mod tests {
         let manager = manager(json!({"session": {"driver": "database"}}));
         manager.extend("database", |_| Arc::new(ArraySessionHandler::new(5)));
         assert!(manager.driver().is_ok());
+    }
+
+    #[tokio::test]
+    async fn cache_backed_drivers_use_a_cache_store() {
+        let container = Arc::new(Container::new());
+        let _guard = Container::set_local_instance(container.clone());
+        let config = Arc::new(Repository::new(json!({
+            "session": {"driver": "memcached", "store": "sessions", "lifetime": 30},
+            "cache": {"stores": {"sessions": {"driver": "array"}}},
+        })));
+        container.instance_arc(config.clone());
+        let manager = SessionManager::new(config.clone());
+        assert_eq!(
+            manager.get_session_config().store.as_deref(),
+            Some("sessions")
+        );
+
+        let handler = manager.handler("memcached").unwrap();
+        handler.write("abc", "payload").await.unwrap();
+        assert_eq!(handler.read("abc").await.unwrap(), "payload");
+        // Every handler shares the cache store.
+        assert_eq!(
+            manager.handler("apc").unwrap().read("abc").await.unwrap(),
+            "payload"
+        );
+        handler.destroy("abc").await.unwrap();
+        assert_eq!(handler.read("abc").await.unwrap(), "");
+        assert_eq!(handler.gc(60).await.unwrap(), 0);
+
+        // The redis driver needs a redis store; others are used as they are.
+        config.set("session.store", "missing");
+        assert_eq!(
+            manager.handler("dynamodb").err().unwrap().to_string(),
+            "Cache store [missing] is not defined."
+        );
+        config.set("session.store", "sessions");
+        let handler = manager.handler("redis").unwrap();
+        handler.write("xyz", "data").await.unwrap();
+        assert_eq!(handler.read("xyz").await.unwrap(), "data");
     }
 
     #[test]

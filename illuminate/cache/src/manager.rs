@@ -15,6 +15,7 @@ use crate::array_store::ArrayStore;
 use crate::database_store::{DEFAULT_LOCK_LOTTERY, DEFAULT_LOCK_TIMEOUT, DatabaseStore};
 use crate::file_store::FileStore;
 use crate::null_store::NullStore;
+use crate::redis_store::{RedisStore, redis_manager};
 use crate::repository::Repository;
 use crate::store::Store;
 
@@ -136,6 +137,7 @@ impl CacheManager {
             "database" => Arc::new(self.create_database_store(&config)),
             "file" => Arc::new(self.create_file_store(&config)?),
             "null" => Arc::new(NullStore),
+            "redis" => Arc::new(self.create_redis_store(&config)),
             other => {
                 return Err(InvalidArgumentException::new(format!(
                     "Driver [{other}] is not supported."
@@ -210,6 +212,26 @@ impl CacheManager {
         .with_lock_connection(connection_named(lock_connection_name.as_ref()))
         .with_lock_lottery(lottery)
         .with_default_lock_timeout(lock_timeout)
+    }
+
+    /// Create the `redis` store: items on the `connection` Redis connection
+    /// (default `cache`) and locks on the `lock_connection` one (default
+    /// `default`), both from `database.redis`.
+    fn create_redis_store(&self, config: &Value) -> RedisStore {
+        let option = |key: &str, default: &str| {
+            config
+                .get(key)
+                .filter(|value| !value.is_null())
+                .map(|value| value.to_string_lossy())
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| default.to_string())
+        };
+        RedisStore::new(
+            redis_manager(&self.config),
+            self.get_prefix(config),
+            option("connection", "cache"),
+        )
+        .with_lock_connection(option("lock_connection", "default"))
     }
 
     /// The store the rate limiter uses: `cache.limiter`, or the default store.
@@ -325,7 +347,7 @@ mod tests {
                 "stores": {
                     "array": {"driver": "array", "serialize": true},
                     "file": {"driver": "file", "path": directory.path().join("data").to_string_lossy(), "lock_path": directory.path().join("locks").to_string_lossy()},
-                    "broken": {"driver": "redis"},
+                    "broken": {"driver": "mongo"},
                 },
             },
         }));
@@ -357,7 +379,7 @@ mod tests {
         );
         assert_eq!(
             manager.store("broken").unwrap_err().to_string(),
-            "Driver [redis] is not supported."
+            "Driver [mongo] is not supported."
         );
     }
 

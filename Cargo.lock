@@ -68,6 +68,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
+name = "arc-swap"
+version = "1.9.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
+name = "arcstr"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03918c3dbd7701a85c6b9887732e2921175f26c350b4563841d0958c21d57e6d"
+
+[[package]]
 name = "argon2"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -77,6 +92,17 @@ dependencies = [
  "blake2",
  "cpufeatures",
  "password-hash",
+]
+
+[[package]]
+name = "async-lock"
+version = "3.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "290f7f2596bd5b78a9fec8088ccd89180d7f9f55b94b0576823bbbdc72ee8311"
+dependencies = [
+ "event-listener",
+ "event-listener-strategy",
+ "pin-project-lite",
 ]
 
 [[package]]
@@ -110,6 +136,15 @@ name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
+
+[[package]]
+name = "backon"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cffb0e931875b666fc4fcb20fee52e9bbd1ef836fd9e9e04ec21555f9f85f7ef"
+dependencies = [
+ "fastrand",
+]
 
 [[package]]
 name = "base64"
@@ -263,6 +298,20 @@ checksum = "773f3b9af64447d2ce9850330c473515014aa235e6a783b02db81ff39e4a3dad"
 dependencies = [
  "crypto-common",
  "inout",
+]
+
+[[package]]
+name = "combine"
+version = "4.6.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfc320937d09e6de266b31b9afb480f197d7a861be86be7cb2ea7e5d1bfffc5e"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "memchr",
+ "pin-project-lite",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -465,6 +514,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a23add41df1562121a9393cb065eab5146a1242410f23a644851e90cfd669d2"
 dependencies = [
  "parking",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "event-listener-strategy"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8be9f3dfaaffdae2972880079a491a1a8bb7cbed0b8dd7a347f668b4150a3b93"
+dependencies = [
+ "event-listener",
  "pin-project-lite",
 ]
 
@@ -1019,6 +1078,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "illuminate-broadcasting"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "futures",
+ "hex",
+ "hmac",
+ "illuminate-auth",
+ "illuminate-config",
+ "illuminate-container",
+ "illuminate-events",
+ "illuminate-http",
+ "illuminate-http-client",
+ "illuminate-log",
+ "illuminate-queue",
+ "illuminate-routing",
+ "illuminate-support",
+ "indexmap",
+ "md-5",
+ "rand 0.9.5",
+ "regex",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+]
+
+[[package]]
 name = "illuminate-cache"
 version = "0.1.0"
 dependencies = [
@@ -1029,6 +1117,7 @@ dependencies = [
  "illuminate-database",
  "illuminate-filesystem",
  "illuminate-http",
+ "illuminate-redis",
  "illuminate-support",
  "indexmap",
  "md-5",
@@ -1127,6 +1216,7 @@ dependencies = [
  "illuminate-pagination",
  "illuminate-support",
  "indexmap",
+ "inventory",
  "rand 0.9.5",
  "regex",
  "serde",
@@ -1217,7 +1307,10 @@ dependencies = [
  "illuminate-filesystem",
  "illuminate-hashing",
  "illuminate-http",
+ "illuminate-http-client",
  "illuminate-log",
+ "illuminate-mail",
+ "illuminate-notifications",
  "illuminate-pagination",
  "illuminate-pipeline",
  "illuminate-process",
@@ -1241,6 +1334,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "url",
 ]
 
 [[package]]
@@ -1317,17 +1411,37 @@ dependencies = [
 ]
 
 [[package]]
-name = "illuminate-log"
+name = "illuminate-http-resources"
 version = "0.1.0"
 dependencies = [
  "illuminate-config",
  "illuminate-container",
+ "illuminate-database",
+ "illuminate-http",
+ "illuminate-pagination",
+ "illuminate-routing",
+ "illuminate-support",
+ "indexmap",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "illuminate-log"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "illuminate-config",
+ "illuminate-container",
+ "illuminate-http",
  "illuminate-support",
  "indexmap",
  "regex",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -1346,7 +1460,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
- "futures",
  "illuminate-config",
  "illuminate-container",
  "illuminate-events",
@@ -1366,7 +1479,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror",
  "tokio",
  "url",
 ]
@@ -1374,6 +1486,24 @@ dependencies = [
 [[package]]
 name = "illuminate-notifications"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "illuminate-config",
+ "illuminate-container",
+ "illuminate-database",
+ "illuminate-events",
+ "illuminate-http",
+ "illuminate-mail",
+ "illuminate-queue",
+ "illuminate-support",
+ "illuminate-translation",
+ "illuminate-view",
+ "indexmap",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
 
 [[package]]
 name = "illuminate-pagination"
@@ -1419,6 +1549,7 @@ dependencies = [
  "illuminate-container",
  "illuminate-database",
  "illuminate-http",
+ "illuminate-redis",
  "illuminate-support",
  "indexmap",
  "inventory",
@@ -1429,6 +1560,23 @@ dependencies = [
  "thiserror",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "illuminate-redis"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "illuminate-config",
+ "illuminate-container",
+ "illuminate-support",
+ "indexmap",
+ "percent-encoding",
+ "redis",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "url",
 ]
 
 [[package]]
@@ -1459,12 +1607,14 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "illuminate-cache",
  "illuminate-config",
  "illuminate-container",
  "illuminate-cookie",
  "illuminate-database",
  "illuminate-encryption",
  "illuminate-http",
+ "illuminate-redis",
  "illuminate-support",
  "rand 0.9.5",
  "serde",
@@ -1628,8 +1778,12 @@ dependencies = [
  "illuminate-foundation",
  "illuminate-hashing",
  "illuminate-http",
+ "illuminate-http-client",
+ "illuminate-http-resources",
  "illuminate-log",
  "illuminate-macros",
+ "illuminate-mail",
+ "illuminate-notifications",
  "illuminate-pagination",
  "illuminate-pipeline",
  "illuminate-process",
@@ -1650,6 +1804,13 @@ dependencies = [
 [[package]]
 name = "laravel-build"
 version = "0.1.0"
+
+[[package]]
+name = "laravel-sanctum"
+version = "0.1.0"
+dependencies = [
+ "illuminate-support",
+]
 
 [[package]]
 name = "lazy_static"
@@ -1823,6 +1984,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93e7820bc0a80a0238e650327316f929ba18d5be054b647490a3a6a339f3e7c0"
+dependencies = [
+ "num-integer",
+ "num-traits",
 ]
 
 [[package]]
@@ -2129,6 +2300,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "redis"
+version = "1.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed5b98ae99461e02895c3a96a25dbe4d852a3d5e5b815d31d5d9e4b5344d99e9"
+dependencies = [
+ "arc-swap",
+ "arcstr",
+ "async-lock",
+ "backon",
+ "bytes",
+ "cfg-if",
+ "combine",
+ "futures-channel",
+ "futures-util",
+ "itoa",
+ "num-bigint",
+ "percent-encoding",
+ "pin-project-lite",
+ "ryu",
+ "sha1_smol",
+ "socket2",
+ "tokio",
+ "tokio-util",
+ "url",
+ "xxhash-rust",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2341,6 +2540,12 @@ dependencies = [
  "cpufeatures",
  "digest",
 ]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"
@@ -3341,6 +3546,12 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "550a2b930b62486a393c52d5c3b84bff264b28aa437ed64694d31e93b1757af7"
 
 [[package]]
 name = "yoke"

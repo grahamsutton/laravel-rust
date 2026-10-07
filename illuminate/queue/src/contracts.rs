@@ -11,7 +11,7 @@ use illuminate_support::{Result, Value};
 use crate::envelope::Envelope;
 use crate::events::{self, JobQueued, JobQueueing};
 use crate::exceptions::UnsupportedOperationException;
-use crate::payload::create_payload;
+use crate::payload::{create_payload_value, encode_payload};
 use crate::queued_job::QueuedJob;
 
 /// A queue connection (Laravel's `Illuminate\Contracts\Queue\Queue`).
@@ -94,6 +94,16 @@ pub trait Queue: Send + Sync + 'static {
     /// Pop the next job off of the queue.
     async fn pop(&self, queue: Option<&str>) -> Result<Option<QueuedJob>>;
 
+    /// Pop the next job off of the queue, knowing the queue's position in
+    /// the worker's list of queues (Laravel's `pop($queue, $index)`).
+    ///
+    /// Drivers that wait for jobs to arrive (like `redis` with `block_for`)
+    /// only wait on the first queue, so lower priority queues are never
+    /// held up. Everyone else simply pops.
+    async fn pop_at(&self, queue: Option<&str>, _index: usize) -> Result<Option<QueuedJob>> {
+        self.pop(queue).await
+    }
+
     /// Delete all of the jobs from the queue, returning how many were
     /// deleted.
     async fn clear(&self, _queue: Option<&str>) -> Result<u64> {
@@ -116,8 +126,23 @@ pub async fn enqueue<Q: Queue + ?Sized>(
     queue_name: Option<&str>,
     delay: Option<Duration>,
 ) -> Result<Option<String>> {
+    enqueue_with(queue, job, queue_name, delay, |_| {}).await
+}
+
+/// Like [`enqueue`], letting the driver add its own keys to the payload
+/// first (Laravel's `createPayloadArray`) — the `redis` driver adds the
+/// job's `id`, for example.
+pub async fn enqueue_with<Q: Queue + ?Sized>(
+    queue: &Q,
+    job: &Envelope,
+    queue_name: Option<&str>,
+    delay: Option<Duration>,
+    decorate: impl FnOnce(&mut Value) + Send,
+) -> Result<Option<String>> {
     let queue_name = queue_name.unwrap_or(queue.default_queue()).to_string();
-    let payload = create_payload(job, queue.connection_name(), &queue_name, delay)?;
+    let mut payload = create_payload_value(job, queue.connection_name(), &queue_name, delay)?;
+    decorate(&mut payload);
+    let payload = encode_payload(job, &queue_name, &payload)?;
 
     events::dispatch(JobQueueing {
         connection_name: queue.connection_name().to_string(),

@@ -47,6 +47,7 @@
 
 mod fail_on_exception;
 mod rate_limited;
+mod rate_limited_with_redis;
 mod skip;
 mod throttles_exceptions;
 mod without_overlapping;
@@ -62,6 +63,7 @@ use crate::job::ShouldQueue;
 
 pub use fail_on_exception::FailOnException;
 pub use rate_limited::{JobLimits, JobRateLimiters, RateLimited, RateLimitsJobs};
+pub use rate_limited_with_redis::RateLimitedWithRedis;
 pub use skip::{Release, Skip, SkipIfBatchCancelled};
 pub use throttles_exceptions::ThrottlesExceptions;
 pub use without_overlapping::WithoutOverlapping;

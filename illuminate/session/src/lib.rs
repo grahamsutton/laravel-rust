@@ -2,8 +2,8 @@
 //!
 //! HTTP is stateless; sessions remember things about a user across
 //! requests. Data lives in a [`Store`], persisted between requests by a
-//! [`SessionHandler`] (`file`, `cookie`, `database`, `array`, `null`, or your
-//! own), and
+//! [`SessionHandler`] (`file`, `cookie`, `database`, `redis` and the other
+//! cache-backed drivers, `array`, `null`, or your own), and
 //! is loaded and saved by the [`StartSession`] middleware.
 //!
 //! ```
@@ -53,8 +53,8 @@ mod store;
 pub use exceptions::{SessionNotFoundException, TokenMismatchException};
 pub use facade::Session;
 pub use handlers::{
-    ArraySessionHandler, CookieSessionHandler, DatabaseSessionHandler, FileSessionHandler,
-    NullSessionHandler, SessionHandler,
+    ArraySessionHandler, CacheBasedSessionHandler, CookieSessionHandler, DatabaseSessionHandler,
+    FileSessionHandler, NullSessionHandler, SessionHandler,
 };
 pub use helpers::{
     csrf_field, csrf_token, intended_url, method_field, old, redirect_guest, redirect_intended,

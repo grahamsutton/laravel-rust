@@ -653,8 +653,11 @@ impl Worker {
         let paused = self.get_paused_queues(connection_name, &queues).await;
         self.raise_paused_queue_events(connection_name, &paused);
 
-        for queue in queues.iter().filter(|queue| !paused.contains(queue)) {
-            match connection.pop(Some(queue)).await {
+        for (index, queue) in queues.iter().enumerate() {
+            if paused.contains(queue) {
+                continue;
+            }
+            match connection.pop_at(Some(queue), index).await {
                 Ok(Some(job)) => {
                     self.manager.events().dispatch(JobPopped {
                         connection_name: connection_name.to_string(),

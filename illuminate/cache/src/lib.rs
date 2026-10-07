@@ -1,7 +1,7 @@
 //! # Illuminate Cache
 //!
 //! An expressive, unified API for caching: the [`Cache`] facade in front of
-//! array, database, file, and null stores (and any store you
+//! array, database, file, redis, and null stores (and any store you
 //! [`extend`](CacheManager::extend) it with), atomic [`Lock`]s, and the
 //! [`RateLimiter`] with its `throttle` middleware.
 //!
@@ -38,6 +38,18 @@
 //! The `database` driver ([`DatabaseStore`]) keeps items in the `cache`
 //! table and locks in the `cache_locks` table of a database connection;
 //! set `cache.default` to `"database"` and it is ready to go.
+//!
+//! The `redis` driver ([`RedisStore`]) keeps items on a Redis connection
+//! from `database.redis` — `connection` (default `cache`) for the items and
+//! `lock_connection` (default `default`) for its atomic [`RedisLock`]s:
+//!
+//! ```json
+//! "redis": {
+//!     "driver": "redis",
+//!     "connection": "cache",
+//!     "lock_connection": "default"
+//! }
+//! ```
 
 pub mod array_store;
 pub mod database_store;
@@ -50,6 +62,7 @@ pub mod manager;
 pub mod null_store;
 pub mod provider;
 pub mod rate_limiter;
+pub mod redis_store;
 pub mod repository;
 pub mod store;
 pub mod tags;
@@ -68,6 +81,7 @@ pub use manager::{CacheManager, StoreCreator};
 pub use null_store::NullStore;
 pub use provider::CacheServiceProvider;
 pub use rate_limiter::{LimiterCallback, RateLimiter};
+pub use redis_store::{RedisLock, RedisStore};
 pub use repository::{FLEXIBLE_CREATED_KEY_PREFIX, Repository};
 pub use store::{BadMethodCallException, LockProvider, Store};
 pub use tags::TagSet;

@@ -79,16 +79,31 @@
 //!
 //! ## Connections
 //!
-//! The `database` ([`DatabaseQueue`]), `sync`, `array` (in memory),
-//! `deferred`, `background`, `failover` and `null` drivers ship with the
-//! queue. Other drivers (`redis`, ...) are registered by their components
-//! with [`QueueManager::extend`].
+//! The `database` ([`DatabaseQueue`]), `redis` ([`RedisQueue`]), `sync`,
+//! `array` (in memory), `deferred`, `background`, `failover` and `null`
+//! drivers ship with the queue. Other drivers are registered with
+//! [`QueueManager::extend`].
 //!
 //! The `database` driver keeps jobs in the `jobs` table, failed jobs are
 //! logged to the `failed_jobs` table ([`DatabaseUuidFailedJobProvider`],
 //! `queue.failed.driver = "database-uuids"`) and batches live in the
 //! `job_batches` table ([`DatabaseBatchRepository`], `queue.batching`), all
 //! through the container's `illuminate_database::DatabaseManager`.
+//!
+//! The `redis` driver keeps jobs on a connection from `database.redis`,
+//! exactly like Laravel's `RedisQueue` (`queues:{name}` lists, with
+//! `:delayed` and `:reserved` sorted sets):
+//!
+//! ```json
+//! "redis": {
+//!     "driver": "redis",
+//!     "connection": "default",
+//!     "queue": "default",
+//!     "retry_after": 90,
+//!     "block_for": null,
+//!     "after_commit": false
+//! }
+//! ```
 
 pub mod bus;
 pub mod callbacks;
@@ -129,7 +144,8 @@ pub use contracts::{QueueConnector, TransactionCallback, TransactionManager};
 pub use deferred::DeferredCallbacks;
 pub use delay::IntoDelay;
 pub use drivers::{
-    ArrayQueue, BackgroundQueue, DatabaseQueue, DeferredQueue, FailoverQueue, NullQueue, SyncQueue,
+    ArrayQueue, BackgroundQueue, DatabaseQueue, DeferredQueue, FailoverQueue, NullQueue,
+    RedisQueue, SyncQueue,
 };
 pub use envelope::{Envelope, JobEncrypter, SerializedJob};
 pub use exceptions::{

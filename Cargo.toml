@@ -57,6 +57,7 @@ illuminate-notifications = { path = "illuminate/notifications", version = "0.1.0
 illuminate-http-client = { path = "illuminate/http-client", version = "0.1.0" }
 illuminate-process = { path = "illuminate/process", version = "0.1.0" }
 illuminate-concurrency = { path = "illuminate/concurrency", version = "0.1.0" }
+illuminate-redis = { path = "illuminate/redis", version = "0.1.0" }
 illuminate-http-resources = { path = "illuminate/http-resources", version = "0.1.0" }
 illuminate-foundation = { path = "illuminate/foundation", version = "0.1.0" }
 laravel = { path = ".", version = "0.1.0" }
@@ -69,6 +70,7 @@ hyper-util = { version = "0.1", features = ["full"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12", "logging"] }
 webpki-roots = "1"
+redis = { version = "1.7", features = ["tokio-comp", "connection-manager", "aio", "script"] }
 http-body-util = "0.1"
 http = "1"
 bytes = "1"

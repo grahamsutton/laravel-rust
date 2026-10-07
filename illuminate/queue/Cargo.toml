@@ -15,6 +15,7 @@ illuminate-config.workspace = true
 illuminate-http.workspace = true
 illuminate-cache.workspace = true
 illuminate-database.workspace = true
+illuminate-redis.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 hex.workspace = true

@@ -1,6 +1,7 @@
 //! Session handlers: where session data lives between requests.
 
 mod array;
+mod cache;
 mod cookie;
 mod database;
 mod file;
@@ -12,6 +13,7 @@ use illuminate_http::{Request, async_trait};
 use illuminate_support::Result;
 
 pub use array::ArraySessionHandler;
+pub use cache::CacheBasedSessionHandler;
 pub use cookie::CookieSessionHandler;
 pub use database::DatabaseSessionHandler;
 pub use file::FileSessionHandler;

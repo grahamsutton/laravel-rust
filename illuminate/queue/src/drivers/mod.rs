@@ -8,6 +8,7 @@ pub mod database;
 mod deferred;
 mod failover;
 mod null;
+pub mod redis;
 mod sync;
 
 pub use array::ArrayQueue;
@@ -15,4 +16,5 @@ pub use database::DatabaseQueue;
 pub use deferred::{BackgroundQueue, DeferredQueue};
 pub use failover::FailoverQueue;
 pub use null::NullQueue;
+pub use redis::RedisQueue;
 pub use sync::SyncQueue;

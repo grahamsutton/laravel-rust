@@ -46,7 +46,12 @@ pub fn create_payload(
     delay: Option<Duration>,
 ) -> Result<String> {
     let payload = create_payload_value(job, connection, queue, delay)?;
-    serde_json::to_string(&payload).map_err(|error| {
+    encode_payload(job, queue, &payload)
+}
+
+/// Encode a job's payload as JSON.
+pub(crate) fn encode_payload(job: &Envelope, queue: &str, payload: &Value) -> Result<String> {
+    serde_json::to_string(payload).map_err(|error| {
         InvalidPayloadException::new(format!(
             "Unable to JSON encode payload for job [{}] on queue [{queue}]: {error}",
             job.display_name()

@@ -15,6 +15,7 @@ illuminate-config.workspace = true
 illuminate-http.workspace = true
 illuminate-filesystem.workspace = true
 illuminate-database.workspace = true
+illuminate-redis.workspace = true
 async-trait.workspace = true
 hex.workspace = true
 indexmap.workspace = true

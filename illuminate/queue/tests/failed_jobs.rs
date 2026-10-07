@@ -149,7 +149,7 @@ async fn failover_connections_try_the_next_connection() {
         "driver": "failover",
         "connections": ["broken", "array"],
     });
-    config["queue"]["connections"]["broken"] = json!({"driver": "redis"});
+    config["queue"]["connections"]["broken"] = json!({"driver": "beanstalkd"});
     let _app = app_with(config);
 
     let failovers = Arc::new(Mutex::new(Vec::new()));
@@ -165,7 +165,7 @@ async fn failover_connections_try_the_next_connection() {
 
     assert_eq!(
         *failovers.lock().unwrap(),
-        vec!["broken -> No connector for [redis]."]
+        vec!["broken -> No connector for [beanstalkd]."]
     );
     assert_eq!(
         Queue::connection("array")
