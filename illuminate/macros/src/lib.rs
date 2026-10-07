@@ -8,6 +8,7 @@ use syn::{DeriveInput, parse_macro_input};
 
 mod authenticatable;
 mod injectable;
+mod notifiable;
 mod model;
 mod paths;
 
@@ -140,6 +141,27 @@ pub fn derive_injectable(input: TokenStream) -> TokenStream {
 pub fn derive_authenticatable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     authenticatable::derive(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Let an Eloquent model receive notifications (Laravel's `Notifiable`
+/// trait): mail goes to its `email` attribute, and database notifications
+/// are stored against its key.
+///
+/// ```ignore
+/// #[derive(Debug, Clone, Default, Model, Authenticatable, Notifiable)]
+/// pub struct User {
+///     pub id: u64,
+///     pub email: String,
+/// }
+///
+/// user.notify(InvoicePaid { invoice_id: 3 }).await?;
+/// ```
+#[proc_macro_derive(Notifiable)]
+pub fn derive_notifiable(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    notifiable::derive(input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

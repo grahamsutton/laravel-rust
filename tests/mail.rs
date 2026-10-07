@@ -8,22 +8,12 @@ use laravel::notifications::HasDatabaseNotifications;
 use laravel::prelude::*;
 use laravel::testing::TestApp;
 
-#[derive(Debug, Clone, Default, Model)]
+#[derive(Debug, Clone, Default, Model, Notifiable)]
 #[fillable(name, email)]
 pub struct User {
     pub id: u64,
     pub name: String,
     pub email: String,
-}
-
-impl Notifiable for User {
-    fn notifiable_key(&self) -> Value {
-        self.get_key()
-    }
-
-    fn notifiable_type(&self) -> String {
-        "User".into()
-    }
 }
 
 #[derive(Serialize)]

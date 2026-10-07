@@ -65,7 +65,7 @@ pub mod testing {
 
 /// The derive macros: `#[derive(Model)]`, `#[derive(Injectable)]`.
 pub use illuminate_database::eloquent::Model;
-pub use illuminate_macros::{Authenticatable, Injectable};
+pub use illuminate_macros::{Authenticatable, Injectable, Notifiable};
 
 pub use async_trait::async_trait;
 pub use illuminate_foundation::{Application, ApplicationBuilder, ConfigFile, Inspiring};
@@ -153,7 +153,7 @@ pub mod prelude {
         HasOne, HasOneThrough, MassPrunable, Model, ModelNotFoundException, MorphMany, MorphOne, MorphTo, Observer,
         Original, Prunable, Scope,
     };
-    pub use illuminate_macros::{Authenticatable, Injectable};
+    pub use illuminate_macros::{Authenticatable, Injectable, Notifiable};
     pub use illuminate_mail::{Address, Attachment, Content, Envelope, Mailable};
     pub use illuminate_notifications::{MailMessage, Notifiable, Notification};
     pub use serde::{Deserialize, Serialize};

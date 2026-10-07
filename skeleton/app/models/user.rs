@@ -2,7 +2,7 @@ use laravel::prelude::*;
 
 use crate::database::factories::UserFactory;
 
-#[derive(Debug, Clone, Default, Model, Authenticatable)]
+#[derive(Debug, Clone, Default, Model, Authenticatable, Notifiable)]
 #[use_factory(UserFactory)]
 #[fillable(name, email, password)]
 #[hidden(password, remember_token)]
