@@ -622,14 +622,14 @@ debug = 1
         assert!(manifest.ends_with("\n[profile.dev]\n# Keep debug builds snappy.\ndebug = 1\n"));
         assert!(!manifest.contains("workspace"));
 
-        let git = Framework::Git("https://github.com/grahamsutton/laravel-rust".into());
+        let git = Framework::Git("https://github.com/portside-labs/laravel-rust".into());
         let manifest = super::manifest(SKELETON, WORKSPACE, "podcasts", &git, true).unwrap();
         assert!(
             manifest
-                .contains("laravel = { git = \"https://github.com/grahamsutton/laravel-rust\" }\n")
+                .contains("laravel = { git = \"https://github.com/portside-labs/laravel-rust\" }\n")
         );
         assert!(manifest.contains(
-            "laravel-build = { git = \"https://github.com/grahamsutton/laravel-rust\" }\n"
+            "laravel-build = { git = \"https://github.com/portside-labs/laravel-rust\" }\n"
         ));
         assert!(manifest.ends_with("\n[workspace]\n"));
     }
@@ -647,7 +647,7 @@ debug = 1
     #[test]
     fn the_real_skeleton_manifest_is_rewritten() {
         let skeleton = String::from_utf8_lossy(skeleton::file("Cargo.toml").unwrap()).into_owned();
-        let framework = Framework::Git("https://github.com/grahamsutton/laravel-rust".into());
+        let framework = Framework::Git("https://github.com/portside-labs/laravel-rust".into());
         let manifest = manifest(
             &skeleton,
             skeleton::WORKSPACE_MANIFEST,

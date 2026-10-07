@@ -134,7 +134,7 @@ mod tests {
             git.dependency("illuminate/build"),
             [(
                 "git".to_string(),
-                r#""https://github.com/grahamsutton/laravel-rust""#.to_string()
+                r#""https://github.com/portside-labs/laravel-rust""#.to_string()
             )]
         );
     }
