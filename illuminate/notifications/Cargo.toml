@@ -9,3 +9,21 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-http.workspace = true
+illuminate-events.workspace = true
+illuminate-view.workspace = true
+illuminate-database.workspace = true
+illuminate-translation.workspace = true
+illuminate-mail.workspace = true
+illuminate-queue.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+async-trait.workspace = true
+
+[dev-dependencies]
+illuminate-config.workspace = true
+tokio.workspace = true
+tempfile.workspace = true

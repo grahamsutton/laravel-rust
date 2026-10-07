@@ -9,3 +9,29 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+illuminate-support.workspace = true
+illuminate-container.workspace = true
+illuminate-config.workspace = true
+illuminate-http.workspace = true
+illuminate-events.workspace = true
+illuminate-log.workspace = true
+illuminate-view.workspace = true
+illuminate-translation.workspace = true
+illuminate-filesystem.workspace = true
+illuminate-queue.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+lettre.workspace = true
+base64.workspace = true
+rand.workspace = true
+regex.workspace = true
+mime_guess.workspace = true
+url.workspace = true
+percent-encoding.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tempfile.workspace = true
