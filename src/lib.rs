@@ -173,7 +173,7 @@ pub mod prelude {
     pub use illuminate_pagination::{LengthAwarePaginator, Paginator};
     pub use illuminate_queue::{Dispatchable, InteractsWithQueue, ShouldQueue};
     pub use illuminate_routing::{
-        FromRequest, Inject, Input, Path, Query, ResourceController, UrlRoutable,
+        FromRequest, Inject, Input, Path, Query, ResourceController, RoutingRequestExt, UrlRoutable,
     };
     pub use illuminate_auth::{AuthResponse, AuthUser, Authenticatable, MustVerifyEmail, Policy, RequestAuthExt};
     pub use illuminate_console::{Command, Console};

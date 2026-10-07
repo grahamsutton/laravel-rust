@@ -12,6 +12,8 @@
 //! and the model opts in with `#[derive(Authenticatable)]`, which registers
 //! it here.
 
+pub mod notifications;
+
 use std::marker::PhantomData;
 use std::sync::Arc;
 

@@ -5,7 +5,7 @@
 use laravel::prelude::*;
 use laravel::testing::TestApp;
 
-#[derive(Debug, Clone, Default, Model, Authenticatable)]
+#[derive(Debug, Clone, Default, Model, Authenticatable, Notifiable)]
 #[fillable(name, email, password)]
 #[hidden(password, remember_token)]
 pub struct User {
@@ -74,6 +74,11 @@ fn routes() {
     Route::get("/users/{user:email}/name", |user: User| async move { user.name });
 
     Route::get("/login", || async { "Log in" }).name("login");
+    Route::get("/reset-password/{token}", || async { "Reset your password" }).name("password.reset");
+    Route::get("/email/verify/{id}/{hash}", |request: Request| async move {
+        if request.has_valid_signature() { "Verified" } else { "Invalid" }
+    })
+    .name("verification.verify");
     Route::post("/login", login);
     Route::post("/register", register);
 
@@ -322,4 +327,49 @@ async fn reset_tokens_can_live_in_the_cache() {
 
     assert!(Password::token_exists(&AuthUser::from(&taylor), &token).await.unwrap());
     app.assert_database_empty("password_reset_tokens").await;
+}
+
+fn sent_mail() -> Vec<laravel::mail::SentMessage> {
+    let mailer = laravel::container::app::<laravel::mail::MailManager>().mailer(Some("array")).unwrap();
+    laravel::mail::downcast_transport::<laravel::mail::ArrayTransport>(&mailer.transport())
+        .unwrap()
+        .messages()
+}
+
+#[tokio::test]
+async fn reset_links_are_emailed() {
+    use laravel::foundation::auth::notifications::send_password_reset_link;
+
+    let _app = app().await;
+    taylor().await;
+
+    let status = send_password_reset_link::<User>(&json!({"email": "taylor@laravel.com"})).await.unwrap();
+    assert_eq!(status.as_str(), "passwords.sent");
+
+    let sent = sent_mail();
+    assert_eq!(sent.len(), 1);
+    let message = &sent[0].message;
+    assert_eq!(message.subject.as_deref(), Some("Reset Password Notification"));
+    let html = message.html.as_deref().unwrap();
+    assert!(html.contains("http://localhost/reset-password/"));
+    assert!(html.contains("email=taylor%40laravel.com"));
+    assert!(html.contains("This password reset link will expire in 60 minutes."));
+}
+
+#[tokio::test]
+async fn verification_links_are_signed() {
+    use laravel::foundation::auth::notifications::{VerifyEmail, send_email_verification_notification};
+
+    let mut app = app().await;
+    let taylor = taylor().await;
+
+    send_email_verification_notification(&taylor).await.unwrap();
+    let message = &sent_mail()[0].message;
+    assert_eq!(message.subject.as_deref(), Some("Verify Email Address"));
+
+    let url = VerifyEmail.verification_url(&taylor);
+    assert!(url.contains("signature="));
+    let path = url.trim_start_matches("http://localhost");
+    app.get(path).await.assert_see("Verified");
+    app.get(&path.replace("signature=", "signature=tampered")).await.assert_see("Invalid");
 }
