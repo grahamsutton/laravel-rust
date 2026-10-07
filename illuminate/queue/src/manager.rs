@@ -12,8 +12,8 @@ use illuminate_support::{Carbon, Map, Result, Value, ValueExt, json};
 
 use crate::contracts::{Queue, QueueConnector};
 use crate::drivers::{
-    ArrayQueue, BackgroundQueue, DatabaseQueue, DeferredQueue, FailoverQueue, NullQueue,
-    RedisQueue, SyncQueue,
+    ArrayQueue, BackgroundQueue, BeanstalkdQueue, DatabaseQueue, DeferredQueue, FailoverQueue,
+    NullQueue, RedisQueue, SqsQueue, SyncQueue,
 };
 use crate::events::{
     JobExceptionOccurred, JobFailed, JobProcessed, JobProcessing, JobRetryRequested, Looping,
@@ -105,6 +105,12 @@ impl QueueManager {
         });
         self.add_connector("redis", |config: &Value, name: &str| {
             Ok(Arc::new(RedisQueue::from_config(config, name)?) as Arc<dyn Queue>)
+        });
+        self.add_connector("sqs", |config: &Value, name: &str| {
+            Ok(Arc::new(SqsQueue::from_config(config, name)) as Arc<dyn Queue>)
+        });
+        self.add_connector("beanstalkd", |config: &Value, name: &str| {
+            Ok(Arc::new(BeanstalkdQueue::from_config(config, name)) as Arc<dyn Queue>)
         });
         self.add_connector("deferred", |_: &Value, name: &str| {
             Ok(Arc::new(DeferredQueue::new(name)) as Arc<dyn Queue>)

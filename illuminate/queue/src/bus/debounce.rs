@@ -30,7 +30,10 @@ pub struct DebounceFor {
 impl DebounceFor {
     /// Debounce the job for the given number of seconds.
     pub fn new(seconds: u64) -> Self {
-        Self { seconds, max_wait: None }
+        Self {
+            seconds,
+            max_wait: None,
+        }
     }
 
     /// Run the job anyway once it has been deferred this many seconds.
@@ -93,7 +96,9 @@ impl DebounceLock {
     ) -> Result<AcquiredDebounce> {
         let cache = self.cache_for(job)?;
         let setting = job.debounce_for();
-        let debounce_for = debounce_for.or(setting.map(|setting| setting.seconds)).unwrap_or(0);
+        let debounce_for = debounce_for
+            .or(setting.map(|setting| setting.seconds))
+            .unwrap_or(0);
         let max_wait = max_wait.or(setting.and_then(|setting| setting.max_wait));
 
         let ttl = (debounce_for * 10).max(300);
@@ -107,14 +112,23 @@ impl DebounceLock {
         })
     }
 
-    async fn max_wait_exceeded(cache: &CacheRepository, key: &str, ttl: u64, max_wait: Option<u64>) -> Result<bool> {
+    async fn max_wait_exceeded(
+        cache: &CacheRepository,
+        key: &str,
+        ttl: u64,
+        max_wait: Option<u64>,
+    ) -> Result<bool> {
         let Some(max_wait) = max_wait else {
             return Ok(false);
         };
         let timestamp_key = format!("{key}:first_dispatched_at");
         let now = Carbon::now().timestamp();
 
-        let Some(first_dispatched_at) = cache.get(&timestamp_key).await?.and_then(|value| value.to_i64_lossy()) else {
+        let Some(first_dispatched_at) = cache
+            .get(&timestamp_key)
+            .await?
+            .and_then(|value| value.to_i64_lossy())
+        else {
             cache.put(&timestamp_key, now, ttl).await?;
             return Ok(false);
         };
@@ -129,7 +143,9 @@ impl DebounceLock {
     /// The owner token of the job's latest dispatch.
     pub async fn current_owner(&self, job: &dyn ShouldQueue) -> Result<Option<String>> {
         let value = self.cache_for(job)?.get(&Self::key(job)).await?;
-        Ok(value.filter(|value| !value.is_null()).map(|value| value.to_string_lossy()))
+        Ok(value
+            .filter(|value| !value.is_null())
+            .map(|value| value.to_string_lossy()))
     }
 
     /// Remove the job's token. With an owner, only that owner's token is
@@ -190,7 +206,11 @@ impl DebounceLock {
     /// assert_eq!(DebounceLock::key(&job), "laravel_debounced_job:App\\Jobs\\UpdateSearchIndex:7");
     /// ```
     pub fn key(job: &dyn ShouldQueue) -> String {
-        format!("laravel_debounced_job:{}:{}", job.command_name(), job.debounce_id())
+        format!(
+            "laravel_debounced_job:{}:{}",
+            job.command_name(),
+            job.debounce_id()
+        )
     }
 }
 

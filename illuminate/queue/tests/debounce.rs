@@ -68,12 +68,19 @@ impl ShouldQueue for UniqueAndDebounced {
 }
 
 fn index(product_id: u64, version: u64) -> UpdateSearchIndex {
-    UpdateSearchIndex { product_id, version }
+    UpdateSearchIndex {
+        product_id,
+        version,
+    }
 }
 
 async fn work() {
     Worker::make()
-        .daemon("array", "default", &WorkerOptions::new().sleep(0.0).stop_when_empty())
+        .daemon(
+            "array",
+            "default",
+            &WorkerOptions::new().sleep(0.0).stop_when_empty(),
+        )
         .await
         .unwrap();
 }
@@ -82,7 +89,11 @@ async fn work() {
 fn delays() -> Arc<Mutex<Vec<u64>>> {
     let delays = Arc::new(Mutex::new(Vec::new()));
     let log = delays.clone();
-    Queue::listen(move |event: &JobQueued| log.lock().unwrap().push(event.delay.unwrap_or_default().as_secs()));
+    Queue::listen(move |event: &JobQueued| {
+        log.lock()
+            .unwrap()
+            .push(event.delay.unwrap_or_default().as_secs())
+    });
     delays
 }
 
@@ -92,7 +103,12 @@ async fn only_the_latest_dispatch_runs() {
     let debounced = Arc::new(Mutex::new(Vec::new()));
     let log = debounced.clone();
     Queue::listen(move |event: &JobDebounced| {
-        let job = event.command.job().as_any().downcast_ref::<UpdateSearchIndex>().unwrap();
+        let job = event
+            .command
+            .job()
+            .as_any()
+            .downcast_ref::<UpdateSearchIndex>()
+            .unwrap();
         log.lock().unwrap().push(job.version);
     });
 
@@ -124,11 +140,22 @@ async fn the_owner_token_travels_with_the_payload() {
 
     index(1, 1).dispatch().without_delay().await.unwrap();
 
-    let job = Queue::default_connection().unwrap().pop(None).await.unwrap().unwrap();
-    let owner = job.payload()["data"]["debounceOwner"].as_str().unwrap().to_string();
+    let job = Queue::default_connection()
+        .unwrap()
+        .pop(None)
+        .await
+        .unwrap()
+        .unwrap();
+    let owner = job.payload()["data"]["debounceOwner"]
+        .as_str()
+        .unwrap()
+        .to_string();
     assert_eq!(owner.len(), 40);
     assert_eq!(
-        DebounceLock::new(None).current_owner(&index(1, 1)).await.unwrap(),
+        DebounceLock::new(None)
+            .current_owner(&index(1, 1))
+            .await
+            .unwrap(),
         Some(owner)
     );
     job.delete().await.unwrap();
@@ -139,7 +166,9 @@ async fn jobs_run_when_their_token_is_gone() {
     let _app = app_default();
 
     index(1, 1).dispatch().without_delay().await.unwrap();
-    Cache::forget(&DebounceLock::key(&index(1, 1))).await.unwrap();
+    Cache::forget(&DebounceLock::key(&index(1, 1)))
+        .await
+        .unwrap();
     work().await;
 
     assert_eq!(recorded(), vec!["indexing:1 v1"]);
@@ -165,7 +194,10 @@ async fn debounced_jobs_cannot_be_unique() {
 
     let error = UniqueAndDebounced.dispatch().await.unwrap_err();
 
-    assert_eq!(error.to_string(), "A debounced job cannot also implement ShouldBeUnique.");
+    assert_eq!(
+        error.to_string(),
+        "A debounced job cannot also implement ShouldBeUnique."
+    );
     assert_eq!(Queue::size(None).await.unwrap(), 0);
 }
 
@@ -179,7 +211,10 @@ async fn the_token_may_be_released() {
     assert!(!acquired.max_wait_exceeded);
 
     lock.release(&job, Some("someone-else")).await.unwrap();
-    assert_eq!(lock.current_owner(&job).await.unwrap(), Some(acquired.owner.clone()));
+    assert_eq!(
+        lock.current_owner(&job).await.unwrap(),
+        Some(acquired.owner.clone())
+    );
 
     lock.release(&job, Some(&acquired.owner)).await.unwrap();
     assert_eq!(lock.current_owner(&job).await.unwrap(), None);

@@ -46,7 +46,9 @@ pub(crate) async fn call(job: &QueuedJob) -> Result<()> {
     let context = Arc::new(JobContext::new(job.clone(), &envelope));
     let until_processing = is_unique(&*command) && command.unique_until_processing();
     let owner = envelope.unique_lock_owner.clone();
-    let debounced = envelope.debounce_owner().is_some_and(|owner| !owner.is_empty());
+    let debounced = envelope
+        .debounce_owner()
+        .is_some_and(|owner| !owner.is_empty());
     let lock_released = Arc::new(AtomicBool::new(false));
 
     let middleware = command.middleware();
@@ -63,7 +65,9 @@ pub(crate) async fn call(job: &QueuedJob) -> Result<()> {
                     release_unique_lock(command, owner.as_deref()).await;
                     lock_released.store(true, Ordering::SeqCst);
                 }
-                if debounced && let Err(error) = DebounceLock::new(None).release_max_wait(command).await {
+                if debounced
+                    && let Err(error) = DebounceLock::new(None).release_max_wait(command).await
+                {
                     crate::report(&error);
                 }
                 command.handle().await

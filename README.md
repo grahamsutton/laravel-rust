@@ -177,8 +177,8 @@ let path = request
 
 Jobs are serializable structs. Dispatch them, chain them, batch them, and
 run them with `cargo artisan queue:work`. The `sync`, `database`, `redis`,
-`array`, `deferred`, `background`, `failover`, and `null` drivers are
-included.
+`sqs`, `beanstalkd`, `array`, `deferred`, `background`, `failover`, and
+`null` drivers are included.
 
 ```rust
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -284,9 +284,9 @@ processes, and more: `Queue::fake()`, `Bus::assert_dispatched::<T>()`,
 | Authentication, gates, and policies | `illuminate-auth` |
 | Sanctum: API tokens and SPA authentication | `laravel-sanctum` (the `sanctum` feature) |
 | Sessions, cookies, encryption, hashing | `illuminate-session`, `-cookie`, `-encryption`, `-hashing` |
-| Cache and rate limiting | `illuminate-cache` |
+| Cache (array, file, database, Redis, Memcached, DynamoDB) and rate limiting | `illuminate-cache` |
 | Redis (with cache, queue, and session drivers) | `illuminate-redis` |
-| Queues, jobs, chains, and batches | `illuminate-queue` |
+| Queues (database, Redis, SQS, Beanstalkd), jobs, chains, and batches | `illuminate-queue` |
 | Broadcasting (Pusher, Reverb, Ably) | `illuminate-broadcasting` |
 | Events, logging and `Context`, filesystem, localization | `illuminate-events`, `-log`, `-filesystem`, `-translation` |
 | Artisan and task scheduling | `illuminate-console` |
@@ -304,8 +304,9 @@ component and provides the prelude.
 
 Still to come:
 
-- **Drivers**: SQS and Beanstalkd queues, and Memcached and DynamoDB
-  caches. Redis Cluster and TLS connections to Redis aren't supported yet.
+- **Drivers**: Redis Cluster and TLS connections to Redis aren't supported
+  yet, and AWS credentials come only from configuration (there's no
+  instance-profile or `~/.aws` credential chain).
 - **Packages**: the rest of Laravel's first-party packages (Horizon, Reverb's
   WebSocket server, Scout, Socialite, and others) and the starter kits.
 

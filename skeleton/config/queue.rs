@@ -24,7 +24,8 @@ pub fn config() -> Value {
         | used by your application. An example configuration is provided for
         | each backend supported by Laravel. You're also free to add more.
         |
-        | Drivers: "sync", "database", "redis", "deferred", "null"
+        | Drivers: "sync", "database", "beanstalkd", "sqs", "redis",
+        |          "deferred", "background", "failover", "null"
         |
         */
 
@@ -42,6 +43,26 @@ pub fn config() -> Value {
                 "after_commit": false,
             },
 
+            "beanstalkd": {
+                "driver": "beanstalkd",
+                "host": env("BEANSTALKD_QUEUE_HOST", "localhost"),
+                "queue": env("BEANSTALKD_QUEUE", "default"),
+                "retry_after": env("BEANSTALKD_QUEUE_RETRY_AFTER", 90).to_i64_lossy().unwrap_or(90),
+                "block_for": 0,
+                "after_commit": false,
+            },
+
+            "sqs": {
+                "driver": "sqs",
+                "key": env("AWS_ACCESS_KEY_ID", Value::Null),
+                "secret": env("AWS_SECRET_ACCESS_KEY", Value::Null),
+                "prefix": env("SQS_PREFIX", "https://sqs.us-east-1.amazonaws.com/your-account-id"),
+                "queue": env("SQS_QUEUE", "default"),
+                "suffix": env("SQS_SUFFIX", Value::Null),
+                "region": env("AWS_DEFAULT_REGION", "us-east-1"),
+                "after_commit": false,
+            },
+
             "redis": {
                 "driver": "redis",
                 "connection": env("REDIS_QUEUE_CONNECTION", "default"),
@@ -53,6 +74,15 @@ pub fn config() -> Value {
 
             "deferred": {
                 "driver": "deferred",
+            },
+
+            "background": {
+                "driver": "background",
+            },
+
+            "failover": {
+                "driver": "failover",
+                "connections": ["database", "deferred"],
             },
         },
 
@@ -81,7 +111,7 @@ pub fn config() -> Value {
         | can control how and where failed jobs are stored. Laravel ships with
         | support for storing failed jobs in a simple file or in a database.
         |
-        | Supported drivers: "database-uuids", "null"
+        | Supported drivers: "database-uuids", "dynamodb", "file", "null"
         |
         */
 

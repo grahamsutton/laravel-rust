@@ -1,5 +1,6 @@
 //! The contracts queue drivers (and their integrations) implement.
 
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -139,6 +140,38 @@ pub async fn enqueue_with<Q: Queue + ?Sized>(
     delay: Option<Duration>,
     decorate: impl FnOnce(&mut Value) + Send,
 ) -> Result<Option<String>> {
+    enqueue_using(
+        queue,
+        job,
+        queue_name,
+        delay,
+        decorate,
+        |payload: String, name: String, delay: Option<Duration>| async move {
+            queue.push_raw(payload, Some(&name), delay).await
+        },
+    )
+    .await
+}
+
+/// Like [`enqueue_with`], pushing the payload with the given callback
+/// instead of [`Queue::push_raw`] (Laravel's `enqueueUsing`) — the `sqs`
+/// driver sends the job's message group along, for example.
+///
+/// The callback receives the payload, the queue's name and the delay, and
+/// returns the driver's job id.
+pub async fn enqueue_using<Q, F, Fut>(
+    queue: &Q,
+    job: &Envelope,
+    queue_name: Option<&str>,
+    delay: Option<Duration>,
+    decorate: impl FnOnce(&mut Value) + Send,
+    push: F,
+) -> Result<Option<String>>
+where
+    Q: Queue + ?Sized,
+    F: FnOnce(String, String, Option<Duration>) -> Fut + Send,
+    Fut: Future<Output = Result<Option<String>>> + Send,
+{
     let queue_name = queue_name.unwrap_or(queue.default_queue()).to_string();
     let mut payload = create_payload_value(job, queue.connection_name(), &queue_name, delay)?;
     decorate(&mut payload);
@@ -152,9 +185,7 @@ pub async fn enqueue_with<Q: Queue + ?Sized>(
         delay,
     });
 
-    let id = queue
-        .push_raw(payload.clone(), Some(&queue_name), delay)
-        .await?;
+    let id = push(payload.clone(), queue_name.clone(), delay).await?;
 
     events::dispatch(JobQueued {
         connection_name: queue.connection_name().to_string(),

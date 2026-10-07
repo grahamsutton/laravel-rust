@@ -412,6 +412,12 @@ pub(crate) fn make_batch_repository(container: &Container) -> Arc<dyn BatchRepos
         .try_make::<Config>()
         .unwrap_or_else(|_| Arc::new(Config::empty()));
     let batching = config.get("queue.batching");
+    if batching.get("driver").and_then(Value::as_str) == Some("dynamodb") {
+        return Arc::new(super::dynamo::DynamoBatchRepository::from_config(
+            &batching,
+            config.string_or("app.name", "Laravel"),
+        ));
+    }
     let configured = batching.get("database").is_some() || batching.get("table").is_some();
 
     match container.try_make::<DatabaseManager>() {

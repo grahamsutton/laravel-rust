@@ -13,7 +13,10 @@ use illuminate_database::{Connection, DatabaseManager};
 
 use crate::array_store::ArrayStore;
 use crate::database_store::{DEFAULT_LOCK_LOTTERY, DEFAULT_LOCK_TIMEOUT, DatabaseStore};
+use crate::dynamodb_store::{DynamoDbClient, DynamoDbStore};
 use crate::file_store::FileStore;
+use crate::memcached::Memcached;
+use crate::memcached_store::MemcachedStore;
 use crate::null_store::NullStore;
 use crate::redis_store::{RedisStore, redis_manager};
 use crate::repository::Repository;
@@ -135,7 +138,9 @@ impl CacheManager {
                 config.get("serialize").is_some_and(ValueExt::truthy),
             )),
             "database" => Arc::new(self.create_database_store(&config)),
+            "dynamodb" => Arc::new(self.create_dynamodb_store(&config)),
             "file" => Arc::new(self.create_file_store(&config)?),
+            "memcached" => Arc::new(self.create_memcached_store(&config)?),
             "null" => Arc::new(NullStore),
             "redis" => Arc::new(self.create_redis_store(&config)),
             other => {
@@ -232,6 +237,39 @@ impl CacheManager {
             option("connection", "cache"),
         )
         .with_lock_connection(option("lock_connection", "default"))
+    }
+
+    /// Create the `dynamodb` store: items in `table` (default `cache`),
+    /// with the `attributes` names (`key`, `value`, `expiration`; Laravel's
+    /// `key`, `value` and `expires_at` by default), through a client built
+    /// from `key`, `secret`, `token`, `region` and `endpoint`.
+    fn create_dynamodb_store(&self, config: &Value) -> DynamoDbStore {
+        let option = |value: Option<&Value>, default: &str| {
+            value
+                .filter(|value| !value.is_blank())
+                .map(ValueExt::to_string_lossy)
+                .unwrap_or_else(|| default.to_string())
+        };
+        let attributes = config.get("attributes").cloned().unwrap_or(Value::Null);
+        DynamoDbStore::new(
+            DynamoDbClient::from_config(config),
+            option(config.get("table"), "cache"),
+        )
+        .with_attributes(
+            option(attributes.get("key"), "key"),
+            option(attributes.get("value"), "value"),
+            option(attributes.get("expiration"), "expires_at"),
+        )
+        .with_prefix(self.get_prefix(config))
+    }
+
+    /// Create the `memcached` store on the configured `servers` (see
+    /// [`Memcached::from_config`] for `persistent_id`, `sasl` and `options`).
+    fn create_memcached_store(&self, config: &Value) -> Result<MemcachedStore> {
+        Ok(MemcachedStore::new(
+            Memcached::from_config(config)?,
+            self.get_prefix(config),
+        ))
     }
 
     /// The store the rate limiter uses: `cache.limiter`, or the default store.

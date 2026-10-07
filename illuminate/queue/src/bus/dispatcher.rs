@@ -145,7 +145,11 @@ impl QueueingDispatcher for Dispatcher {
                 let owner = owner.to_string();
                 transactions.add_callback_for_rollback(Box::new(move || {
                     Box::pin(async move {
-                        crate::bus::debounce::release_debounce_lock(rollback_job.job(), Some(&owner)).await;
+                        crate::bus::debounce::release_debounce_lock(
+                            rollback_job.job(),
+                            Some(&owner),
+                        )
+                        .await;
                     })
                 }));
             }

@@ -24,7 +24,8 @@ pub fn config() -> Value {
         | well as their drivers. You may even define multiple stores for the
         | same cache driver to group types of items stored in your caches.
         |
-        | Supported drivers: "array", "database", "file", "redis", "null"
+        | Supported drivers: "array", "database", "file", "memcached",
+        |                    "redis", "dynamodb", "null"
         |
         */
 
@@ -42,16 +43,44 @@ pub fn config() -> Value {
                 "lock_table": env("DB_CACHE_LOCK_TABLE", Value::Null),
             },
 
+            "file": {
+                "driver": "file",
+                "path": storage_path("framework/cache/data"),
+                "lock_path": storage_path("framework/cache/data"),
+            },
+
+            "memcached": {
+                "driver": "memcached",
+                "persistent_id": env("MEMCACHED_PERSISTENT_ID", Value::Null),
+                "sasl": [
+                    env("MEMCACHED_USERNAME", Value::Null),
+                    env("MEMCACHED_PASSWORD", Value::Null),
+                ],
+                "options": {
+                    // "14": 2000, // Memcached::OPT_CONNECT_TIMEOUT
+                },
+                "servers": [
+                    {
+                        "host": env("MEMCACHED_HOST", "127.0.0.1"),
+                        "port": env("MEMCACHED_PORT", 11211),
+                        "weight": 100,
+                    },
+                ],
+            },
+
             "redis": {
                 "driver": "redis",
                 "connection": env("REDIS_CACHE_CONNECTION", "cache"),
                 "lock_connection": env("REDIS_CACHE_LOCK_CONNECTION", "default"),
             },
 
-            "file": {
-                "driver": "file",
-                "path": storage_path("framework/cache/data"),
-                "lock_path": storage_path("framework/cache/data"),
+            "dynamodb": {
+                "driver": "dynamodb",
+                "key": env("AWS_ACCESS_KEY_ID", Value::Null),
+                "secret": env("AWS_SECRET_ACCESS_KEY", Value::Null),
+                "region": env("AWS_DEFAULT_REGION", "us-east-1"),
+                "table": env("DYNAMODB_CACHE_TABLE", "cache"),
+                "endpoint": env("DYNAMODB_ENDPOINT", Value::Null),
             },
 
             "null": {

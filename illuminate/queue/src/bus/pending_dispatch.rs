@@ -166,7 +166,10 @@ impl PendingDispatch {
 
         let debounce = job.job().debounce_for();
         if debounce.is_some() && job.job().unique_id().is_some() {
-            return Err(LogicException::new("A debounced job cannot also implement ShouldBeUnique.").into());
+            return Err(LogicException::new(
+                "A debounced job cannot also implement ShouldBeUnique.",
+            )
+            .into());
         }
 
         if job.job().unique_id().is_some() {
@@ -188,7 +191,11 @@ impl PendingDispatch {
                 .await?;
             job.debounce_owner = Some(acquired.owner);
             if job.delay.is_none() {
-                let seconds = if acquired.max_wait_exceeded { 0 } else { debounce.seconds };
+                let seconds = if acquired.max_wait_exceeded {
+                    0
+                } else {
+                    debounce.seconds
+                };
                 job.delay = Some(std::time::Duration::from_secs(seconds));
             }
         }

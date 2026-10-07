@@ -349,10 +349,10 @@ async fn unconfigured_connections_are_reported() {
     );
 
     let mut config = common::config();
-    config["queue"]["connections"]["beanstalkd"] = json!({"driver": "beanstalkd"});
+    config["queue"]["connections"]["rabbitmq"] = json!({"driver": "rabbitmq"});
     let _app = common::app_with(config);
-    let error = Queue::connection("beanstalkd").err().unwrap();
-    assert_eq!(error.to_string(), "No connector for [beanstalkd].");
+    let error = Queue::connection("rabbitmq").err().unwrap();
+    assert_eq!(error.to_string(), "No connector for [rabbitmq].");
 }
 
 #[tokio::test]

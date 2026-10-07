@@ -90,6 +90,14 @@
 //! `job_batches` table ([`DatabaseBatchRepository`], `queue.batching`), all
 //! through the container's `illuminate_database::DatabaseManager`.
 //!
+//! The `sqs` driver ([`SqsQueue`]) sends jobs to Amazon SQS and the
+//! `beanstalkd` driver ([`BeanstalkdQueue`]) puts them into Beanstalkd
+//! tubes. Failed jobs and batches may also live in DynamoDB
+//! ([`DynamoDbFailedJobProvider`], `queue.failed.driver = "dynamodb"`;
+//! [`DynamoBatchRepository`], `queue.batching.driver = "dynamodb"`). The AWS
+//! APIs are called through the `Http` client, so `Http::fake()` works in
+//! tests.
+//!
 //! The `redis` driver keeps jobs on a connection from `database.redis`,
 //! exactly like Laravel's `RedisQueue` (`queues:{name}` lists, with
 //! `:delayed` and `:reserved` sorted sets):
@@ -134,19 +142,21 @@ pub use async_trait::async_trait;
 
 pub use bus::{
     Batch, BatchItem, BatchRecord, BatchRepository, DatabaseBatchRepository, DebounceFor,
-    DebounceLock, Dispatchable, Dispatcher, InMemoryBatchRepository, PendingBatch, PendingChain,
-    PendingDispatch, QueueingDispatcher, UniqueLock, UpdatedBatchJobCounts, dispatch,
-    dispatch_sync,
+    DebounceLock, Dispatchable, Dispatcher, DynamoBatchRepository, InMemoryBatchRepository,
+    PendingBatch, PendingChain, PendingDispatch, QueueingDispatcher, UniqueLock,
+    UpdatedBatchJobCounts, dispatch, dispatch_sync,
 };
 pub use callbacks::CallbackRef;
 pub use closure::{CallQueuedClosure, dispatch_closure};
 pub use context::{InteractsWithQueue, current_job, with_job};
-pub use contracts::{QueueConnector, TransactionCallback, TransactionManager};
+pub use contracts::{
+    QueueConnector, TransactionCallback, TransactionManager, enqueue, enqueue_using, enqueue_with,
+};
 pub use deferred::DeferredCallbacks;
 pub use delay::IntoDelay;
 pub use drivers::{
-    ArrayQueue, BackgroundQueue, DatabaseQueue, DeferredQueue, FailoverQueue, NullQueue,
-    RedisQueue, SyncQueue,
+    ArrayQueue, BackgroundQueue, Beanstalkd, BeanstalkdQueue, DatabaseQueue, DeferredQueue,
+    FailoverQueue, NullQueue, OverflowStorage, RedisQueue, SqsClient, SqsQueue, SyncQueue,
 };
 pub use envelope::{Envelope, JobEncrypter, SerializedJob};
 pub use exceptions::{
@@ -156,8 +166,8 @@ pub use exceptions::{
 };
 pub use facades::{Bus, Queue};
 pub use failed::{
-    DatabaseUuidFailedJobProvider, FailedJob, FailedJobProvider, FileFailedJobProvider,
-    InMemoryFailedJobProvider, NullFailedJobProvider,
+    DatabaseUuidFailedJobProvider, DynamoDbFailedJobProvider, FailedJob, FailedJobProvider,
+    FileFailedJobProvider, InMemoryFailedJobProvider, NullFailedJobProvider,
 };
 pub use job::{IntoFailure, ShouldQueue};
 pub use manager::QueueManager;

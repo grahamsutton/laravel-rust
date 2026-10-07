@@ -130,6 +130,23 @@ pub trait ShouldQueue: QueueableCommand + Send + Sync + 'static {
         None
     }
 
+    /// The Amazon SQS message group of the job (Laravel's `messageGroup`).
+    ///
+    /// Jobs with the same group on a FIFO queue are processed one after
+    /// another; on a standard queue, groups enable fair queueing. Jobs
+    /// without one are grouped by queue name on FIFO queues.
+    fn message_group(&self) -> Option<String> {
+        None
+    }
+
+    /// The Amazon SQS deduplication id of the job on FIFO queues (Laravel's
+    /// `deduplicationId`), given the job's payload and queue. Without one,
+    /// every dispatch is unique; return an empty string to rely on the
+    /// queue's content-based deduplication.
+    fn deduplication_id(&self, _payload: &str, _queue: &str) -> Option<String> {
+        None
+    }
+
     /// The name shown by `queue:work`, Horizon-style dashboards, and the
     /// failed jobs table. Defaults to the type's name.
     fn display_name(&self) -> String {

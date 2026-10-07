@@ -1,7 +1,7 @@
 //! # Illuminate Cache
 //!
 //! An expressive, unified API for caching: the [`Cache`] facade in front of
-//! array, database, file, redis, and null stores (and any store you
+//! array, database, file, redis, memcached, dynamodb, and null stores (and any store you
 //! [`extend`](CacheManager::extend) it with), atomic [`Lock`]s, and the
 //! [`RateLimiter`] with its `throttle` middleware.
 //!
@@ -50,15 +50,25 @@
 //!     "lock_connection": "default"
 //! }
 //! ```
+//!
+//! The `memcached` driver ([`MemcachedStore`]) speaks Memcached's text
+//! protocol to the configured `servers`, and the `dynamodb` driver
+//! ([`DynamoDbStore`]) keeps items in a DynamoDB `table`, calling the
+//! DynamoDB API through the `Http` client (so `Http::fake()` works in
+//! tests). Both hand out atomic locks ([`MemcachedLock`], [`DynamoDbLock`]).
 
 pub mod array_store;
+pub mod aws;
 pub mod database_store;
+pub mod dynamodb_store;
 pub mod facade;
 pub mod facades;
 pub mod file_store;
 pub mod limit;
 pub mod lock;
 pub mod manager;
+pub mod memcached;
+pub mod memcached_store;
 pub mod null_store;
 pub mod provider;
 pub mod rate_limiter;
@@ -72,12 +82,16 @@ pub mod ttl;
 mod util;
 
 pub use array_store::ArrayStore;
+pub use aws::{AwsClient, AwsException};
 pub use database_store::{DatabaseLock, DatabaseStore};
+pub use dynamodb_store::{DynamoDbClient, DynamoDbLock, DynamoDbStore};
 pub use facade::{Cache, cache};
 pub use file_store::{FileLock, FileStore};
 pub use limit::{AfterCallback, Limit, LimiterResponse, ResponseCallback};
 pub use lock::{ArrayLock, CacheLock, Lock, LockDriver, LockInfo, LockTimeoutException, NoLock};
 pub use manager::{CacheManager, StoreCreator};
+pub use memcached::{Memcached, MemcachedServer};
+pub use memcached_store::{MemcachedLock, MemcachedStore};
 pub use null_store::NullStore;
 pub use provider::CacheServiceProvider;
 pub use rate_limiter::{LimiterCallback, RateLimiter};

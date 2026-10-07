@@ -16,8 +16,10 @@ use illuminate_database::DatabaseManager;
 use illuminate_support::{Carbon, Result, Value, ValueExt};
 
 mod database;
+mod dynamodb;
 
 pub use database::DatabaseUuidFailedJobProvider;
+pub use dynamodb::DynamoDbFailedJobProvider;
 
 /// A failed job record (a row of Laravel's `failed_jobs` table).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -135,7 +137,7 @@ pub trait FailedJobProvider: Send + Sync + 'static {
     }
 }
 
-fn failed_job_id(payload: &str) -> String {
+pub(crate) fn failed_job_id(payload: &str) -> String {
     serde_json::from_str::<Value>(payload)
         .ok()
         .and_then(|payload| {
@@ -381,7 +383,9 @@ impl FailedJobProvider for FileFailedJobProvider {
 /// `database-uuids` (and the legacy `database` driver) keep failed jobs in
 /// the `queue.failed.table` table (`failed_jobs`) of the
 /// `queue.failed.database` connection (the default one when absent), `file`
-/// keeps them in a JSON file and `null` discards them. Without a bound
+/// keeps them in a JSON file, `dynamodb` keeps them in the `queue.failed.table`
+/// DynamoDB table (with the `key`, `secret`, `token`, `region` and `endpoint`
+/// options) and `null` discards them. Without a bound
 /// [`DatabaseManager`] — and for drivers provided by other components,
 /// which bind `dyn FailedJobProvider` themselves — failed jobs are kept in
 /// memory.
@@ -414,6 +418,10 @@ pub(crate) fn make_failer_with(
                 .max(1) as usize;
             Arc::new(FileFailedJobProvider::new(path, limit))
         }
+        Some(Value::String(driver)) if driver == "dynamodb" => Arc::new(dynamodb::from_config(
+            &failed,
+            config.string_or("app.name", "Laravel"),
+        )),
         Some(Value::String(driver)) if driver == "database-uuids" || driver == "database" => {
             match database {
                 Some(database) => {
