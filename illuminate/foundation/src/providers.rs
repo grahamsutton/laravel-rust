@@ -43,6 +43,7 @@ pub fn default_providers() -> Vec<Box<dyn ServiceProvider>> {
         Box::new(illuminate_cookie::CookieServiceProvider),
         Box::new(illuminate_encryption::EncryptionServiceProvider),
         Box::new(illuminate_filesystem::FilesystemServiceProvider),
+        Box::new(illuminate_image::ImageServiceProvider),
         Box::new(illuminate_hashing::HashServiceProvider),
         Box::new(illuminate_pipeline::PipelineServiceProvider),
         Box::new(illuminate_session::SessionServiceProvider),

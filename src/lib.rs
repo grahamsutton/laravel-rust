@@ -43,6 +43,7 @@ pub use illuminate_hashing as hashing;
 pub use illuminate_http as http;
 pub use illuminate_http_client as http_client;
 pub use illuminate_http_resources as http_resources;
+pub use illuminate_image as image;
 pub use illuminate_json_schema as json_schema;
 pub use illuminate_log as log;
 pub use illuminate_mail as mail;
@@ -94,6 +95,7 @@ pub mod facades {
     pub use illuminate_filesystem::facades::{File, Storage};
     pub use illuminate_foundation::{App, Vite};
     pub use illuminate_hashing::Hash;
+    pub use illuminate_image::Image;
     pub use illuminate_log::{Context, Log};
     pub use illuminate_mail::Mail;
     pub use illuminate_notifications::facades::Notification;
@@ -165,6 +167,7 @@ pub mod prelude {
 
     pub use illuminate_container::{Container, Injectable as InjectableContract, ServiceProvider};
     pub use illuminate_filesystem::UploadedFileExt;
+    pub use illuminate_image::{FilesystemImageExt, RequestImageExt, StorageImageExt, UploadedFileImageExt};
     pub use illuminate_foundation::{Application, ApplicationBuilder, ConfigFile, Inspiring};
     pub use illuminate_foundation::scheduling::ScheduleJobs;
     pub use illuminate_http::{

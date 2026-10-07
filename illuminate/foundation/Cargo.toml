@@ -36,6 +36,7 @@ illuminate-broadcasting.workspace = true
 illuminate-process.workspace = true
 illuminate-concurrency.workspace = true
 illuminate-http-client.workspace = true
+illuminate-image.workspace = true
 illuminate-mail.workspace = true
 illuminate-notifications.workspace = true
 indexmap.workspace = true

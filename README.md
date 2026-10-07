@@ -158,6 +158,21 @@ Route::get("/orders", || async { "Orders" })
     .middleware(["auth:sanctum", "abilities:orders:read"]);
 ```
 
+### Images
+
+Resize, crop, encode, and store images fluently, in pure Rust:
+
+```rust
+let path = request
+    .image("avatar")
+    .unwrap()
+    .orient()
+    .cover(400, 400)
+    .to_webp()
+    .store_publicly_on("avatars", "public")
+    .await?;
+```
+
 ### Queues
 
 Jobs are serializable structs. Dispatch them, chain them, batch them, and
@@ -279,6 +294,7 @@ processes, and more: `Queue::fake()`, `Bus::assert_dispatched::<T>()`,
 | The HTTP client | `illuminate-http-client` |
 | Mail (SMTP, sendmail, Postmark, Resend, Mailgun, SES) and Markdown mail | `illuminate-mail` |
 | Notifications (mail, database, Slack, custom channels) | `illuminate-notifications` |
+| Image manipulation | `illuminate-image` |
 | JSON Schema builders | `illuminate-json-schema` |
 | Collections, strings, dates, and helpers | `illuminate-support` |
 | The application, kernels, exception handling, testing | `illuminate-foundation` |

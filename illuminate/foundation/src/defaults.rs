@@ -20,6 +20,7 @@ pub fn all() -> Vec<ConfigFile> {
         ConfigFile::new("database", database),
         ConfigFile::new("filesystems", filesystems),
         ConfigFile::new("hashing", hashing),
+        ConfigFile::new("images", illuminate_image::config),
         ConfigFile::new("logging", logging),
         ConfigFile::new("mail", mail),
         ConfigFile::new("queue", queue),
