@@ -19,6 +19,7 @@ illuminate-view.workspace = true
 illuminate-translation.workspace = true
 illuminate-filesystem.workspace = true
 illuminate-queue.workspace = true
+illuminate-http-client.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 indexmap.workspace = true
@@ -31,6 +32,9 @@ regex.workspace = true
 mime_guess.workspace = true
 url.workspace = true
 percent-encoding.workspace = true
+hmac.workspace = true
+sha2.workspace = true
+hex.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

@@ -1,7 +1,7 @@
 //! Notification channels: how notifications are delivered.
 //!
-//! The `mail` ([`MailChannel`]) and `database` ([`DatabaseChannel`])
-//! channels are built in. Register your own with
+//! The `mail` ([`MailChannel`]), `database` ([`DatabaseChannel`]) and
+//! `slack` ([`SlackChannel`]) channels are built in. Register your own with
 //! [`ChannelManager::extend`](crate::ChannelManager::extend):
 //!
 //! ```
@@ -31,9 +31,11 @@
 
 mod database;
 mod mail;
+mod slack;
 
 pub use database::DatabaseChannel;
 pub use mail::MailChannel;
+pub use slack::SlackChannel;
 
 use async_trait::async_trait;
 use illuminate_support::error::RuntimeException;

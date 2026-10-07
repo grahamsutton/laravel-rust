@@ -256,8 +256,8 @@ requests, processes, and more, along with Laravel's assertions: `Queue::fake()`,
 | Artisan and task scheduling | `illuminate-console` |
 | Processes and concurrency | `illuminate-process`, `illuminate-concurrency` |
 | The HTTP client | `illuminate-http-client` |
-| Mail (SMTP, sendmail, log) and Markdown mail | `illuminate-mail` |
-| Notifications (mail, database, custom channels) | `illuminate-notifications` |
+| Mail (SMTP, sendmail, Postmark, Resend, Mailgun, SES) and Markdown mail | `illuminate-mail` |
+| Notifications (mail, database, Slack, custom channels) | `illuminate-notifications` |
 | Collections, strings, dates, and helpers | `illuminate-support` |
 | The application, kernels, exception handling, testing | `illuminate-foundation` |
 
@@ -266,9 +266,8 @@ component and provides the prelude.
 
 Still to come:
 
-- **Drivers**: SQS and Beanstalkd queues, Memcached and DynamoDB caches,
-  and the Mailgun, Postmark, Resend, and SES mail transports. Redis Cluster
-  and TLS connections to Redis aren't supported yet.
+- **Drivers**: SQS and Beanstalkd queues, and Memcached and DynamoDB
+  caches. Redis Cluster and TLS connections to Redis aren't supported yet.
 - **Packages**: the rest of Laravel's first-party packages (Horizon, Reverb's
   WebSocket server, Scout, Socialite, and others) and the starter kits.
 

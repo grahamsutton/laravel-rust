@@ -9,6 +9,7 @@ use serde::Serialize;
 
 use crate::messages::MailMessage;
 use crate::notifiable::Notifiable;
+use crate::slack::SlackMessage;
 
 /// What every notification gets for free from `#[derive(Serialize)]`:
 /// identification, downcasting, and its data (for the fake and queue).
@@ -94,6 +95,37 @@ pub trait Notification: NotificationData {
     /// Get a mailable to send instead of a [`MailMessage`] (Laravel lets
     /// `toMail` return a mailable).
     fn to_mailable(&self, _notifiable: &dyn Notifiable) -> Option<Box<dyn Mailable>> {
+        None
+    }
+
+    /// Get the Slack representation of the notification.
+    ///
+    /// ```
+    /// use illuminate_notifications::slack::SlackMessage;
+    /// use illuminate_notifications::{Notifiable, Notification};
+    /// use serde::Serialize;
+    ///
+    /// #[derive(Serialize)]
+    /// struct InvoicePaid;
+    ///
+    /// impl Notification for InvoicePaid {
+    ///     fn via(&self, _notifiable: &dyn Notifiable) -> Vec<String> {
+    ///         vec!["slack".into()]
+    ///     }
+    ///
+    ///     fn to_slack(&self, _notifiable: &dyn Notifiable) -> Option<SlackMessage> {
+    ///         Some(
+    ///             SlackMessage::new()
+    ///                 .text("One of your invoices has been paid!")
+    ///                 .header_block("Invoice Paid")
+    ///                 .section_block(|block| {
+    ///                     block.text("An invoice has been paid.");
+    ///                 }),
+    ///         )
+    ///     }
+    /// }
+    /// ```
+    fn to_slack(&self, _notifiable: &dyn Notifiable) -> Option<SlackMessage> {
         None
     }
 

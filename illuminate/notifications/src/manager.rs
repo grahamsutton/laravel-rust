@@ -11,7 +11,7 @@ use illuminate_support::error::InvalidArgumentException;
 use illuminate_support::{Error, Result, Str};
 use illuminate_translation::with_locale_async;
 
-use crate::channels::{Channel, DatabaseChannel, MailChannel};
+use crate::channels::{Channel, DatabaseChannel, MailChannel, SlackChannel};
 use crate::events::{
     NotificationFailed, NotificationSending, NotificationSent, NotificationSkipped,
 };
@@ -99,6 +99,7 @@ impl ChannelManager {
         let channel: Arc<dyn Channel> = match name.as_str() {
             "mail" => Arc::new(MailChannel),
             "database" => Arc::new(DatabaseChannel::new()),
+            "slack" => Arc::new(SlackChannel),
             _ => {
                 return Err(InvalidArgumentException::new(format!(
                     "Driver [{name}] not supported."

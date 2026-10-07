@@ -1,6 +1,6 @@
 //! Mail and notifications, end to end: Eloquent users notified over mail
-//! and the database, Markdown mail delivered to the array mailer, and the
-//! fakes.
+//! and the database, Markdown mail delivered to the array mailer, mail sent
+//! through Postmark's API, Slack notifications, and the fakes.
 
 use laravel::facades::Notification as Notifications;
 use laravel::mail::{ArrayTransport, MailManager, downcast_transport};
@@ -55,6 +55,28 @@ impl Notification for InvoicePaid {
 
     fn to_array(&self, _notifiable: &dyn Notifiable) -> Option<Value> {
         Some(json!({"invoice_id": self.invoice_id}))
+    }
+}
+
+#[derive(Clone, Serialize)]
+pub struct DeploymentFinished {
+    pub version: String,
+}
+
+impl Notification for DeploymentFinished {
+    fn via(&self, _notifiable: &dyn Notifiable) -> Vec<String> {
+        vec!["slack".into()]
+    }
+
+    fn to_slack(&self, _notifiable: &dyn Notifiable) -> Option<SlackMessage> {
+        Some(
+            SlackMessage::new()
+                .text(format!("Version {} has been deployed.", self.version))
+                .header_block("Deployment Finished")
+                .section_block(|block| {
+                    block.text("The deployment finished without errors.");
+                }),
+        )
     }
 }
 
@@ -163,4 +185,48 @@ async fn notifications_can_be_faked() {
 
     Notifications::assert_sent_to::<InvoicePaid>(&taylor);
     assert!(sent().is_empty());
+}
+
+#[tokio::test]
+async fn mail_is_sent_through_postmark() {
+    let (mut app, _dir) = app().await;
+    app.app().override_config("mail.default", "postmark");
+    app.app().override_config("services.postmark.token", "server-token");
+    Http::fake_urls([(
+        "api.postmarkapp.com/*",
+        Http::response(json!({"ErrorCode": 0, "Message": "OK", "MessageID": "b7bc2f4a"}), 200, &[]),
+    )]);
+
+    app.post("/orders/5/ship", json!({})).await.assert_ok();
+
+    Http::assert_sent(|request| {
+        let body = request.data();
+        request.url() == "https://api.postmarkapp.com/email"
+            && request.has_header_value("X-Postmark-Server-Token", "server-token")
+            && body["Subject"] == "Order Shipped"
+            && body["To"] == "taylor@laravel.com"
+            && body["HtmlBody"].as_str().is_some_and(|html| html.contains("Your order #5 has shipped!"))
+    });
+}
+
+#[tokio::test]
+async fn notifications_are_sent_to_slack() {
+    let (app, _dir) = app().await;
+    app.app().override_config("services.slack.notifications.bot_user_oauth_token", "xoxb-token");
+    Http::fake_urls([("slack.com/api/*", Http::response(json!({"ok": true, "ts": "1503435956.000247"}), 200, &[]))]);
+
+    Notifications::route("slack", "#deployments")
+        .notify(DeploymentFinished { version: "1.2.0".into() })
+        .await
+        .unwrap();
+
+    Http::assert_sent(|request| {
+        let body = request.data();
+        request.url() == "https://slack.com/api/chat.postMessage"
+            && request.has_header_value("Authorization", "Bearer xoxb-token")
+            && body["channel"] == "#deployments"
+            && body["text"] == "Version 1.2.0 has been deployed."
+            && body["blocks"][0]["type"] == "header"
+            && body["blocks"][1]["text"]["text"] == "The deployment finished without errors."
+    });
 }

@@ -1,8 +1,9 @@
 //! # Illuminate Mail
 //!
 //! Laravel's mail component: a clean, simple email API with drivers for
-//! SMTP, `sendmail`, the log and an in-memory array, plus Markdown mail,
-//! queued mail and first-class testing helpers.
+//! SMTP, Postmark, Resend, Mailgun, Amazon SES, `sendmail`, the log and an
+//! in-memory array, plus Markdown mail, queued mail and first-class testing
+//! helpers.
 //!
 //! ## Writing mailables
 //!
@@ -61,10 +62,17 @@
 //!
 //! Mailers are configured in the `mail` configuration, exactly like
 //! Laravel's `config/mail.php`: `mail.default`, `mail.mailers.*` (each with a
-//! `transport` of `smtp`, `sendmail`, `log`, `array`, `failover` or
-//! `roundrobin`), and the global `mail.from`, `mail.reply_to`, `mail.to` and
-//! `mail.return_path` addresses. Register more transports with
-//! [`Mail::extend`].
+//! `transport` of `smtp`, `sendmail`, `postmark`, `resend`, `mailgun`, `ses`,
+//! `ses-v2`, `log`, `array`, `failover` or `roundrobin`), and the global
+//! `mail.from`, `mail.reply_to`, `mail.to` and `mail.return_path` addresses.
+//! The API transports read their credentials from `config/services.php`
+//! (`services.postmark`, `services.resend`, `services.mailgun` and
+//! `services.ses`), just like Laravel. A mailer's `url` may be an SMTP URL
+//! (`smtps://user:pass@smtp.example.com:465`) or one of Symfony's API DSNs
+//! (`postmark+api://TOKEN@default`, `resend://KEY@default`,
+//! `mailgun+api://KEY:DOMAIN@default?region=eu`,
+//! `ses+api://KEY:SECRET@default?region=eu-west-1`). Register more
+//! transports with [`Mail::extend`].
 //!
 //! ## Testing
 //!
@@ -107,8 +115,9 @@ pub use pending::PendingMail;
 pub use provider::MailServiceProvider;
 pub use queue::{QueueHook, QueuedMessage};
 pub use transport::{
-    ArrayTransport, FailoverTransport, LogTransport, RoundRobinTransport, SendmailTransport,
-    SmtpTransport, Transport, downcast_transport,
+    ArrayTransport, FailoverTransport, LogTransport, MailgunTransport, PostmarkTransport,
+    ResendTransport, RoundRobinTransport, SendmailTransport, SesTransport, SmtpTransport,
+    Transport, TransportException, downcast_transport,
 };
 
 /// Re-exported so custom transports don't need their own dependency.

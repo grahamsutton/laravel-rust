@@ -29,7 +29,9 @@ pub fn config() -> Value {
         | when delivering an email. You may specify which one you're using for
         | your mailers below. You may also add additional mailers if needed.
         |
-        | Supported: "smtp", "sendmail", "log", "array", "failover", "roundrobin"
+        | Supported: "smtp", "sendmail", "mailgun", "ses", "ses-v2",
+        |            "postmark", "resend", "log", "array",
+        |            "failover", "roundrobin"
         |
         */
 
@@ -44,6 +46,22 @@ pub fn config() -> Value {
                 "password": env("MAIL_PASSWORD", Value::Null),
                 "timeout": Value::Null,
                 "local_domain": env("MAIL_EHLO_DOMAIN", Value::Null),
+            },
+
+            "ses": {
+                "transport": "ses",
+            },
+
+            "postmark": {
+                "transport": "postmark",
+                // "message_stream_id": env("POSTMARK_MESSAGE_STREAM_ID", Value::Null),
+                // "client": {
+                //     "timeout": 5,
+                // },
+            },
+
+            "resend": {
+                "transport": "resend",
             },
 
             "sendmail": {
@@ -68,7 +86,7 @@ pub fn config() -> Value {
 
             "roundrobin": {
                 "transport": "roundrobin",
-                "mailers": ["smtp", "log"],
+                "mailers": ["ses", "postmark"],
                 "retry_after": 60,
             },
         },

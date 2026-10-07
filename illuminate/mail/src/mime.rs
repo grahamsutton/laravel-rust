@@ -179,6 +179,18 @@ pub(crate) fn build(message: &Message) -> Result<lettre::Message> {
     built.map_err(|e| RuntimeException::new(format!("Unable to build the email: {e}")).into())
 }
 
+/// The `X-Priority` header value for a priority (`1 (Highest)` ... `5 (Lowest)`).
+pub(crate) fn priority_header(priority: u8) -> String {
+    let label = match priority {
+        1 => "Highest",
+        2 => "High",
+        3 => "Normal",
+        4 => "Low",
+        _ => "Lowest",
+    };
+    format!("{priority} ({label})")
+}
+
 /// The headers `lettre` doesn't model directly (tags, metadata, priority,
 /// custom text headers), in order.
 fn extra_headers(message: &Message) -> Vec<(String, String)> {
@@ -190,14 +202,7 @@ fn extra_headers(message: &Message) -> Vec<(String, String)> {
         ));
     }
     if let Some(priority) = message.priority {
-        let label = match priority {
-            1 => "Highest",
-            2 => "High",
-            3 => "Normal",
-            4 => "Low",
-            _ => "Lowest",
-        };
-        headers.push(("X-Priority".to_string(), format!("{priority} ({label})")));
+        headers.push(("X-Priority".to_string(), priority_header(priority)));
     }
     for tag in &message.tags {
         headers.push(("X-Tag".to_string(), tag.clone()));

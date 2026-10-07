@@ -384,6 +384,19 @@ pub fn mail() -> Value {
                 "timeout": Value::Null,
                 "local_domain": env("MAIL_EHLO_DOMAIN", host),
             },
+            "ses": {
+                "transport": "ses",
+            },
+            "postmark": {
+                "transport": "postmark",
+            },
+            "resend": {
+                "transport": "resend",
+            },
+            "sendmail": {
+                "transport": "sendmail",
+                "path": env("MAIL_SENDMAIL_PATH", "/usr/sbin/sendmail -bs -i"),
+            },
             "log": {
                 "transport": "log",
                 "channel": env("MAIL_LOG_CHANNEL", Value::Null),
@@ -394,6 +407,11 @@ pub fn mail() -> Value {
             "failover": {
                 "transport": "failover",
                 "mailers": ["smtp", "log"],
+                "retry_after": 60,
+            },
+            "roundrobin": {
+                "transport": "roundrobin",
+                "mailers": ["ses", "postmark"],
                 "retry_after": 60,
             },
         },

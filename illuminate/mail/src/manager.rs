@@ -17,8 +17,9 @@ use crate::mailer::{Mailer, Shared};
 use crate::message::SentMessage;
 use crate::queue::{QueuedMessage, queue_hook};
 use crate::transport::{
-    ArrayTransport, DEFAULT_SENDMAIL_COMMAND, FailoverTransport, LogTransport, RoundRobinTransport,
-    SendmailTransport, SmtpTransport, Transport,
+    ArrayTransport, DEFAULT_SENDMAIL_COMMAND, FailoverTransport, LogTransport, MailgunTransport,
+    PostmarkTransport, ResendTransport, RoundRobinTransport, SendmailTransport, SesTransport,
+    SmtpTransport, Transport,
 };
 
 /// Builds a custom transport from a mailer's configuration.
@@ -221,6 +222,22 @@ impl MailManager {
                 Arc::new(LogTransport::new(channel))
             }
             "array" => Arc::new(ArrayTransport::new()),
+            "postmark" => Arc::new(PostmarkTransport::from_config(
+                config,
+                &self.config.get("services.postmark"),
+            )?),
+            "resend" => Arc::new(ResendTransport::from_config(
+                config,
+                &self.config.get("services.resend"),
+            )?),
+            "mailgun" => Arc::new(MailgunTransport::from_config(
+                config,
+                &self.config.get("services.mailgun"),
+            )?),
+            "ses" | "ses-v2" => Arc::new(SesTransport::from_config(
+                config,
+                &self.config.get("services.ses"),
+            )?),
             "failover" | "roundrobin" => {
                 let mut transports = Vec::new();
                 for name in config
@@ -384,7 +401,18 @@ impl MailManager {
     }
 }
 
-/// Merge a mailer's `url` (`smtp://user:pass@host:port`) into its configuration.
+/// Merge a mailer's `url` into its configuration.
+///
+/// SMTP URLs look like `smtp://user:pass@host:port`; the API transports use
+/// Symfony's DSNs, where the host is `default` unless you need another
+/// endpoint:
+///
+/// - `postmark+api://TOKEN@default?message_stream=broadcasts`
+/// - `resend://KEY@default`
+/// - `mailgun+api://KEY:DOMAIN@default?region=eu`
+/// - `ses+api://ACCESS_KEY:SECRET_KEY@default?region=eu-west-1&session_token=TOKEN`
+///
+/// Any other query parameters are merged into the configuration as-is.
 fn normalize_url(mut config: Value) -> Value {
     let Some(url) = config
         .get("url")
@@ -401,32 +429,77 @@ fn normalize_url(mut config: Value) -> Value {
             .decode_utf8_lossy()
             .into_owned()
     };
+    let user = Some(decode(parsed.username())).filter(|user| !user.is_empty());
+    let password = parsed.password().map(decode);
+    let mut query: Map<String, Value> = parsed
+        .query_pairs()
+        .map(|(key, value)| (key.into_owned(), Value::String(value.into_owned())))
+        .collect();
+    let mut take = |key: &str| query.remove(key).map(|value| value.to_string_lossy());
+    // The API DSNs use the `default` host for the provider's own endpoint.
+    let endpoint = parsed
+        .host_str()
+        .map(decode)
+        .filter(|host| host != "default")
+        .map(|host| match parsed.port() {
+            Some(port) => format!("{host}:{port}"),
+            None => host,
+        });
+
     let mut parts = Map::new();
-    let scheme = parsed.scheme().to_string();
-    let (transport, scheme) = match scheme.as_str() {
-        "smtps" => ("smtp".to_string(), Some("smtps".to_string())),
-        "smtp" => ("smtp".to_string(), Some("smtp".to_string())),
-        other => (other.to_string(), None),
+    let mut set = |key: &str, value: Option<String>| {
+        if let Some(value) = value {
+            parts.insert(key.to_string(), Value::String(value));
+        }
     };
-    parts.insert("transport".into(), Value::String(transport));
-    if let Some(scheme) = scheme {
-        parts.insert("scheme".into(), Value::String(scheme));
-    }
-    if let Some(host) = parsed.host_str() {
-        parts.insert("host".into(), Value::String(decode(host)));
-    }
-    if let Some(port) = parsed.port() {
+    let transport = match parsed.scheme() {
+        "postmark" | "postmark+api" | "postmark+https" => {
+            set("token", user);
+            set("message_stream_id", take("message_stream"));
+            "postmark"
+        }
+        "resend" | "resend+api" => {
+            set("key", user);
+            "resend"
+        }
+        "mailgun" | "mailgun+api" | "mailgun+https" => {
+            let region = take("region").filter(|region| !region.is_empty() && region != "us");
+            set("secret", user);
+            set("domain", password);
+            set(
+                "endpoint",
+                endpoint.or_else(|| region.map(|region| format!("api.{region}.mailgun.net"))),
+            );
+            "mailgun"
+        }
+        "ses" | "ses+api" | "ses+https" => {
+            set("key", user);
+            set("secret", password);
+            set("region", take("region"));
+            set("token", take("session_token"));
+            set("endpoint", endpoint);
+            "ses"
+        }
+        scheme => {
+            set("host", parsed.host_str().map(decode));
+            set("username", user);
+            set("password", password);
+            match scheme {
+                "smtp" | "smtps" => {
+                    set("scheme", Some(scheme.to_string()));
+                    "smtp"
+                }
+                other => other,
+            }
+        }
+    };
+    // The API DSNs fold the port into their endpoint; everything else keeps it.
+    let api = matches!(transport, "postmark" | "resend" | "mailgun" | "ses");
+    if let Some(port) = parsed.port().filter(|_| !api) {
         parts.insert("port".into(), Value::from(port));
     }
-    if !parsed.username().is_empty() {
-        parts.insert("username".into(), Value::String(decode(parsed.username())));
-    }
-    if let Some(password) = parsed.password() {
-        parts.insert("password".into(), Value::String(decode(password)));
-    }
-    for (key, value) in parsed.query_pairs() {
-        parts.insert(key.into_owned(), Value::String(value.into_owned()));
-    }
+    parts.insert("transport".into(), Value::String(transport.to_string()));
+    parts.extend(query);
     if let Value::Object(map) = &mut config {
         map.extend(parts);
     }
@@ -453,7 +526,7 @@ mod tests {
                 "failover": {"transport": "failover", "mailers": ["smtp", "log"], "retry_after": 30},
                 "roundrobin": {"transport": "roundrobin", "mailers": ["array", "log"]},
                 "broken": {"transport": "failover", "mailers": ["missing"]},
-                "ses": {"transport": "ses"},
+                "pigeon": {"transport": "carrier-pigeon"},
             },
             "from": {"address": "hello@example.com", "name": "Example"},
             "to": {"address": "dev@example.com"},
@@ -500,10 +573,10 @@ mod tests {
         );
         assert!(
             manager
-                .mailer(Some("ses"))
+                .mailer(Some("pigeon"))
                 .unwrap_err()
                 .to_string()
-                .contains("Unsupported mail transport [ses].")
+                .contains("Unsupported mail transport [carrier-pigeon].")
         );
         assert!(
             manager
@@ -552,6 +625,156 @@ mod tests {
             manager.mailer(Some("smtp")).unwrap().transport().name(),
             "smtps://smtp.example.com:465"
         );
+    }
+
+    fn config_of(manager: &MailManager, name: &str) -> Value {
+        let mut config = manager.get_config(name).unwrap();
+        config.as_object_mut().unwrap().remove("url");
+        config
+    }
+
+    #[test]
+    fn api_transports_are_resolved_from_the_services_configuration() {
+        let manager = MailManager::new(Arc::new(Repository::new(json!({
+            "mail": {
+                "mailers": {
+                    "postmark": {"transport": "postmark", "message_stream_id": "outbound"},
+                    "resend": {"transport": "resend"},
+                    "mailgun": {"transport": "mailgun"},
+                    "ses": {"transport": "ses"},
+                    "ses-v2": {"transport": "ses-v2", "region": "eu-central-1"},
+                    "failover": {"transport": "failover", "mailers": ["postmark", "ses"]},
+                },
+            },
+            "services": {
+                "postmark": {"key": "postmark-key"},
+                "resend": {"key": "re_123"},
+                "mailgun": {"domain": "mg.example.com", "secret": "key-secret", "endpoint": "api.eu.mailgun.net"},
+                "ses": {"key": "AKIDEXAMPLE", "secret": "secret", "region": "eu-west-1"},
+            },
+        }))));
+
+        let name = |mailer: &str| manager.mailer(Some(mailer)).unwrap().transport().name();
+        assert_eq!(
+            name("postmark"),
+            "postmark+api://api.postmarkapp.com?message_stream=outbound"
+        );
+        assert_eq!(name("resend"), "resend");
+        assert_eq!(
+            name("mailgun"),
+            "mailgun+https://api.eu.mailgun.net?domain=mg.example.com"
+        );
+        assert_eq!(name("ses"), "ses");
+        assert_eq!(name("ses-v2"), "ses-v2");
+        assert_eq!(
+            name("failover"),
+            "failover(postmark+api://api.postmarkapp.com?message_stream=outbound ses)"
+        );
+
+        let ses = crate::downcast_transport::<SesTransport>(
+            &manager.mailer(Some("ses-v2")).unwrap().transport(),
+        )
+        .unwrap();
+        assert_eq!(ses.region(), "eu-central-1");
+        assert_eq!(ses.credentials().unwrap().key, "AKIDEXAMPLE");
+
+        // Without credentials, the API mailers can't be created.
+        let manager = manager_without_services();
+        for (mailer, error) in [
+            ("postmark", "requires a server token"),
+            ("resend", "requires an API key"),
+            ("mailgun", "requires a [secret]"),
+        ] {
+            let message = manager.mailer(Some(mailer)).unwrap_err().to_string();
+            assert!(message.contains(error), "{mailer}: {message}");
+        }
+    }
+
+    fn manager_without_services() -> MailManager {
+        manager(json!({
+            "mailers": {
+                "postmark": {"transport": "postmark"},
+                "resend": {"transport": "resend"},
+                "mailgun": {"transport": "mailgun"},
+            },
+        }))
+    }
+
+    #[test]
+    fn api_transports_may_be_configured_with_symfony_dsns() {
+        let manager = manager(json!({
+            "mailers": {
+                "postmark": {"url": "postmark+api://server%2Ftoken@default?message_stream=broadcasts"},
+                "resend": {"url": "resend://re_123@default"},
+                "resend-api": {"url": "resend+api://re_456@default"},
+                "mailgun": {"url": "mailgun+api://key-secret:mg.example.com@default?region=eu"},
+                "mailgun-us": {"url": "mailgun+https://key-secret:mg.example.com@default?region=us"},
+                "mailgun-host": {"url": "mailgun://key-secret:mg.example.com@localhost:8025"},
+                "ses": {"url": "ses+api://AKIDEXAMPLE:se%2Fcret@default?region=eu-west-1&session_token=token"},
+                "ses-local": {"transport": "ses-v2", "url": "ses+https://key:secret@localhost:4566?region=us-west-2"},
+            },
+        }));
+
+        assert_eq!(
+            config_of(&manager, "postmark"),
+            json!({"transport": "postmark", "token": "server/token", "message_stream_id": "broadcasts"})
+        );
+        assert_eq!(
+            config_of(&manager, "resend"),
+            json!({"transport": "resend", "key": "re_123"})
+        );
+        assert_eq!(
+            config_of(&manager, "resend-api"),
+            json!({"transport": "resend", "key": "re_456"})
+        );
+        assert_eq!(
+            config_of(&manager, "mailgun"),
+            json!({"transport": "mailgun", "secret": "key-secret", "domain": "mg.example.com", "endpoint": "api.eu.mailgun.net"})
+        );
+        assert_eq!(
+            config_of(&manager, "mailgun-us"),
+            json!({"transport": "mailgun", "secret": "key-secret", "domain": "mg.example.com"})
+        );
+        assert_eq!(
+            config_of(&manager, "mailgun-host")["endpoint"],
+            "localhost:8025"
+        );
+        assert_eq!(
+            config_of(&manager, "ses"),
+            json!({"transport": "ses", "key": "AKIDEXAMPLE", "secret": "se/cret", "region": "eu-west-1", "token": "token"})
+        );
+        assert_eq!(
+            config_of(&manager, "ses-local"),
+            json!({"transport": "ses", "key": "key", "secret": "secret", "region": "us-west-2", "endpoint": "localhost:4566"})
+        );
+
+        let transport = |mailer: &str| manager.mailer(Some(mailer)).unwrap().transport();
+        assert_eq!(
+            transport("postmark").name(),
+            "postmark+api://api.postmarkapp.com?message_stream=broadcasts"
+        );
+        assert_eq!(transport("resend").name(), "resend");
+        assert_eq!(
+            transport("mailgun").name(),
+            "mailgun+https://api.eu.mailgun.net?domain=mg.example.com"
+        );
+        let ses = crate::downcast_transport::<SesTransport>(&transport("ses")).unwrap();
+        assert_eq!(ses.credentials().unwrap().token.as_deref(), Some("token"));
+        assert_eq!(
+            ses.url(),
+            "https://email.eu-west-1.amazonaws.com/v2/email/outbound-emails"
+        );
+        let local = crate::downcast_transport::<SesTransport>(&transport("ses-local")).unwrap();
+        assert_eq!(
+            local.url(),
+            "https://localhost:4566/v2/email/outbound-emails"
+        );
+
+        // On-demand mailers accept DSNs too.
+        let mailer = manager
+            .build(json!({"url": "resend://re_789@default"}))
+            .unwrap();
+        assert_eq!(mailer.transport().name(), "resend");
     }
 
     #[test]

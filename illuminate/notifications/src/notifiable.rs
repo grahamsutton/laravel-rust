@@ -77,12 +77,14 @@ pub trait Notifiable: NotifiableData {
     /// Get the notification routing information for the given channel.
     ///
     /// Defaults: `mail` routes to the `email` attribute, `database` to the
-    /// notifiable itself (its type and key). Override this to customize
-    /// routing (Laravel's `routeNotificationForMail`, ...).
+    /// notifiable itself (its type and key), and `slack` to
+    /// [`route_notification_for_slack`](Notifiable::route_notification_for_slack).
+    /// Override this to customize routing (Laravel's
+    /// `routeNotificationForMail`, ...).
     fn route_notification_for(
         &self,
         channel: &str,
-        _notification: &dyn Notification,
+        notification: &dyn Notification,
     ) -> Option<Value> {
         match channel {
             "mail" => self.route_mail_notification(),
@@ -90,6 +92,7 @@ pub trait Notifiable: NotifiableData {
                 "notifiable_type": self.notifiable_type(),
                 "notifiable_id": self.notifiable_key(),
             })),
+            "slack" => self.route_notification_for_slack(notification),
             _ => None,
         }
     }
@@ -100,6 +103,40 @@ pub trait Notifiable: NotifiableData {
             .get("email")
             .filter(|email| !email.is_blank())
             .cloned()
+    }
+
+    /// Route notifications for the Slack channel (Laravel's
+    /// `routeNotificationForSlack`): a channel name, a
+    /// [`SlackRoute`](crate::slack::SlackRoute) for an external workspace,
+    /// or an incoming webhook URL. `None` defers to the message's channel
+    /// and your `services.slack.notifications.channel` configuration.
+    ///
+    /// ```
+    /// use illuminate_notifications::{Notifiable, Notification};
+    /// use illuminate_support::{Value, json};
+    /// use serde::Serialize;
+    ///
+    /// #[derive(Serialize)]
+    /// struct User {
+    ///     id: u64,
+    /// }
+    ///
+    /// impl Notifiable for User {
+    ///     fn notifiable_key(&self) -> Value {
+    ///         json!(self.id)
+    ///     }
+    ///
+    ///     fn notifiable_type(&self) -> String {
+    ///         "App\\Models\\User".into()
+    ///     }
+    ///
+    ///     fn route_notification_for_slack(&self, _notification: &dyn Notification) -> Option<Value> {
+    ///         Some("#support-channel".into())
+    ///     }
+    /// }
+    /// ```
+    fn route_notification_for_slack(&self, _notification: &dyn Notification) -> Option<Value> {
+        None
     }
 
     /// The notifiable's preferred locale (Laravel's `HasLocalePreference`).

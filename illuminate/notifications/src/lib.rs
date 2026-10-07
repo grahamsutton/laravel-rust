@@ -1,8 +1,8 @@
 //! # Illuminate Notifications
 //!
 //! Laravel's notifications: short, informational messages sent to your
-//! users over a variety of delivery channels — email and the database are
-//! built in, and custom channels are a trait away.
+//! users over a variety of delivery channels — email, the database and
+//! [Slack](slack) are built in, and custom channels are a trait away.
 //!
 //! ## Writing notifications
 //!
@@ -64,6 +64,13 @@
 //! table (create it with [`CreateNotificationsTable`]); read them back with
 //! [`HasDatabaseNotifications`] and [`DatabaseNotification`].
 //!
+//! ## Slack notifications
+//!
+//! The `slack` channel posts the notification's
+//! [`to_slack`](Notification::to_slack) [`SlackMessage`] — Block Kit
+//! blocks built with closures — through your Slack App's bot, or to an
+//! incoming webhook. See the [`slack`] module.
+//!
 //! ## Testing
 //!
 //! [`facades::Notification::fake`] records notifications instead of
@@ -81,8 +88,9 @@ pub mod notifiable;
 pub mod notification;
 mod provider;
 pub mod queue;
+pub mod slack;
 
-pub use channels::{Channel, DatabaseChannel, MailChannel};
+pub use channels::{Channel, DatabaseChannel, MailChannel, SlackChannel};
 pub use database::{CreateNotificationsTable, DatabaseNotification, HasDatabaseNotifications};
 pub use events::{NotificationFailed, NotificationSending, NotificationSent, NotificationSkipped};
 pub use facades::PendingNotification;
@@ -95,6 +103,7 @@ pub use notifiable::{
 pub use notification::{Notification, NotificationData};
 pub use provider::NotificationServiceProvider;
 pub use queue::{NotificationQueueHook, QueuedNotification, SendQueuedNotification};
+pub use slack::{SlackMessage, SlackRoute};
 
 /// Re-exported so custom channels don't need their own dependency.
 pub use async_trait::async_trait;

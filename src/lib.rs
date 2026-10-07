@@ -159,7 +159,7 @@ pub mod prelude {
     };
     pub use illuminate_macros::{Authenticatable, Injectable, Notifiable};
     pub use illuminate_mail::{Address, Attachment, Content, Envelope, Mailable};
-    pub use illuminate_notifications::{MailMessage, Notifiable, Notification};
+    pub use illuminate_notifications::{MailMessage, Notifiable, Notification, SlackMessage, SlackRoute};
     pub use serde::{Deserialize, Serialize};
 
     pub use illuminate_container::{Container, Injectable as InjectableContract, ServiceProvider};
