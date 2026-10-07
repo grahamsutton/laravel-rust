@@ -154,6 +154,19 @@ impl SchemaGrammar {
         let table = blueprint.get_table();
         let one = |sql: String| Ok(vec![sql]);
         match attributes.name.as_str() {
+            "create" => {
+                for column in blueprint.get_added_columns() {
+                    self.ensure_type_is_supported(&column.attributes())?;
+                }
+            }
+            "add" | "change" => {
+                if let Some(column) = &attributes.column {
+                    self.ensure_type_is_supported(&column.attributes())?;
+                }
+            }
+            _ => {}
+        }
+        match attributes.name.as_str() {
             "create" => one(self.compile_create(blueprint)?),
             "add" => match &attributes.column {
                 Some(column) => one(self.compile_add(blueprint, &column.attributes())),
@@ -185,6 +198,20 @@ impl SchemaGrammar {
                 _ => one(self.compile_drop_index(table, &attributes)),
             },
             "dropForeign" => self.compile_drop_foreign(table, &attributes),
+            "spatialIndex" => one(self.compile_spatial_index(table, &attributes)?),
+            "dropSpatialIndex" => match self.driver {
+                Driver::Sqlite => {
+                    unsupported("The database driver in use does not support spatial indexes.")
+                }
+                _ => one(self.compile_drop_index(table, &attributes)),
+            },
+            "vectorIndex" => one(self.compile_vector_index(table, &attributes)?),
+            "dropVectorIndex" => match self.driver {
+                Driver::Postgres | Driver::MariaDb => {
+                    one(self.compile_drop_index(table, &attributes))
+                }
+                _ => unsupported("The database driver in use does not support vector indexes."),
+            },
             "rename" => {
                 one(self.compile_rename(table, attributes.to.as_deref().unwrap_or_default()))
             }
@@ -309,9 +336,148 @@ impl SchemaGrammar {
         let table = self.wrap_table(blueprint.get_table());
         let definition = self.get_column(blueprint, column);
         match self.driver {
-            Driver::MySql | Driver::MariaDb => format!("alter table {table} add {definition}"),
+            Driver::MySql | Driver::MariaDb => format!(
+                "alter table {table} add {definition}{}",
+                Self::mysql_algorithm_and_lock(column)
+            ),
             _ => format!("alter table {table} add column {definition}"),
         }
+    }
+
+    /// MySQL's `, algorithm=instant` and `, lock=...` column operation options.
+    fn mysql_algorithm_and_lock(column: &ColumnAttributes) -> String {
+        let mut sql = String::new();
+        if column.instant {
+            sql.push_str(", algorithm=instant");
+        }
+        if let Some(lock) = &column.lock {
+            sql.push_str(&format!(", lock={lock}"));
+        }
+        sql
+    }
+
+    /// Fail for column types the driver can't create.
+    fn ensure_type_is_supported(&self, column: &ColumnAttributes) -> Result<()> {
+        match (column.kind.as_str(), self.driver) {
+            ("computed", Driver::Postgres) => {
+                unsupported("This database driver does not support the computed type.")
+            }
+            ("computed", _) => unsupported(
+                "This database driver requires a type, see the virtualAs / storedAs modifiers.",
+            ),
+            ("vector", Driver::Sqlite) => {
+                unsupported("This database driver does not support the vector type.")
+            }
+            ("tsvector", Driver::Postgres) => Ok(()),
+            ("tsvector", _) => {
+                unsupported("This database driver does not support the tsvector type.")
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// The SQL type of a spatial column.
+    fn spatial_type(&self, column: &ColumnAttributes) -> String {
+        const SUBTYPES: [&str; 7] = [
+            "point",
+            "linestring",
+            "polygon",
+            "geometrycollection",
+            "multipoint",
+            "multilinestring",
+            "multipolygon",
+        ];
+        let subtype = column.subtype.as_ref().map(|s| s.to_lowercase());
+        let srid = column.srid.filter(|srid| *srid > 0);
+        match self.driver {
+            Driver::Sqlite => "geometry".into(),
+            Driver::MySql | Driver::MariaDb => {
+                let kind = subtype
+                    .filter(|s| SUBTYPES.contains(&s.as_str()))
+                    .unwrap_or_else(|| "geometry".into());
+                match srid {
+                    Some(srid) if self.driver == Driver::MariaDb => {
+                        format!("{kind} ref_system_id={srid}")
+                    }
+                    Some(srid) => format!("{kind} srid {srid}"),
+                    None => kind,
+                }
+            }
+            Driver::Postgres => match subtype {
+                Some(subtype) => format!(
+                    "{}({subtype}{})",
+                    column.kind,
+                    srid.map(|srid| format!(",{srid}")).unwrap_or_default()
+                ),
+                None => column.kind.clone(),
+            },
+        }
+    }
+
+    fn compile_spatial_index(&self, table: &str, command: &CommandAttributes) -> Result<String> {
+        match self.driver {
+            Driver::Sqlite => {
+                unsupported("The database driver in use does not support spatial indexes.")
+            }
+            Driver::MySql | Driver::MariaDb => Ok(self.mysql_key(table, command, "spatial index")),
+            Driver::Postgres => {
+                let mut command = command.clone();
+                command.algorithm = Some("gist".into());
+                Ok(match &command.operator_class {
+                    Some(_) => self.compile_index_with_operator_class(table, &command),
+                    None => self.compile_index(table, &command),
+                })
+            }
+        }
+    }
+
+    fn compile_vector_index(&self, table: &str, command: &CommandAttributes) -> Result<String> {
+        match self.driver {
+            Driver::Postgres => {
+                let mut command = command.clone();
+                command.algorithm.get_or_insert_with(|| "hnsw".into());
+                command
+                    .operator_class
+                    .get_or_insert_with(|| "vector_cosine_ops".into());
+                Ok(self.compile_index_with_operator_class(table, &command))
+            }
+            Driver::MariaDb => Ok(format!(
+                "alter table {} add vector index {}({}) {}",
+                self.wrap_table(table),
+                self.wrap(&Self::index_name(command)),
+                self.columnize(&command.columns),
+                command
+                    .operator_class
+                    .as_deref()
+                    .unwrap_or("M=6 DISTANCE=cosine")
+            )),
+            _ => unsupported("The database driver in use does not support vector indexes."),
+        }
+    }
+
+    fn compile_index_with_operator_class(
+        &self,
+        table: &str,
+        command: &CommandAttributes,
+    ) -> String {
+        let operator_class = command.operator_class.clone().unwrap_or_default();
+        let columns = command
+            .columns
+            .iter()
+            .map(|column| format!("{} {operator_class}", self.wrap_ident(column)))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "create index {}{} on {}{} ({columns})",
+            if command.online { "concurrently " } else { "" },
+            self.wrap(&Self::index_name(command)),
+            self.wrap_table(table),
+            command
+                .algorithm
+                .as_ref()
+                .map(|a| format!(" using {a}"))
+                .unwrap_or_default()
+        )
     }
 
     fn compile_change(
@@ -330,7 +496,11 @@ impl SchemaGrammar {
                     self.wrap(&column.name),
                     self.get_type(&column)
                 );
-                Ok(vec![self.add_modifiers(sql, blueprint, &column)])
+                Ok(vec![format!(
+                    "{}{}",
+                    self.add_modifiers(sql, blueprint, &column),
+                    Self::mysql_algorithm_and_lock(&column)
+                )])
             }
             Driver::Postgres => {
                 let column = self.with_type_defaults(column);
@@ -935,6 +1105,15 @@ impl SchemaGrammar {
         if kind == "raw" {
             return column.definition.clone().unwrap_or_default();
         }
+        if kind == "geometry" || kind == "geography" {
+            return self.spatial_type(column);
+        }
+        if kind == "vector" {
+            return match column.dimensions {
+                Some(dimensions) => format!("vector({dimensions})"),
+                None => "vector".into(),
+            };
+        }
         match self.driver {
             Driver::Sqlite => match kind {
                 "char" | "string" | "uuid" | "ipAddress" | "macAddress" => "varchar".into(),
@@ -1397,6 +1576,46 @@ impl SchemaGrammar {
         match self.driver {
             Driver::Postgres => format!("drop table {} cascade", names.join(", ")),
             _ => format!("drop table {}", names.join(", ")),
+        }
+    }
+
+    /// Compile the query listing the user-defined types of the current
+    /// schema (PostgreSQL).
+    pub fn compile_types(&self) -> String {
+        "select t.typname as name, n.nspname as schema, t.typtype as type, t.typcategory as category, \
+         ((t.typinput = 'array_in'::regproc and t.typoutput = 'array_out'::regproc) or t.typtype = 'm') as implicit \
+         from pg_type t join pg_namespace n on n.oid = t.typnamespace \
+         left join pg_class c on c.oid = t.typrelid \
+         left join pg_type el on el.oid = t.typelem \
+         left join pg_class ce on ce.oid = el.typrelid \
+         where ((t.typrelid = 0 and (ce.relkind = 'c' or ce.relkind is null)) or c.relkind = 'c') \
+         and not exists (select 1 from pg_depend d where d.objid in (t.oid, t.typelem) and d.deptype = 'e') \
+         and n.nspname = current_schema()"
+            .to_string()
+    }
+
+    /// Compile the statement that drops the given types (PostgreSQL).
+    pub fn compile_drop_all_types(&self, types: &[String]) -> String {
+        format!("drop type {} cascade", self.escape_names(types).join(", "))
+    }
+
+    /// Compile the statement that drops the given domains (PostgreSQL).
+    pub fn compile_drop_all_domains(&self, domains: &[String]) -> String {
+        format!(
+            "drop domain {} cascade",
+            self.escape_names(domains).join(", ")
+        )
+    }
+
+    /// Compile the statement creating a PostgreSQL extension if it is missing.
+    pub fn compile_create_extension(&self, name: &str, schema: Option<&str>) -> String {
+        match schema {
+            Some(schema) => format!(
+                "create extension if not exists {} schema {}",
+                self.wrap(name),
+                self.wrap(schema)
+            ),
+            None => format!("create extension if not exists {}", self.wrap(name)),
         }
     }
 

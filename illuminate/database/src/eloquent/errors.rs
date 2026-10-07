@@ -85,3 +85,42 @@ impl RelationNotFoundException {
         }
     }
 }
+
+/// A polymorphic type was written or queried for a model missing from the
+/// required morph map.
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("No morph map defined for model [{model}].")]
+pub struct ClassMorphViolationException {
+    /// The model's class name.
+    pub model: String,
+}
+
+impl ClassMorphViolationException {
+    /// A morph map violation for the model class.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+        }
+    }
+}
+
+/// An attribute that doesn't exist (or wasn't retrieved) was accessed while
+/// `prevent_accessing_missing_attributes` is on.
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("The attribute [{key}] either does not exist or was not retrieved for model [{model}].")]
+pub struct MissingAttributeException {
+    /// The model's class name.
+    pub model: String,
+    /// The attribute that was accessed.
+    pub key: String,
+}
+
+impl MissingAttributeException {
+    /// A missing attribute error for the model class and key.
+    pub fn new(model: impl Into<String>, key: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            key: key.into(),
+        }
+    }
+}

@@ -17,6 +17,7 @@ static ARRAY_KEYS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\[[^\]]+\])+
 static ARRAY_KEY: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[([^\]]+)\]").unwrap());
 static ESCAPED_QUOTE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(\\+)?'").unwrap());
 static LEADING_BOOLEAN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)and |or ").unwrap());
+static INDEX_NAME: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^[a-zA-Z0-9_$]+$").unwrap());
 
 /// A column referenced by an `upsert`'s update clause.
 #[derive(Clone, Debug, PartialEq)]
@@ -383,8 +384,24 @@ impl QueryGrammar {
 
     /// Compile a select query into SQL.
     pub fn compile_select(&self, query: &Builder) -> Result<String> {
+        let sql = self.compile_select_statement(query)?;
+        match query.timeout {
+            Some(seconds) if self.is_mysql() && sql.starts_with("select") => Ok(format!(
+                "select /*+ MAX_EXECUTION_TIME({}) */{}",
+                seconds * 1000,
+                &sql["select".len()..]
+            )),
+            _ => Ok(sql),
+        }
+    }
+
+    fn compile_select_statement(&self, query: &Builder) -> Result<String> {
         if (!query.unions.is_empty() || !query.havings.is_empty()) && query.aggregate.is_some() {
             return self.compile_union_aggregate(query);
+        }
+
+        if query.group_limit.is_some() {
+            return self.compile_group_limit(query);
         }
 
         let mut sql = self.concatenate(self.compile_components(query)?);
@@ -394,6 +411,47 @@ impl QueryGrammar {
         }
 
         Ok(sql)
+    }
+
+    /// Compile a "group limit" query: `row_number()` partitioned by the
+    /// group column, filtered in an outer query.
+    fn compile_group_limit(&self, query: &Builder) -> Result<String> {
+        let Some(group_limit) = &query.group_limit else {
+            return self.compile_select_statement(query);
+        };
+        let mut inner = query.clone();
+        let mut limit = group_limit.value;
+        let offset = inner.offset.take();
+        if let Some(offset) = offset {
+            limit += offset;
+        }
+        let mut components = self.compile_named_components(&inner)?;
+        let orders = components
+            .iter()
+            .position(|(name, _)| *name == "orders")
+            .map(|index| components.remove(index).1)
+            .unwrap_or_default();
+        let over = format!(
+            "partition by {} {orders}",
+            self.wrap_str(&group_limit.column)
+        );
+        if let Some((_, columns)) = components.iter_mut().find(|(name, _)| *name == "columns") {
+            columns.push_str(&format!(
+                ", row_number() over ({}) as {}",
+                over.trim(),
+                self.wrap_str("laravel_row")
+            ));
+        }
+        let sql = self.concatenate(components.into_iter().map(|(_, sql)| sql).collect());
+        let row = self.wrap_str("laravel_row");
+        let mut sql = format!(
+            "select * from ({sql}) as {} where {row} <= {limit}",
+            self.wrap_str("laravel_table")
+        );
+        if let Some(offset) = offset {
+            sql.push_str(&format!(" and {row} > {offset}"));
+        }
+        Ok(format!("{sql} order by {row}"))
     }
 
     fn concatenate(&self, segments: Vec<String>) -> String {
@@ -407,36 +465,107 @@ impl QueryGrammar {
     }
 
     fn compile_components(&self, query: &Builder) -> Result<Vec<String>> {
+        Ok(self
+            .compile_named_components(query)?
+            .into_iter()
+            .map(|(_, sql)| sql)
+            .collect())
+    }
+
+    fn compile_named_components(&self, query: &Builder) -> Result<Vec<(&'static str, String)>> {
         let mut sql = Vec::new();
         if let Some(aggregate) = &query.aggregate {
-            sql.push(self.compile_aggregate(query, aggregate));
+            sql.push(("aggregate", self.compile_aggregate(query, aggregate)));
         } else {
-            sql.push(self.compile_columns(query));
+            sql.push(("columns", self.compile_columns(query)));
         }
         if let Some(from) = &query.from {
-            sql.push(format!("from {}", self.wrap_table(from)));
+            sql.push(("from", format!("from {}", self.wrap_table(from))));
+        }
+        if let Some(hint) = &query.index_hint {
+            sql.push(("indexHint", self.compile_index_hint(hint)?));
         }
         if !query.joins.is_empty() {
-            sql.push(self.compile_joins(&query.joins)?);
+            sql.push(("joins", self.compile_joins(&query.joins)?));
         }
-        sql.push(self.compile_wheres(query)?);
+        sql.push(("wheres", self.compile_wheres(query)?));
         if !query.groups.is_empty() {
-            sql.push(format!("group by {}", self.columnize(&query.groups)));
+            sql.push((
+                "groups",
+                format!("group by {}", self.columnize(&query.groups)),
+            ));
         }
         if !query.havings.is_empty() {
-            sql.push(self.compile_havings(&query.havings)?);
+            sql.push(("havings", self.compile_havings(&query.havings)?));
         }
-        sql.push(self.compile_orders(&query.orders));
+        if !query.orders.is_empty() {
+            sql.push(("orders", self.compile_orders(&query.orders)));
+        }
         if let Some(limit) = query.limit {
-            sql.push(format!("limit {limit}"));
+            sql.push(("limit", format!("limit {limit}")));
         }
         if let Some(offset) = query.offset {
-            sql.push(format!("offset {offset}"));
+            sql.push(("offset", format!("offset {offset}")));
         }
         if let Some(lock) = &query.lock {
-            sql.push(self.compile_lock(lock));
+            sql.push(("lock", self.compile_lock(lock)));
         }
         Ok(sql)
+    }
+
+    /// Compile an index hint (`use index`, `force index`, `ignore index`).
+    fn compile_index_hint(&self, hint: &IndexHint) -> Result<String> {
+        let invalid = || -> Result<String> {
+            Err(illuminate_support::error::InvalidArgumentException::new(
+                "Index name contains invalid characters.",
+            )
+            .into())
+        };
+        match self.driver {
+            Driver::MySql | Driver::MariaDb => {
+                if !hint
+                    .index
+                    .split(',')
+                    .all(|index| INDEX_NAME.is_match(index.trim()))
+                {
+                    return invalid();
+                }
+                Ok(match hint.kind {
+                    IndexHintKind::Hint => format!("use index ({})", hint.index),
+                    IndexHintKind::Force => format!("force index ({})", hint.index),
+                    IndexHintKind::Ignore => format!("ignore index ({})", hint.index),
+                })
+            }
+            Driver::Sqlite => {
+                if hint.kind != IndexHintKind::Force {
+                    return Ok(String::new());
+                }
+                if !INDEX_NAME.is_match(&hint.index) {
+                    return invalid();
+                }
+                Ok(format!("indexed by {}", hint.index))
+            }
+            Driver::Postgres => Ok(String::new()),
+        }
+    }
+
+    /// Determine if the grammar supports vector distance queries
+    /// (PostgreSQL with `pgvector`, and MariaDB 11.7+).
+    pub fn supports_vector_distance(&self) -> bool {
+        matches!(self.driver, Driver::Postgres | Driver::MariaDb)
+    }
+
+    /// Compile the cosine distance between a vector column and a bound
+    /// vector.
+    pub fn compile_vector_distance_expression(&self, column: &Ident) -> Result<String> {
+        match self.driver {
+            Driver::Postgres => Ok(format!("({} <=> ?)", self.wrap(column))),
+            Driver::MariaDb => Ok(format!(
+                "vec_distance_cosine({}, vec_fromtext(?))",
+                self.wrap(column)
+            )),
+            _ => unsupported("This database engine does not support vector distance queries."),
+        }
     }
 
     fn compile_aggregate(&self, query: &Builder, aggregate: &Aggregate) -> String {
@@ -471,14 +600,38 @@ impl QueryGrammar {
         let mut out = Vec::new();
         for join in joins {
             let table = self.wrap_table(&join.table);
+            if join.lateral {
+                out.push(self.compile_join_lateral(join, &table)?);
+                continue;
+            }
+            let join_word = if join.kind == "straight_join" {
+                if !self.is_mysql() {
+                    return unsupported("This database engine does not support straight joins.");
+                }
+                ""
+            } else {
+                " join"
+            };
             let wheres = self.compile_wheres(&join.query)?;
             out.push(
-                format!("{} join {table} {wheres}", join.kind)
+                format!("{}{join_word} {table} {wheres}", join.kind)
                     .trim()
                     .to_string(),
             );
         }
         Ok(out.join(" "))
+    }
+
+    /// Compile a lateral join clause (PostgreSQL and MySQL 8.0.14+).
+    pub fn compile_join_lateral(&self, join: &JoinClause, expression: &str) -> Result<String> {
+        match self.driver {
+            Driver::Postgres | Driver::MySql => {
+                Ok(format!("{} join lateral {expression} on true", join.kind)
+                    .trim()
+                    .to_string())
+            }
+            _ => unsupported("This database engine does not support lateral joins."),
+        }
     }
 
     /// Compile the where clauses of a query (`where ...`, or `on ...` for joins).
@@ -688,7 +841,56 @@ impl QueryGrammar {
                 value,
                 options,
             } => self.where_full_text(columns, value, options)?,
+            WhereKind::Binary { column, value, not } => match self.driver {
+                Driver::MySql | Driver::MariaDb => {
+                    self.where_basic(column, if *not { "!= binary" } else { "= binary" }, value)
+                }
+                _ => {
+                    return unsupported(
+                        "This database engine does not support binary comparison operations.",
+                    );
+                }
+            },
+            WhereKind::ValueBetween {
+                value,
+                min,
+                max,
+                not,
+            } => format!(
+                "{} {} {} and {}",
+                self.parameter(value),
+                if *not { "not between" } else { "between" },
+                self.wrap(min),
+                self.wrap(max)
+            ),
+            WhereKind::RowValues {
+                columns,
+                operator,
+                values,
+            } => format!(
+                "({}) {operator} ({})",
+                self.columnize(columns),
+                self.parameterize(values)
+            ),
+            WhereKind::JsonOverlaps { column, value, not } => format!(
+                "{}{}",
+                if *not { "not " } else { "" },
+                self.compile_json_overlaps(column, &self.parameter(value))?
+            ),
         })
+    }
+
+    fn compile_json_overlaps(&self, column: &str, value: &str) -> Result<String> {
+        match self.driver {
+            Driver::MySql | Driver::MariaDb => {
+                let (mut field, path) = self.wrap_json_field_and_path(column);
+                if !path.is_empty() {
+                    field = format!("json_extract({field}{path})");
+                }
+                Ok(format!("json_overlaps({field}, {value})"))
+            }
+            _ => unsupported("This database engine does not support JSON overlaps operations."),
+        }
     }
 
     fn where_basic(&self, column: &Ident, operator: &str, value: &Operand) -> String {
@@ -907,7 +1109,13 @@ impl QueryGrammar {
                     .unwrap_or("english");
                 let columns = columns
                     .iter()
-                    .map(|c| format!("to_tsvector('{language}', {})", self.wrap_str(c)))
+                    .map(|c| {
+                        if options.vector {
+                            self.wrap_str(c)
+                        } else {
+                            format!("to_tsvector('{language}', {})", self.wrap_str(c))
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(" || ");
                 let mode = match options.mode.as_deref() {
@@ -995,6 +1203,16 @@ impl QueryGrammar {
                 Order::Raw { sql } => sql.clone(),
                 Order::Column { column, direction } => {
                     format!("{} {}", self.wrap(column), direction.as_str())
+                }
+                Order::InOrderOf { column, values } => {
+                    let column = self.wrap(column);
+                    let cases = values
+                        .iter()
+                        .enumerate()
+                        .map(|(index, _)| format!("when {column} = ? then {index}"))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    format!("case {cases} else {} end", values.len())
                 }
             })
             .collect::<Vec<_>>()
@@ -1124,6 +1342,31 @@ impl QueryGrammar {
             Driver::MySql | Driver::MariaDb => insert.replacen("insert", "insert ignore", 1),
             Driver::Postgres => format!("{insert} on conflict do nothing"),
         }
+    }
+
+    /// Compile an insert-or-ignore statement returning the given columns
+    /// (SQLite / PostgreSQL).
+    pub fn compile_insert_or_ignore_returning(
+        &self,
+        query: &Builder,
+        records: &[Record],
+        returning: &[Ident],
+        unique_by: Option<&[String]>,
+    ) -> Result<String> {
+        if self.is_mysql() {
+            return unsupported(
+                "This database engine does not support insert or ignore with returning.",
+            );
+        }
+        let insert = self.compile_insert(query, records);
+        let returning = self.columnize(returning);
+        Ok(match unique_by {
+            None => format!("{insert} on conflict do nothing returning {returning}"),
+            Some(columns) => format!(
+                "{insert} on conflict ({}) do nothing returning {returning}",
+                self.columnize_str(columns)
+            ),
+        })
     }
 
     /// Compile an insert and get ID statement into SQL.
@@ -1280,6 +1523,74 @@ impl QueryGrammar {
                     .to_string())
             }
         }
+    }
+
+    /// Compile an "update from" statement (PostgreSQL): the joined tables
+    /// become the `from` clause and their conditions join the wheres.
+    pub fn compile_update_from(&self, query: &Builder, values: &Record) -> Result<String> {
+        if self.driver != Driver::Postgres {
+            return Err(illuminate_support::error::LogicException::new(
+                "This database engine does not support the updateFrom method.",
+            )
+            .into());
+        }
+        let table = self.table_of(query);
+        let columns = self.compile_update_columns(values);
+        let froms: Vec<String> = query
+            .joins
+            .iter()
+            .map(|join| self.wrap_table(&join.table))
+            .collect();
+        let from = if froms.is_empty() {
+            String::new()
+        } else {
+            format!(" from {}", froms.join(", "))
+        };
+        let base = self.compile_wheres(query)?;
+        let mut join_wheres = Vec::new();
+        for join in &query.joins {
+            for clause in &join.query.wheres {
+                join_wheres.push(format!(
+                    "{} {}",
+                    clause.boolean,
+                    self.compile_where(&join.query, clause)?
+                ));
+            }
+        }
+        let join_wheres = join_wheres.join(" ");
+        let wheres = if join_wheres.is_empty() {
+            base
+        } else if base.trim().is_empty() {
+            format!("where {}", remove_leading_boolean(&join_wheres))
+        } else {
+            format!("{base} {join_wheres}")
+        };
+        Ok(format!("update {table} set {columns}{from} {wheres}")
+            .trim()
+            .to_string())
+    }
+
+    /// Prepare the bindings for an "update from" statement.
+    pub fn prepare_bindings_for_update_from(
+        &self,
+        bindings: &Bindings,
+        values: &Record,
+    ) -> Vec<Value> {
+        let mut out: Vec<Value> = values
+            .iter()
+            .filter_map(|(key, value)| {
+                value.as_value().map(|v| {
+                    if self.is_json_selector(key) || v.is_array() || v.is_object() {
+                        Value::String(v.to_string())
+                    } else {
+                        v.clone()
+                    }
+                })
+            })
+            .collect();
+        out.extend(bindings.where_.iter().cloned());
+        out.extend(bindings.flatten_except(&[BindingType::Select, BindingType::Where]));
+        out
     }
 
     /// `select "alias"."rowid" from ...`, used by updates / deletes with joins or limits.

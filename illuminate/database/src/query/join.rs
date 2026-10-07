@@ -35,6 +35,8 @@ pub struct JoinClause {
     pub table: Ident,
     /// The join's conditions (its wheres and bindings).
     pub query: Builder,
+    /// Whether this is a lateral join (`join lateral (...) on true`).
+    pub lateral: bool,
 }
 
 impl JoinClause {
@@ -46,7 +48,15 @@ impl JoinClause {
             kind: kind.into(),
             table: table.into(),
             query,
+            lateral: false,
         }
+    }
+
+    /// Create a new lateral join clause (`join_lateral`) for the parent query.
+    pub fn new_lateral(parent: &Builder, kind: impl Into<String>, table: impl Into<Ident>) -> Self {
+        let mut join = Self::new(parent, kind, table);
+        join.lateral = true;
+        join
     }
 
     fn map(mut self, f: impl FnOnce(Builder) -> Builder) -> Self {

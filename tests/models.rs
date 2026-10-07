@@ -128,3 +128,36 @@ async fn only_changed_attributes_are_saved() {
     assert!(flight.was_changed_any("destination"));
     assert_eq!(Flight::find(flight.id).await.unwrap().unwrap().destination, "Porto");
 }
+
+#[tokio::test]
+async fn models_are_cursor_paginated_from_the_request() {
+    let dir = tempfile::tempdir().unwrap().keep();
+    let mut app = TestApp::new(
+        Application::configure_detached(&dir)
+            .with_routing(|routing| {
+                routing.web(|| {
+                    Route::get("/flights", || async {
+                        let page = Flight::query().order_by("id", "asc").cursor_paginate(2, None).await?;
+                        Ok::<_, Error>(Json(page))
+                    });
+                });
+            })
+            .with_migrations(laravel::database::migrations![
+                "2024_01_01_000000_create_flights_table" => CreateFlightsTable,
+            ]),
+    );
+    app.refresh_database().await;
+    for destination in ["Lisbon", "Oslo", "Tokyo", "Lima", "Cairo"] {
+        flight(destination).await;
+    }
+
+    let first = app.get("/flights").await.assert_ok().json();
+    assert_eq!(first["data"][0]["destination"], "Lisbon");
+    assert_eq!(first["data"].as_array().unwrap().len(), 2);
+    let cursor = first["next_cursor"].as_str().unwrap().to_string();
+
+    let second = app.get(&format!("/flights?cursor={cursor}")).await.assert_ok().json();
+    assert_eq!(second["data"][0]["destination"], "Tokyo");
+    assert_eq!(second["data"][1]["destination"], "Lima");
+    assert!(second["prev_cursor"].is_string());
+}

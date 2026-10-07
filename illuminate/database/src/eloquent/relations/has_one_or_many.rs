@@ -65,7 +65,14 @@ impl<P: Model, R: Model, const MANY: bool> HasOneOrMany<P, R, MANY> {
 
     pub(crate) fn morph(parent: &P, name: &str) -> Self {
         let mut relation = Self::new(parent, format!("{name}_id"), P::primary_key().to_string());
-        relation.morph = Some((format!("{name}_type"), P::morph_class()));
+        let class = match crate::eloquent::state::checked_morph_class::<P>() {
+            Ok(class) => class,
+            Err(error) => {
+                relation.query.query.error = Some(error.to_string());
+                P::morph_class()
+            }
+        };
+        relation.morph = Some((format!("{name}_type"), class));
         relation
     }
 
@@ -99,6 +106,9 @@ impl<P: Model, R: Model, const MANY: bool> HasOneOrMany<P, R, MANY> {
     forward_eloquent!(query);
 
     fn constrain(&self, mut query: Builder<R>) -> Builder<R> {
+        if super::constraints_disabled() {
+            return query;
+        }
         let foreign_key = query.qualify_column(&self.foreign_key);
         query.query = query
             .query
@@ -117,7 +127,7 @@ impl<P: Model, R: Model, const MANY: bool> HasOneOrMany<P, R, MANY> {
     }
 
     async fn fetch(&self, query: Builder<R>) -> Result<Vec<R>> {
-        if !key_is_set(&self.get_parent_key()) {
+        if !key_is_set(&self.get_parent_key()) && !super::constraints_disabled() {
             return Ok(Vec::new());
         }
         Ok(query.get().await?.into_vec())
@@ -127,6 +137,9 @@ impl<P: Model, R: Model, const MANY: bool> HasOneOrMany<P, R, MANY> {
 
     /// Set the foreign key (and morph type) on a related model.
     pub fn set_foreign_attributes(&self, model: &mut R) -> Result<()> {
+        if self.morph.is_some() {
+            crate::eloquent::state::checked_morph_class::<P>()?;
+        }
         model.set_attribute(&self.foreign_key, self.get_parent_key())?;
         if let Some((column, class)) = &self.morph {
             model.set_attribute(column, Value::String(class.clone()))?;
@@ -177,6 +190,135 @@ impl<P: Model, R: Model, const MANY: bool> HasOneOrMany<P, R, MANY> {
             models.push(self.create(attributes).await?);
         }
         Ok(models.into())
+    }
+
+    /// New related models (not saved) belonging to the parent.
+    pub fn make_many<A: Into<Attributes>>(
+        &self,
+        records: impl IntoIterator<Item = A>,
+    ) -> Result<Collection<R>> {
+        records
+            .into_iter()
+            .map(|attributes| self.make(attributes))
+            .collect::<Result<Vec<R>>>()
+            .map(Collection::from)
+    }
+
+    /// Create several related models, ignoring mass assignment protection.
+    pub async fn force_create_many<A: Into<Attributes>>(
+        &self,
+        records: impl IntoIterator<Item = A>,
+    ) -> Result<Collection<R>> {
+        let mut models = Vec::new();
+        for attributes in records {
+            models.push(self.force_create(attributes).await?);
+        }
+        Ok(models.into())
+    }
+
+    /// Create a related model without firing any events.
+    pub async fn create_quietly(&self, attributes: impl Into<Attributes>) -> Result<R> {
+        crate::eloquent::without_events(self.create(attributes)).await
+    }
+
+    /// Create a related model, ignoring mass assignment protection, without
+    /// firing any events.
+    pub async fn force_create_quietly(&self, attributes: impl Into<Attributes>) -> Result<R> {
+        crate::eloquent::without_events(self.force_create(attributes)).await
+    }
+
+    /// Create several related models without firing any events.
+    pub async fn create_many_quietly<A: Into<Attributes>>(
+        &self,
+        records: impl IntoIterator<Item = A>,
+    ) -> Result<Collection<R>> {
+        crate::eloquent::without_events(self.create_many(records)).await
+    }
+
+    /// Create several related models, ignoring mass assignment protection,
+    /// without firing any events.
+    pub async fn force_create_many_quietly<A: Into<Attributes>>(
+        &self,
+        records: impl IntoIterator<Item = A>,
+    ) -> Result<Collection<R>> {
+        crate::eloquent::without_events(self.force_create_many(records)).await
+    }
+
+    /// Attach a model to the parent and save it without firing events.
+    pub async fn save_quietly(&self, model: &mut R) -> Result<bool> {
+        crate::eloquent::without_events(self.save(model)).await
+    }
+
+    /// Attach several models to the parent and save them without firing
+    /// events.
+    pub async fn save_many_quietly(&self, models: &mut [R]) -> Result<()> {
+        crate::eloquent::without_events(self.save_many(models)).await
+    }
+
+    /// Create a related model, or get the existing one matching the
+    /// attributes when a unique constraint stops the insert.
+    pub async fn create_or_first(
+        &self,
+        attributes: impl Into<Attributes>,
+        values: impl Into<Attributes>,
+    ) -> Result<R> {
+        let attributes = attributes.into();
+        let candidate = self.make(attributes.clone().merge(values))?;
+        let connection = R::get_connection();
+        let result = connection
+            .transaction(|| async move {
+                let mut model = candidate;
+                model.save().await?;
+                Ok(model)
+            })
+            .await;
+        match result {
+            Ok(model) => Ok(model),
+            Err(error)
+                if error
+                    .downcast_ref::<crate::QueryException>()
+                    .is_some_and(crate::QueryException::is_unique_constraint_violation) =>
+            {
+                match self
+                    .get_query()
+                    .use_write_pdo()
+                    .where_map(attributes.0)
+                    .first()
+                    .await?
+                {
+                    Some(model) => Ok(model),
+                    None => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Increment a column of the first related model matching the
+    /// attributes, or create it with the column set to `default`.
+    pub async fn increment_or_create(
+        &self,
+        attributes: impl Into<Attributes>,
+        column: &str,
+        default: impl Into<Value>,
+        step: impl Into<Value>,
+    ) -> Result<R> {
+        let attributes = attributes.into();
+        if let Some(mut model) = self
+            .get_query()
+            .where_map(attributes.0.clone())
+            .first()
+            .await?
+        {
+            model.increment(column, step.into()).await?;
+            return Ok(model);
+        }
+        let mut defaults = Attributes::new();
+        defaults.insert(column, default.into());
+        let mut model = R::template();
+        model.force_fill(attributes.merge(defaults))?;
+        self.save(&mut model).await?;
+        Ok(model)
     }
 
     /// Attach a model to the parent (setting its foreign key) and save it.
@@ -300,6 +442,26 @@ impl<P: Model, R: Model> HasOneOrMany<P, R, true> {
     /// Get the related models.
     pub async fn get(&self) -> Result<Collection<R>> {
         Ok(self.fetch(self.get_query()).await?.into())
+    }
+
+    /// The same relationship as a one-to-one relationship (Laravel's
+    /// `HasMany::one()`), usually narrowed with `latest()`, `oldest()` or a
+    /// constraint.
+    ///
+    /// ```ignore
+    /// pub fn latest_post(&self) -> HasOne<Self, Post> {
+    ///     self.posts().one().latest()
+    /// }
+    /// ```
+    pub fn one(self) -> HasOneOrMany<P, R, false> {
+        HasOneOrMany {
+            query: self.query,
+            parent: self.parent,
+            foreign_key: self.foreign_key,
+            local_key: self.local_key,
+            morph: self.morph,
+            _parent: PhantomData,
+        }
     }
 }
 

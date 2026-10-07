@@ -42,6 +42,17 @@ pub fn is_visible(key: &str, hidden: &[&str], visible: &[&str]) -> bool {
     (visible.is_empty() || visible.contains(&key)) && !hidden.contains(&key)
 }
 
+/// The model's hidden and visible attributes: the class defaults, or the
+/// instance's own lists after `make_hidden` / `make_visible`.
+pub fn visibility<M: super::Model>(model: &M) -> (Vec<String>, Vec<String>) {
+    (model.get_hidden(), model.get_visible())
+}
+
+/// Determine whether an attribute is visible, given the hidden and visible lists.
+pub fn is_visible_in(key: &str, hidden: &[String], visible: &[String]) -> bool {
+    (visible.is_empty() || visible.iter().any(|v| v == key)) && !hidden.iter().any(|h| h == key)
+}
+
 /// Detects, at the derive's expansion site, whether a model implements
 /// [`Prunable`](super::Prunable) or [`MassPrunable`](super::MassPrunable)
 /// (autoref specialization: `(&&&PruneProbe::<M>::new()).pruner()`).

@@ -261,6 +261,14 @@ fn wire_pagination() {
             .filter(|page| *page >= 1)
             .map(|page| page as u64)
     });
+    illuminate_database::pagination::resolve_current_cursor_using(|cursor_name| {
+        let request = current_request()?;
+        request
+            .input(cursor_name)
+            .as_str()
+            .filter(|cursor| !cursor.is_empty())
+            .map(String::from)
+    });
     illuminate_pagination::resolve_current_path_using(|| {
         current_request()
             .map(|request| request.url())

@@ -59,6 +59,8 @@ macro_rules! forward_clauses {
             or_where_map(values: impl $crate::IntoRecord);
             /// Add a nested (parenthesised) where group.
             where_group(callback: impl FnOnce($crate::query::Builder) -> $crate::query::Builder);
+            /// Add a nested where statement with the given boolean.
+            where_nested(callback: impl FnOnce($crate::query::Builder) -> $crate::query::Builder, boolean: &str);
             /// Add a nested "or" where group.
             or_where_group(callback: impl FnOnce($crate::query::Builder) -> $crate::query::Builder);
             /// Add a negated nested where group.
@@ -221,6 +223,126 @@ macro_rules! forward_clauses {
             shared_lock();
             /// Run reads on the write connection.
             use_write_pdo();
+            /// Add a select expression with an alias.
+            select_expression(expression: impl Into<$crate::Ident>, alias: &str);
+            /// Select the vector distance to the given vector.
+            select_vector_distance(column: impl Into<$crate::Ident>, vector: impl $crate::query::IntoEmbedding, alias: Option<&str>);
+            /// Only rows within the vector distance.
+            where_vector_distance_less_than(column: impl Into<$crate::Ident>, vector: impl $crate::query::IntoEmbedding, max_distance: f64);
+            /// Add an "or" vector distance clause.
+            or_where_vector_distance_less_than(column: impl Into<$crate::Ident>, vector: impl $crate::query::IntoEmbedding, max_distance: f64);
+            /// Only rows similar to the vector, most similar first.
+            where_vector_similar_to(column: impl Into<$crate::Ident>, vector: impl $crate::query::IntoEmbedding, min_similarity: f64);
+            /// Only rows similar to the vector, optionally ordered by similarity.
+            where_vector_similar_to_with(column: impl Into<$crate::Ident>, vector: impl $crate::query::IntoEmbedding, min_similarity: f64, order: bool);
+            /// Order by the distance to the vector.
+            order_by_vector_distance(column: impl Into<$crate::Ident>, vector: impl $crate::query::IntoEmbedding);
+            /// Suggest an index.
+            use_index(index: &str);
+            /// Force an index.
+            force_index(index: &str);
+            /// Ignore an index.
+            ignore_index(index: &str);
+            /// Add a lateral join.
+            join_lateral(query: impl $crate::query::IntoSubQuery, alias: &str);
+            /// Add a lateral left join.
+            left_join_lateral(query: impl $crate::query::IntoSubQuery, alias: &str);
+            /// Add a straight join.
+            straight_join(table: impl Into<$crate::Ident>, first: impl Into<$crate::Ident>, operator: &str, second: impl Into<$crate::Ident>);
+            /// Add a straight join comparing a column with a value.
+            straight_join_where(table: impl Into<$crate::Ident>, first: impl Into<$crate::Ident>, operator: &str, second: impl Into<$crate::Operand>);
+            /// Add a sub-query straight join.
+            straight_join_sub(query: impl $crate::query::IntoSubQuery, alias: &str, first: impl Into<$crate::Ident>, operator: &str, second: impl Into<$crate::Ident>);
+            /// Add a right join with a closure building its conditions.
+            right_join_with(table: impl Into<$crate::Ident>, callback: impl FnOnce($crate::JoinClause) -> $crate::JoinClause);
+            /// Add an inner join comparing a column with a value.
+            join_where(table: impl Into<$crate::Ident>, first: impl Into<$crate::Ident>, operator: &str, second: impl Into<$crate::Operand>);
+            /// Add a left join comparing a column with a value.
+            left_join_where(table: impl Into<$crate::Ident>, first: impl Into<$crate::Ident>, operator: &str, second: impl Into<$crate::Operand>);
+            /// Add a "where binary" clause.
+            where_binary(column: impl Into<$crate::Ident>, value: impl Into<$crate::Operand>);
+            /// Add an "or where binary" clause.
+            or_where_binary(column: impl Into<$crate::Ident>, value: impl Into<$crate::Operand>);
+            /// Add a "where not binary" clause.
+            where_not_binary(column: impl Into<$crate::Ident>, value: impl Into<$crate::Operand>);
+            /// Add an "or where not binary" clause.
+            or_where_not_binary(column: impl Into<$crate::Ident>, value: impl Into<$crate::Operand>);
+            /// Add a null-safe equality clause.
+            where_null_safe_equals(column: impl Into<$crate::Ident>, value: impl Into<$crate::Operand>);
+            /// Add an "or" null-safe equality clause.
+            or_where_null_safe_equals(column: impl Into<$crate::Ident>, value: impl Into<$crate::Operand>);
+            /// Compare a row of columns with a row of values.
+            where_row_values(columns: impl $crate::IntoColumns, operator: &str, values: impl $crate::IntoBindings);
+            /// Add an "or" row values clause.
+            or_where_row_values(columns: impl $crate::IntoColumns, operator: &str, values: impl $crate::IntoBindings);
+            /// Only rows where the value lies between two columns.
+            where_value_between(value: impl Into<$crate::Operand>, columns: impl $crate::query::BetweenValues<$crate::Ident>);
+            /// Add an "or" value-between-columns clause.
+            or_where_value_between(value: impl Into<$crate::Operand>, columns: impl $crate::query::BetweenValues<$crate::Ident>);
+            /// Only rows where the value lies outside two columns.
+            where_value_not_between(value: impl Into<$crate::Operand>, columns: impl $crate::query::BetweenValues<$crate::Ident>);
+            /// Add an "or" value-not-between-columns clause.
+            or_where_value_not_between(value: impl Into<$crate::Operand>, columns: impl $crate::query::BetweenValues<$crate::Ident>);
+            /// Add an "or where between columns" clause.
+            or_where_between_columns(column: impl Into<$crate::Ident>, values: impl $crate::query::BetweenValues<$crate::Ident>);
+            /// Add a "where not between columns" clause.
+            where_not_between_columns(column: impl Into<$crate::Ident>, values: impl $crate::query::BetweenValues<$crate::Ident>);
+            /// Add an "or where JSON doesn't contain" clause.
+            or_where_json_doesnt_contain(column: &str, value: impl Into<$crate::Operand>);
+            /// Add an "or where JSON contains key" clause.
+            or_where_json_contains_key(column: &str);
+            /// Add an "or where JSON doesn't contain key" clause.
+            or_where_json_doesnt_contain_key(column: &str);
+            /// Add a "where JSON overlaps" clause.
+            where_json_overlaps(column: &str, value: impl Into<$crate::Operand>);
+            /// Add an "or where JSON overlaps" clause.
+            or_where_json_overlaps(column: &str, value: impl Into<$crate::Operand>);
+            /// Add a "where JSON doesn't overlap" clause.
+            where_json_doesnt_overlap(column: &str, value: impl Into<$crate::Operand>);
+            /// Add an "or where JSON doesn't overlap" clause.
+            or_where_json_doesnt_overlap(column: &str, value: impl Into<$crate::Operand>);
+            /// Compare the length of a JSON array with "or".
+            or_where_json_length(column: &str, value: impl Into<$crate::Operand>);
+            /// Compare the length of a JSON array with an operator and "or".
+            or_where_json_length_op(column: &str, operator: &str, value: impl Into<$crate::Operand>);
+            /// Add a full text search clause.
+            where_full_text(columns: impl $crate::IntoColumns, value: impl Into<$crate::Operand>);
+            /// Add a full text search clause with options.
+            where_full_text_with(columns: impl $crate::IntoColumns, value: impl Into<$crate::Operand>, options: $crate::query::FullTextOptions);
+            /// Add an "or" full text search clause.
+            or_where_full_text(columns: impl $crate::IntoColumns, value: impl Into<$crate::Operand>);
+            /// Add an "or" full text search clause with options.
+            or_where_full_text_with(columns: impl $crate::IntoColumns, value: impl Into<$crate::Operand>, options: $crate::query::FullTextOptions);
+            /// Add an "or where none" clause.
+            or_where_none(columns: impl $crate::IntoColumns, operator: &str, value: impl Into<$crate::Operand>);
+            /// Add an "or where" clause comparing two columns with an operator.
+            or_where_column_op(first: impl Into<$crate::Ident>, operator: &str, second: impl Into<$crate::Ident>);
+            /// Add an "or having" clause with an operator.
+            or_having_op(column: impl Into<$crate::Ident>, operator: &str, value: impl Into<$crate::Operand>);
+            /// Add an "or having null" clause.
+            or_having_null(columns: impl $crate::IntoColumns);
+            /// Add an "or having not null" clause.
+            or_having_not_null(columns: impl $crate::IntoColumns);
+            /// Add a "having not between" clause.
+            having_not_between(column: impl Into<$crate::Ident>, values: impl $crate::query::BetweenValues<$crate::Operand>);
+            /// Add an "or having between" clause.
+            or_having_between(column: impl Into<$crate::Ident>, values: impl $crate::query::BetweenValues<$crate::Operand>);
+            /// Add an "or having not between" clause.
+            or_having_not_between(column: impl Into<$crate::Ident>, values: impl $crate::query::BetweenValues<$crate::Operand>);
+            /// Add a nested "having" group.
+            having_nested(callback: impl FnOnce($crate::query::Builder) -> $crate::query::Builder);
+            /// Add a nested "or having" group.
+            or_having_nested(callback: impl FnOnce($crate::query::Builder) -> $crate::query::Builder);
+            /// Order by a given sequence of values.
+            in_order_of(column: impl Into<$crate::Ident>, values: impl $crate::IntoBindings);
+            /// Replace all orderings with one, descending.
+            reorder_desc(column: impl Into<$crate::Ident>);
+            /// Limit the number of rows per group.
+            group_limit(value: i64, column: &str);
+            /// Set a query execution timeout in seconds.
+            timeout(seconds: impl Into<Option<u64>>);
+            /// Register a callback run on the base query before it executes.
+            before_query(callback: impl Fn($crate::query::Builder) -> $crate::query::Builder + Send + Sync + 'static);
         }
     };
 }
@@ -257,6 +379,28 @@ macro_rules! forward_eloquent {
             without_global_scopes();
             /// Apply a local scope.
             scope(scope: impl FnOnce($crate::eloquent::Builder<R>) -> $crate::eloquent::Builder<R>);
+            /// Remove every global scope except the given ones.
+            without_global_scopes_except(scopes: impl $crate::eloquent::IntoRelations);
+            /// Register a global scope on this query only.
+            with_global_scope(name: &str, scope: impl Fn($crate::eloquent::Builder<R>) -> $crate::eloquent::Builder<R> + Send + Sync + 'static);
+            /// Register a callback run on the related models.
+            after_query(callback: impl Fn(::illuminate_support::Collection<R>) -> ::illuminate_support::Collection<R> + Send + Sync + 'static);
+            /// Stop eager loading the given relationships.
+            without_eager_load(relations: impl $crate::eloquent::IntoRelations);
+            /// Stop eager loading every relationship.
+            without_eager_loads();
+            /// Eager load relationships matching a constraint, and only keep
+            /// the related models that have them.
+            with_where_has(relation: &str, constraint: impl Fn($crate::query::Builder) -> $crate::query::Builder + Send + Sync + 'static);
+            /// Only related models whose relationship has the column value,
+            /// eager loading the matching related models.
+            with_where_relation(relation: &str, column: &str, value: impl Into<$crate::Operand> + Clone + Send + Sync + 'static);
+            /// Only related models without a related model whose column has the value.
+            where_doesnt_have_relation(relation: &str, column: &str, value: impl Into<$crate::Operand>);
+            /// Add an "or" clause matching the given primary key(s).
+            or_where_key(id: impl Into<::illuminate_support::Value>);
+            /// Add an "or" clause excluding the given primary key(s).
+            or_where_key_not(id: impl Into<::illuminate_support::Value>);
         }
     };
 }
@@ -304,6 +448,230 @@ macro_rules! relation_queries {
             self.find(id.clone()).await?.ok_or_else(|| {
                 $crate::eloquent::ModelNotFoundException::new(R::class_name(), vec![id]).into()
             })
+        }
+
+        /// Find a related model by its primary key, or call the callback
+        /// when there is none.
+        pub async fn find_or<F, Fut, E>(
+            &self,
+            id: impl Into<::illuminate_support::Value>,
+            callback: F,
+        ) -> ::illuminate_support::Result<R>
+        where
+            F: FnOnce() -> Fut,
+            Fut: ::std::future::Future<Output = ::std::result::Result<R, E>>,
+            E: Into<::illuminate_support::Error>,
+        {
+            match self.find(id).await? {
+                Some(model) => Ok(model),
+                None => callback().await.map_err(Into::into),
+            }
+        }
+
+        /// Find the only related model with the primary key, failing when
+        /// there is none or several.
+        pub async fn find_sole(
+            &self,
+            id: impl Into<::illuminate_support::Value>,
+        ) -> ::illuminate_support::Result<R> {
+            let id = id.into();
+            let mut models = self
+                .fetch(self.get_query().where_key(id.clone()).take(2))
+                .await?;
+            match models.len() {
+                0 => Err(
+                    $crate::eloquent::ModelNotFoundException::new(R::class_name(), vec![id]).into(),
+                ),
+                1 => Ok(models.remove(0)),
+                count => Err($crate::MultipleRecordsFoundException::new(count).into()),
+            }
+        }
+
+        /// Get the first related model, or call the callback when there is none.
+        pub async fn first_or<F, Fut, E>(&self, callback: F) -> ::illuminate_support::Result<R>
+        where
+            F: FnOnce() -> Fut,
+            Fut: ::std::future::Future<Output = ::std::result::Result<R, E>>,
+            E: Into<::illuminate_support::Error>,
+        {
+            match self.first().await? {
+                Some(model) => Ok(model),
+                None => callback().await.map_err(Into::into),
+            }
+        }
+
+        /// Stream the related models, loading them in chunks (ordered by
+        /// primary key unless the relationship is ordered).
+        pub fn lazy(
+            &self,
+            chunk_size: i64,
+        ) -> ::futures::stream::BoxStream<'static, ::illuminate_support::Result<R>> {
+            use ::futures::{StreamExt, TryStreamExt};
+            let mut query = self.get_query();
+            if query.get_query().orders.is_empty() {
+                let key = query.qualify_column(R::primary_key());
+                query = query.order_by(key, "asc");
+            }
+            let chunk_size = chunk_size.max(1);
+            let relation = self.clone();
+            ::futures::stream::try_unfold(Some((relation, query, 1_i64)), move |state| async move {
+                let Some((relation, query, page)) = state else {
+                    return Ok::<_, ::illuminate_support::Error>(None);
+                };
+                let models = relation
+                    .fetch(query.clone().for_page(page, chunk_size))
+                    .await?;
+                if models.is_empty() {
+                    return Ok(None);
+                }
+                let next =
+                    (models.len() as i64 == chunk_size).then_some((relation, query, page + 1));
+                Ok(Some((
+                    ::futures::stream::iter(
+                        models.into_iter().map(Ok::<R, ::illuminate_support::Error>),
+                    ),
+                    next,
+                )))
+            })
+            .try_flatten()
+            .boxed()
+        }
+
+        /// Stream the related models in chunks paginated by primary key.
+        pub fn lazy_by_id(
+            &self,
+            chunk_size: i64,
+        ) -> ::futures::stream::BoxStream<'static, ::illuminate_support::Result<R>> {
+            self.lazy_by_key(chunk_size, false)
+        }
+
+        /// Stream the related models in chunks paginated by primary key,
+        /// descending.
+        pub fn lazy_by_id_desc(
+            &self,
+            chunk_size: i64,
+        ) -> ::futures::stream::BoxStream<'static, ::illuminate_support::Result<R>> {
+            self.lazy_by_key(chunk_size, true)
+        }
+
+        fn lazy_by_key(
+            &self,
+            chunk_size: i64,
+            descending: bool,
+        ) -> ::futures::stream::BoxStream<'static, ::illuminate_support::Result<R>> {
+            use ::futures::{StreamExt, TryStreamExt};
+            let query = self.get_query();
+            let key = query.qualify_column(R::primary_key());
+            let chunk_size = chunk_size.max(1);
+            let relation = self.clone();
+            let initial: Option<(Self, Option<::illuminate_support::Value>)> =
+                Some((relation, None));
+            ::futures::stream::try_unfold(initial, move |state| {
+                let (query, key) = (query.clone(), key.clone());
+                async move {
+                    let Some((relation, last)) = state else {
+                        return Ok::<_, ::illuminate_support::Error>(None);
+                    };
+                    let mut query = query
+                        .reorder_by(key.clone(), if descending { "desc" } else { "asc" })
+                        .limit(chunk_size);
+                    if let Some(last) = &last {
+                        query =
+                            query.where_op(key, if descending { "<" } else { ">" }, last.clone());
+                    }
+                    let models = relation.fetch(query).await?;
+                    if models.is_empty() {
+                        return Ok(None);
+                    }
+                    let next = (models.len() as i64 == chunk_size)
+                        .then(|| models.last().map(|model| (relation, Some(model.get_key()))))
+                        .flatten();
+                    Ok(Some((
+                        ::futures::stream::iter(
+                            models.into_iter().map(Ok::<R, ::illuminate_support::Error>),
+                        ),
+                        next,
+                    )))
+                }
+            })
+            .try_flatten()
+            .boxed()
+        }
+
+        /// Stream the related models (in chunks of 1,000, keeping memory
+        /// flat).
+        pub fn cursor(
+            &self,
+        ) -> ::futures::stream::BoxStream<'static, ::illuminate_support::Result<R>> {
+            self.lazy(1000)
+        }
+
+        /// Run the callback for each related model, loading them in chunks
+        /// paginated by primary key; return `Ok(false)` to stop.
+        pub async fn each_by_id<F, Fut>(
+            &self,
+            count: i64,
+            mut callback: F,
+        ) -> ::illuminate_support::Result<bool>
+        where
+            F: FnMut(R) -> Fut,
+            Fut: ::std::future::Future<Output = ::illuminate_support::Result<bool>>,
+        {
+            use ::futures::StreamExt;
+            let mut models = self.lazy_by_id(count);
+            while let Some(model) = models.next().await {
+                if !callback(model?).await? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+
+        /// Map every related model, loading them in chunks, into a collection.
+        pub async fn chunk_map<U, F, Fut>(
+            &self,
+            mut callback: F,
+            count: i64,
+        ) -> ::illuminate_support::Result<::illuminate_support::Collection<U>>
+        where
+            F: FnMut(R) -> Fut,
+            Fut: ::std::future::Future<Output = ::illuminate_support::Result<U>>,
+        {
+            use ::futures::StreamExt;
+            let mut models = self.lazy(count);
+            let mut mapped = Vec::new();
+            while let Some(model) = models.next().await {
+                mapped.push(callback(model?).await?);
+            }
+            Ok(mapped.into())
+        }
+
+        /// Cursor paginate the related models (`None` uses the related
+        /// model's `per_page`).
+        pub async fn cursor_paginate(
+            &self,
+            per_page: impl Into<Option<u64>>,
+            cursor: Option<$crate::pagination::Cursor>,
+        ) -> ::illuminate_support::Result<$crate::pagination::CursorPaginator<R>> {
+            let per_page = per_page.into().unwrap_or_else(R::per_page).max(1);
+            let cursor = cursor.or_else(|| $crate::pagination::resolve_current_cursor("cursor"));
+            let mut query = self.get_query().applied();
+            let (base, parameters) = query
+                .get_query()
+                .clone()
+                .prepare_cursor_pagination(per_page, cursor.as_ref())?;
+            *query.get_query_mut() = base;
+            let items = self.fetch(query).await?;
+            Ok($crate::pagination::CursorPaginator::new(
+                items,
+                per_page,
+                cursor,
+                $crate::pagination::CursorPaginatorOptions {
+                    path: ::illuminate_pagination::current_path(),
+                    parameters,
+                    ..Default::default()
+                },
+            ))
         }
 
         /// Find related models by their primary keys.

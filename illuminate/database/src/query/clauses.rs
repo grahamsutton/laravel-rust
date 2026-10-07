@@ -31,6 +31,8 @@ pub struct FullTextOptions {
     pub expanded: bool,
     /// The text search language (PostgreSQL, defaults to `english`).
     pub language: Option<String>,
+    /// Whether the columns are already `tsvector`s (PostgreSQL).
+    pub vector: bool,
 }
 
 /// A where clause: its boolean (`and`, `or`, `and not`, `or not`) and kind.
@@ -145,6 +147,31 @@ pub enum WhereKind {
         value: Operand,
         options: FullTextOptions,
     },
+    /// A binary (case and byte sensitive) comparison (MySQL).
+    Binary {
+        column: Ident,
+        value: Operand,
+        not: bool,
+    },
+    /// `? [not] between "min" and "max"`: a value between two columns.
+    ValueBetween {
+        value: Operand,
+        min: Ident,
+        max: Ident,
+        not: bool,
+    },
+    /// `("a", "b") operator (?, ?)`
+    RowValues {
+        columns: Vec<Ident>,
+        operator: String,
+        values: Vec<Operand>,
+    },
+    /// JSON array overlap (MySQL / MariaDB).
+    JsonOverlaps {
+        column: String,
+        value: Operand,
+        not: bool,
+    },
 }
 
 /// A having clause.
@@ -221,9 +248,19 @@ pub enum Order {
     Column { column: Ident, direction: Direction },
     /// Raw SQL.
     Raw { sql: String },
+    /// Order by a given sequence of values (`in_order_of`).
+    InOrderOf { column: Ident, values: Vec<Value> },
 }
 
 impl Order {
+    /// The direction of the ordering, when it has one.
+    pub fn direction(&self) -> Option<Direction> {
+        match self {
+            Order::Column { direction, .. } => Some(*direction),
+            _ => None,
+        }
+    }
+
     /// The column being ordered by, if it is a plain column.
     pub fn column_name(&self) -> Option<&str> {
         match self {
@@ -234,6 +271,36 @@ impl Order {
             _ => None,
         }
     }
+}
+
+/// The kind of an index hint.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum IndexHintKind {
+    /// `use index (...)`: suggest an index.
+    Hint,
+    /// `force index (...)`: force an index.
+    Force,
+    /// `ignore index (...)`: ignore an index.
+    Ignore,
+}
+
+/// An index hint (`use_index`, `force_index`, `ignore_index`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IndexHint {
+    /// The kind of hint.
+    pub kind: IndexHintKind,
+    /// The index (or comma separated indexes).
+    pub index: String,
+}
+
+/// A "group limit": at most `value` rows per `column` group (used to limit
+/// eager loads per parent).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GroupLimit {
+    /// The maximum number of rows per group.
+    pub value: i64,
+    /// The column the rows are grouped (partitioned) by.
+    pub column: String,
 }
 
 /// A union with another query.

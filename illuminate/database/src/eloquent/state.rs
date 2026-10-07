@@ -26,9 +26,14 @@ type Hasher = Arc<dyn Fn(&str) -> String + Send + Sync>;
 
 type Reporter = Arc<dyn Fn(&Error) + Send + Sync>;
 
+/// A strict mode violation handler: the model class and the attributes (or
+/// relation) involved.
+pub(crate) type ViolationHandler = Arc<dyn Fn(&str, &[String]) + Send + Sync>;
+
 tokio::task_local! {
     static EVENTS_MUTED: bool;
     static UNGUARDED: bool;
+    static IGNORING_TIMESTAMPS: Vec<TypeId>;
 }
 
 /// The listeners and global scopes registered for one model type.
@@ -56,6 +61,12 @@ pub(crate) struct EloquentState {
     reporter: RwLock<Option<Reporter>>,
     unguarded: AtomicBool,
     morph_map: RwLock<IndexMap<String, String>>,
+    require_morph_map: AtomicBool,
+    prevent_lazy_loading: AtomicBool,
+    prevent_discarding_attributes: AtomicBool,
+    prevent_missing_attributes: AtomicBool,
+    discarded_attribute_handler: RwLock<Option<ViolationHandler>>,
+    missing_attribute_handler: RwLock<Option<ViolationHandler>>,
 }
 
 impl EloquentState {
@@ -144,6 +155,14 @@ impl EloquentState {
 
     pub(crate) fn is_unguarded(&self) -> bool {
         self.unguarded.load(Ordering::SeqCst) || UNGUARDED.try_with(|u| *u).unwrap_or(false)
+    }
+
+    pub(crate) fn has_morph_alias(&self, class: &str) -> bool {
+        self.morph_map
+            .read()
+            .unwrap()
+            .values()
+            .any(|mapped| mapped == class)
     }
 
     pub(crate) fn morph_alias(&self, class: &str) -> String {
@@ -262,4 +281,178 @@ pub fn morph_map<A: Into<String>, C: Into<String>>(map: impl IntoIterator<Item =
     for (alias, class) in map {
         morph_map.insert(alias.into(), class.into());
     }
+}
+
+// ----------------------------------------------------------------------
+// Morph map enforcement
+// ----------------------------------------------------------------------
+
+/// Require every polymorphic model to be in the morph map (Laravel's
+/// `Relation::requireMorphMap()`): writing or querying a polymorphic type
+/// for an unmapped model fails with a
+/// [`ClassMorphViolationException`](super::ClassMorphViolationException).
+pub fn require_morph_map(require: bool) {
+    EloquentState::resolve()
+        .require_morph_map
+        .store(require, Ordering::SeqCst);
+}
+
+/// Determine whether the morph map is required.
+pub fn requires_morph_map() -> bool {
+    EloquentState::resolve()
+        .require_morph_map
+        .load(Ordering::SeqCst)
+}
+
+/// Define the morph map and require every polymorphic model to be in it
+/// (Laravel's `Relation::enforceMorphMap`).
+///
+/// ```
+/// use illuminate_database::eloquent::enforce_morph_map;
+///
+/// enforce_morph_map([("post", "Post"), ("video", "Video")]);
+/// ```
+pub fn enforce_morph_map<A: Into<String>, C: Into<String>>(map: impl IntoIterator<Item = (A, C)>) {
+    morph_map(map);
+    require_morph_map(true);
+}
+
+/// The morph class of a model, failing when the morph map is required and
+/// the model isn't in it.
+pub(crate) fn checked_morph_class<M: Model>() -> illuminate_support::Result<String> {
+    let state = EloquentState::resolve();
+    if state.require_morph_map.load(Ordering::SeqCst) && !state.has_morph_alias(M::class_name()) {
+        return Err(super::ClassMorphViolationException::new(M::class_name()).into());
+    }
+    Ok(state.morph_alias(M::class_name()))
+}
+
+// ----------------------------------------------------------------------
+// Timestamps
+// ----------------------------------------------------------------------
+
+/// Run the future without the model type `M` maintaining its timestamps
+/// (Laravel's `Model::withoutTimestamps`).
+pub(crate) async fn without_timestamps_for<M: Model, F: Future>(future: F) -> F::Output {
+    let mut ignoring = IGNORING_TIMESTAMPS
+        .try_with(|ignoring| ignoring.clone())
+        .unwrap_or_default();
+    ignoring.push(TypeId::of::<M>());
+    IGNORING_TIMESTAMPS.scope(ignoring, future).await
+}
+
+/// Determine whether the model type is currently ignoring its timestamps.
+pub(crate) fn is_ignoring_timestamps<M: Model>() -> bool {
+    IGNORING_TIMESTAMPS
+        .try_with(|ignoring| ignoring.contains(&TypeId::of::<M>()))
+        .unwrap_or(false)
+}
+
+// ----------------------------------------------------------------------
+// Strict mode
+// ----------------------------------------------------------------------
+
+/// Turn Eloquent's strict mode on or off: prevent lazy loading, silently
+/// discarding attributes and accessing missing attributes (Laravel's
+/// `Model::shouldBeStrict()`).
+///
+/// ```
+/// use illuminate_database::eloquent::{should_be_strict, prevents_silently_discarding_attributes};
+///
+/// should_be_strict(true);
+/// assert!(prevents_silently_discarding_attributes());
+/// should_be_strict(false);
+/// ```
+pub fn should_be_strict(strict: bool) {
+    prevent_lazy_loading(strict);
+    prevent_silently_discarding_attributes(strict);
+    prevent_accessing_missing_attributes(strict);
+}
+
+/// Prevent lazy loading relationships.
+///
+/// Rust models never lazy load: a relationship is either eager loaded into
+/// its `#[relation]` field (`with`, `load`) or queried explicitly through
+/// its method, so there is never a hidden query to prevent. The setting is
+/// kept so strict mode reads the same as in Laravel.
+pub fn prevent_lazy_loading(prevent: bool) {
+    EloquentState::resolve()
+        .prevent_lazy_loading
+        .store(prevent, Ordering::SeqCst);
+}
+
+/// Determine whether lazy loading is prevented.
+pub fn prevents_lazy_loading() -> bool {
+    EloquentState::resolve()
+        .prevent_lazy_loading
+        .load(Ordering::SeqCst)
+}
+
+/// Fail (or report) when `fill`, `create`, `update`, ... are given
+/// attributes that aren't mass assignable, instead of silently discarding
+/// them.
+pub fn prevent_silently_discarding_attributes(prevent: bool) {
+    EloquentState::resolve()
+        .prevent_discarding_attributes
+        .store(prevent, Ordering::SeqCst);
+}
+
+/// Determine whether discarding attributes is prevented.
+pub fn prevents_silently_discarding_attributes() -> bool {
+    EloquentState::resolve()
+        .prevent_discarding_attributes
+        .load(Ordering::SeqCst)
+}
+
+/// Register a handler for discarded attributes (the model class and the
+/// discarded keys) instead of failing.
+pub fn handle_discarded_attribute_violation_using(
+    handler: impl Fn(&str, &[String]) + Send + Sync + 'static,
+) {
+    *EloquentState::resolve()
+        .discarded_attribute_handler
+        .write()
+        .unwrap() = Some(Arc::new(handler));
+}
+
+/// Fail (or report) when `try_get_attribute` reads an attribute that
+/// doesn't exist or wasn't retrieved (a partial select).
+pub fn prevent_accessing_missing_attributes(prevent: bool) {
+    EloquentState::resolve()
+        .prevent_missing_attributes
+        .store(prevent, Ordering::SeqCst);
+}
+
+/// Determine whether accessing missing attributes is prevented.
+pub fn prevents_accessing_missing_attributes() -> bool {
+    EloquentState::resolve()
+        .prevent_missing_attributes
+        .load(Ordering::SeqCst)
+}
+
+/// Register a handler for missing attributes (the model class and the key)
+/// instead of failing.
+pub fn handle_missing_attribute_violation_using(
+    handler: impl Fn(&str, &[String]) + Send + Sync + 'static,
+) {
+    *EloquentState::resolve()
+        .missing_attribute_handler
+        .write()
+        .unwrap() = Some(Arc::new(handler));
+}
+
+pub(crate) fn discarded_attribute_handler() -> Option<ViolationHandler> {
+    EloquentState::resolve()
+        .discarded_attribute_handler
+        .read()
+        .unwrap()
+        .clone()
+}
+
+pub(crate) fn missing_attribute_handler() -> Option<ViolationHandler> {
+    EloquentState::resolve()
+        .missing_attribute_handler
+        .read()
+        .unwrap()
+        .clone()
 }

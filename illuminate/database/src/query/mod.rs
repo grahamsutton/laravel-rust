@@ -6,7 +6,8 @@ pub mod grammar;
 mod join;
 
 pub use builder::{
-    BetweenValues, Builder, InValues, IntoQuery, IntoSubQuery, SubQuery, WhereInValues,
+    AfterQueryCallback, BeforeQueryCallback, BetweenValues, Builder, InValues, IntoEmbedding,
+    IntoQuery, IntoSubQuery, SubQuery, WhereInValues,
 };
 pub use clauses::*;
 pub use grammar::{QueryGrammar, UpsertColumn};

@@ -102,9 +102,12 @@ pub mod __private;
 use std::future::Future;
 use std::pin::Pin;
 
-pub use builder::{Builder, TrashedMode};
+pub use builder::{Builder, ModelsCallback, TrashedMode};
 pub use collection::EloquentCollection;
-pub use errors::{MassAssignmentException, ModelNotFoundException, RelationNotFoundException};
+pub use errors::{
+    ClassMorphViolationException, MassAssignmentException, MissingAttributeException,
+    ModelNotFoundException, RelationNotFoundException,
+};
 pub use events::{
     EventDispatcher, EventOutcome, ModelEvent, Observer, has_event_dispatcher,
     set_event_dispatcher, unset_event_dispatcher,
@@ -117,11 +120,17 @@ pub use prunable::{MassPrunable, Prunable, PruneKind};
 pub use relations::{
     BelongsTo, BelongsToMany, Constraint, DynRelation, EagerSpec, FromEager, HasMany,
     HasManyThrough, HasOne, HasOneOrMany, HasOneOrManyThrough, HasOneThrough, MorphMany, MorphOne,
-    MorphTo, Relation, RelationKind, RelationValue, SyncChanges,
+    MorphTo, MorphToMany, PushRelation, Relation, RelationKind, RelationValue, SyncChanges,
+    constraints_disabled, no_constraints,
 };
 pub use scope::{Scope, scope_name};
 pub use state::{
-    hash_using, is_hashed, is_unguarded, morph_map, reguard, report_exceptions_using, unguard,
+    enforce_morph_map, handle_discarded_attribute_violation_using,
+    handle_missing_attribute_violation_using, hash_using, is_hashed, is_unguarded, morph_map,
+    prevent_accessing_missing_attributes, prevent_lazy_loading,
+    prevent_silently_discarding_attributes, prevents_accessing_missing_attributes,
+    prevents_lazy_loading, prevents_silently_discarding_attributes, reguard,
+    report_exceptions_using, require_morph_map, requires_morph_map, should_be_strict, unguard,
     unguarded, without_events,
 };
 
@@ -305,6 +314,50 @@ impl<T: Into<Value> + Clone> IntoIds for &[T] {
 impl<T: Into<Value>> IntoIds for Collection<T> {
     fn into_ids(self) -> Vec<Value> {
         self.into_iter().map(Into::into).collect()
+    }
+}
+
+/// One related model, or several (`where_belongs_to`, `where_attached_to`,
+/// `where_morphed_to`, ...).
+pub trait RelatedModels<R: Model> {
+    /// The models, and whether several were given (a list compares with
+    /// `in`, a single model with `=`).
+    fn into_related_models(self) -> (Vec<R>, bool);
+}
+
+impl<R: Model> RelatedModels<R> for &R {
+    fn into_related_models(self) -> (Vec<R>, bool) {
+        (vec![self.clone()], false)
+    }
+}
+
+impl<R: Model> RelatedModels<R> for Vec<R> {
+    fn into_related_models(self) -> (Vec<R>, bool) {
+        (self, true)
+    }
+}
+
+impl<R: Model> RelatedModels<R> for &Vec<R> {
+    fn into_related_models(self) -> (Vec<R>, bool) {
+        (self.clone(), true)
+    }
+}
+
+impl<R: Model> RelatedModels<R> for &[R] {
+    fn into_related_models(self) -> (Vec<R>, bool) {
+        (self.to_vec(), true)
+    }
+}
+
+impl<R: Model> RelatedModels<R> for Collection<R> {
+    fn into_related_models(self) -> (Vec<R>, bool) {
+        (self.into_vec(), true)
+    }
+}
+
+impl<R: Model> RelatedModels<R> for &Collection<R> {
+    fn into_related_models(self) -> (Vec<R>, bool) {
+        (self.to_vec(), true)
     }
 }
 

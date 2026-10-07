@@ -41,8 +41,23 @@ fn default_morph_key_type() -> &'static str {
     *DEFAULT_MORPH_KEY_TYPE.lock().unwrap()
 }
 
-/// The default precision of time columns (Laravel 11+ uses `0`).
-const DEFAULT_TIME_PRECISION: Option<u32> = Some(0);
+/// The default precision of time columns (Laravel 11+ uses `0`); `u32::MAX`
+/// stands for "no precision".
+static DEFAULT_TIME_PRECISION: AtomicU32 = AtomicU32::new(0);
+
+/// Set the default precision of time columns (`None` leaves the precision
+/// to the database).
+pub fn set_default_time_precision(precision: Option<u32>) {
+    DEFAULT_TIME_PRECISION.store(precision.unwrap_or(u32::MAX), Ordering::SeqCst);
+}
+
+/// Get the default precision of time columns.
+pub fn default_time_precision() -> Option<u32> {
+    match DEFAULT_TIME_PRECISION.load(Ordering::SeqCst) {
+        u32::MAX => None,
+        precision => Some(precision),
+    }
+}
 
 /// A column's default value: a literal, or a raw expression.
 #[derive(Clone, Debug, PartialEq)]
@@ -113,6 +128,26 @@ pub struct ColumnAttributes {
     pub definition: Option<String>,
     pub full_type_definition: Option<String>,
     pub using: Option<String>,
+    /// The dimensions of a `vector` column.
+    pub dimensions: Option<u32>,
+    /// The subtype of a spatial column (`point`, `polygon`, ...).
+    pub subtype: Option<String>,
+    /// The spatial reference system identifier of a spatial column.
+    pub srid: Option<u32>,
+    /// The expression of a `computed` column.
+    pub expression: Option<String>,
+    /// Whether a computed column is persisted (SQL Server).
+    pub persisted: bool,
+    /// Whether to use `algorithm=instant` (MySQL).
+    pub instant: bool,
+    /// The DDL lock mode (MySQL).
+    pub lock: Option<String>,
+    pub spatial_index: Option<IndexFlag>,
+    pub vector_index: Option<IndexFlag>,
+    /// The table referenced by `constrained()` (set by `foreign_id_for`).
+    pub foreign_table: Option<String>,
+    /// The column referenced by `constrained()` (set by `foreign_id_for`).
+    pub foreign_column: Option<String>,
 }
 
 /// A column being added to (or changed on) a table. Modifiers chain:
@@ -321,6 +356,53 @@ impl ColumnDefinition {
         self.with(|c| c.using = Some(expression))
     }
 
+    /// Mark a computed column as persisted (SQL Server; other drivers ignore
+    /// it).
+    pub fn persisted(self) -> Self {
+        self.with(|c| c.persisted = true)
+    }
+
+    /// Use `algorithm=instant` for the column operation (MySQL).
+    pub fn instant(self) -> Self {
+        self.with(|c| c.instant = true)
+    }
+
+    /// Specify the DDL lock mode for the column operation (MySQL): `none`,
+    /// `shared`, `default` or `exclusive`.
+    pub fn lock(self, mode: &str) -> Self {
+        let mode = mode.to_string();
+        self.with(|c| c.lock = Some(mode))
+    }
+
+    /// Specify the column's type (`string`, `text`, ...), usually with
+    /// [`change`](ColumnDefinition::change).
+    pub fn type_(self, kind: &str) -> Self {
+        let kind = kind.to_string();
+        self.with(|c| c.kind = kind)
+    }
+
+    /// Add a spatial index on the column.
+    pub fn spatial_index(self) -> Self {
+        self.with(|c| c.spatial_index = Some(IndexFlag::Yes))
+    }
+
+    /// Add a spatial index with the given name.
+    pub fn spatial_index_named(self, name: &str) -> Self {
+        let name = name.to_string();
+        self.with(|c| c.spatial_index = Some(IndexFlag::Named(name)))
+    }
+
+    /// Add a vector index on the column.
+    pub fn vector_index(self) -> Self {
+        self.with(|c| c.vector_index = Some(IndexFlag::Yes))
+    }
+
+    /// Add a vector index with the given name.
+    pub fn vector_index_named(self, name: &str) -> Self {
+        let name = name.to_string();
+        self.with(|c| c.vector_index = Some(IndexFlag::Named(name)))
+    }
+
     /// Create a foreign key constraint on this column referencing the given
     /// column (`foreign_id("user_id").references("id").on("users")`).
     pub fn references(self, column: &str) -> ForeignKeyDefinition {
@@ -332,11 +414,15 @@ impl ColumnDefinition {
     }
 
     /// Create a foreign key constraint referencing `id` on the table guessed
-    /// from the column name (`user_id` → `users`).
+    /// from the column name (`user_id` → `users`), or the model's key and
+    /// table for `foreign_id_for` columns.
     pub fn constrained(self) -> ForeignKeyDefinition {
-        let name = self.name();
-        let table = Str::plural(&Str::before_last(&name, "_id"));
-        self.references("id").on(&table)
+        let attributes = self.attributes();
+        let table = attributes
+            .foreign_table
+            .unwrap_or_else(|| Str::plural(&Str::before_last(&attributes.name, "_id")));
+        let column = attributes.foreign_column.unwrap_or_else(|| "id".into());
+        self.references(&column).on(&table)
     }
 
     /// Create a foreign key constraint referencing `id` on the given table.
@@ -371,6 +457,8 @@ pub struct CommandAttributes {
     pub not_valid: bool,
     pub online: bool,
     pub should_be_skipped: bool,
+    /// The operator class of a spatial or vector index (PostgreSQL).
+    pub operator_class: Option<String>,
 }
 
 impl CommandAttributes {
@@ -433,6 +521,13 @@ impl IndexDefinition {
     /// Create the index concurrently (PostgreSQL).
     pub fn online(self) -> Self {
         Self(self.0.with(|c| c.online = true))
+    }
+
+    /// Specify the operator class of a spatial or vector index (PostgreSQL),
+    /// or the options of a MariaDB vector index.
+    pub fn operator_class(self, operator_class: &str) -> Self {
+        let operator_class = operator_class.to_string();
+        Self(self.0.with(|c| c.operator_class = Some(operator_class)))
     }
 }
 
@@ -879,6 +974,31 @@ impl Blueprint {
         self.drop_index_command("dropFullText", "fulltext", index.into());
     }
 
+    /// Drop a fulltext index (Laravel's `dropFullText`).
+    pub fn drop_full_text(&mut self, index: impl Into<super::IndexName>) {
+        self.drop_fulltext(index);
+    }
+
+    /// Drop a spatial index (by name, or by its columns).
+    pub fn drop_spatial_index(&mut self, index: impl Into<super::IndexName>) {
+        self.drop_index_command("dropSpatialIndex", "spatialindex", index.into());
+    }
+
+    /// Drop a vector index (by name, or by its columns).
+    pub fn drop_vector_index(&mut self, index: impl Into<super::IndexName>) {
+        self.drop_index_command("dropVectorIndex", "vectorindex", index.into());
+    }
+
+    /// Drop the foreign key column for a model (`user_id` for `User`).
+    pub fn drop_foreign_id_for<M: crate::eloquent::Model>(&mut self) {
+        self.drop_column(M::get_foreign_key());
+    }
+
+    /// Drop a model's foreign key constraint and column.
+    pub fn drop_constrained_foreign_id_for<M: crate::eloquent::Model>(&mut self) {
+        self.drop_constrained_foreign_id(&M::get_foreign_key());
+    }
+
     /// Drop a foreign key (`"posts_user_id_foreign"`, or `vec!["user_id"]`).
     pub fn drop_foreign(&mut self, index: impl Into<super::IndexName>) {
         self.drop_index_command("dropForeign", "foreign", index.into());
@@ -913,6 +1033,11 @@ impl Blueprint {
     /// Drop the `deleted_at` column.
     pub fn drop_soft_deletes(&mut self) {
         self.drop_column("deleted_at");
+    }
+
+    /// Drop the `deleted_at` column (with time zone).
+    pub fn drop_soft_deletes_tz(&mut self) {
+        self.drop_soft_deletes();
     }
 
     /// Drop the `remember_token` column.
@@ -1002,6 +1127,40 @@ impl Blueprint {
             .map(Ident::Name)
             .collect();
         IndexDefinition(self.shared.index_command("fulltext", columns, None))
+    }
+
+    /// Specify a fulltext index for the table (Laravel's `fullText`).
+    pub fn full_text(&mut self, columns: impl super::IntoColumnNames) -> IndexDefinition {
+        self.fulltext(columns)
+    }
+
+    /// Specify a spatial index for the table (MySQL / PostgreSQL).
+    pub fn spatial_index(&mut self, columns: impl super::IntoColumnNames) -> IndexDefinition {
+        let columns = columns
+            .into_column_names()
+            .into_iter()
+            .map(Ident::Name)
+            .collect();
+        IndexDefinition(self.shared.index_command("spatialIndex", columns, None))
+    }
+
+    /// Specify a vector index for the column (PostgreSQL `hnsw` with
+    /// `vector_cosine_ops`, or MariaDB `M=6 DISTANCE=cosine`).
+    pub fn vector_index(&mut self, column: &str) -> IndexDefinition {
+        IndexDefinition(self.shared.index_command(
+            "vectorIndex",
+            vec![Ident::Name(column.to_string())],
+            None,
+        ))
+    }
+
+    /// Specify a named vector index for the column.
+    pub fn vector_index_named(&mut self, column: &str, name: &str) -> IndexDefinition {
+        IndexDefinition(self.shared.index_command(
+            "vectorIndex",
+            vec![Ident::Name(column.to_string())],
+            Some(name.to_string()),
+        ))
     }
 
     /// Specify a raw index for the table.
@@ -1241,6 +1400,51 @@ impl Blueprint {
         self.add_column("char", column, |c| c.length = Some(26))
     }
 
+    /// Create a foreign key column for a model (`user_id` for `User`): an
+    /// unsigned big integer, a ULID or a UUID depending on the model's key.
+    /// `constrained()` references the model's table and key.
+    ///
+    /// ```ignore
+    /// table.foreign_id_for::<User>().constrained().cascade_on_delete();
+    /// ```
+    pub fn foreign_id_for<M: crate::eloquent::Model>(&mut self) -> ColumnDefinition {
+        self.foreign_id_for_column::<M>(&M::get_foreign_key())
+    }
+
+    /// Create a foreign key column for a model, with the given column name.
+    pub fn foreign_id_for_column<M: crate::eloquent::Model>(
+        &mut self,
+        column: &str,
+    ) -> ColumnDefinition {
+        let definition = match (M::key_type(), M::unique_ids()) {
+            (crate::eloquent::KeyType::Int, _) => self.foreign_id(column),
+            (_, crate::eloquent::UniqueIds::Ulid) => self.foreign_ulid(column),
+            _ => self.foreign_uuid(column),
+        };
+        Self::references_model::<M>(definition)
+    }
+
+    /// Create a UUID foreign key column for a model.
+    pub fn foreign_uuid_for<M: crate::eloquent::Model>(&mut self) -> ColumnDefinition {
+        let definition = self.foreign_uuid(&M::get_foreign_key());
+        Self::references_model::<M>(definition)
+    }
+
+    /// Create a ULID foreign key column for a model.
+    pub fn foreign_ulid_for<M: crate::eloquent::Model>(&mut self) -> ColumnDefinition {
+        let definition = self.foreign_ulid(&M::get_foreign_key());
+        Self::references_model::<M>(definition)
+    }
+
+    fn references_model<M: crate::eloquent::Model>(
+        definition: ColumnDefinition,
+    ) -> ColumnDefinition {
+        definition.with(|c| {
+            c.foreign_table = Some(M::table());
+            c.foreign_column = Some(M::primary_key().to_string());
+        })
+    }
+
     /// Create a new float column (precision 53).
     pub fn float(&mut self, column: &str) -> ColumnDefinition {
         self.add_column("float", column, |c| c.precision = Some(53))
@@ -1296,7 +1500,7 @@ impl Blueprint {
     }
 
     fn time_column(&mut self, kind: &str, column: &str) -> ColumnDefinition {
-        self.add_column(kind, column, |c| c.precision = DEFAULT_TIME_PRECISION)
+        self.add_column(kind, column, |c| c.precision = default_time_precision())
     }
 
     /// Create a new date-time column.
@@ -1346,6 +1550,11 @@ impl Blueprint {
         self.timestamp_tz("updated_at").nullable();
     }
 
+    /// Alias of [`Blueprint::timestamps_tz`].
+    pub fn nullable_timestamps_tz(&mut self) {
+        self.timestamps_tz();
+    }
+
     /// Add nullable `created_at` and `updated_at` date-time columns.
     pub fn datetimes(&mut self) {
         self.date_time("created_at").nullable();
@@ -1360,6 +1569,16 @@ impl Blueprint {
     /// Add a nullable soft delete timestamp with the given column name.
     pub fn soft_deletes_named(&mut self, column: &str) -> ColumnDefinition {
         self.timestamp(column).nullable()
+    }
+
+    /// Add a nullable `deleted_at` date-time column for soft deletes.
+    pub fn soft_deletes_datetime(&mut self) -> ColumnDefinition {
+        self.date_time("deleted_at").nullable()
+    }
+
+    /// Add a nullable soft delete date-time column with the given name.
+    pub fn soft_deletes_datetime_named(&mut self, column: &str) -> ColumnDefinition {
+        self.date_time(column).nullable()
     }
 
     /// Add a nullable `deleted_at` timestamp (with time zone) for soft deletes.
@@ -1400,6 +1619,64 @@ impl Blueprint {
     /// Add a nullable `remember_token` string column (length 100).
     pub fn remember_token(&mut self) -> ColumnDefinition {
         self.string_len("remember_token", 100).nullable()
+    }
+
+    /// Create a new vector column, optionally with its dimensions
+    /// (PostgreSQL `pgvector`, MySQL 9 and MariaDB 11.7+).
+    pub fn vector(&mut self, column: &str, dimensions: Option<u32>) -> ColumnDefinition {
+        self.add_column("vector", column, |c| c.dimensions = dimensions)
+    }
+
+    /// Create a new geometry column (any subtype, SRID 0).
+    pub fn geometry(&mut self, column: &str) -> ColumnDefinition {
+        self.geometry_with(column, None, 0)
+    }
+
+    /// Create a new geometry column with a subtype (`point`, `polygon`, ...)
+    /// and a spatial reference system identifier.
+    pub fn geometry_with(
+        &mut self,
+        column: &str,
+        subtype: Option<&str>,
+        srid: u32,
+    ) -> ColumnDefinition {
+        let subtype = subtype.map(String::from);
+        self.add_column("geometry", column, |c| {
+            c.subtype = subtype;
+            c.srid = Some(srid);
+        })
+    }
+
+    /// Create a new geography column (any subtype, SRID 4326).
+    pub fn geography(&mut self, column: &str) -> ColumnDefinition {
+        self.geography_with(column, None, 4326)
+    }
+
+    /// Create a new geography column with a subtype and a spatial reference
+    /// system identifier.
+    pub fn geography_with(
+        &mut self,
+        column: &str,
+        subtype: Option<&str>,
+        srid: u32,
+    ) -> ColumnDefinition {
+        let subtype = subtype.map(String::from);
+        self.add_column("geography", column, |c| {
+            c.subtype = subtype;
+            c.srid = Some(srid);
+        })
+    }
+
+    /// Create a new generated, computed column (SQL Server). Other drivers
+    /// use `virtual_as` / `stored_as` on a typed column instead.
+    pub fn computed(&mut self, column: &str, expression: &str) -> ColumnDefinition {
+        let expression = expression.to_string();
+        self.add_column("computed", column, |c| c.expression = Some(expression))
+    }
+
+    /// Create a new `tsvector` column (PostgreSQL).
+    pub fn tsvector(&mut self, column: &str) -> ColumnDefinition {
+        self.add_column("tsvector", column, |_| {})
     }
 
     /// Create a new column with a raw definition.
@@ -1515,11 +1792,20 @@ impl Blueprint {
     fn add_fluent_indexes(&mut self, grammar: &SchemaGrammar) {
         for column in self.get_columns() {
             let attributes = column.attributes();
-            for kind in ["primary", "unique", "index", "fulltext"] {
+            for kind in [
+                "primary",
+                "unique",
+                "index",
+                "fulltext",
+                "spatialIndex",
+                "vectorIndex",
+            ] {
                 let flag = match kind {
                     "primary" => attributes.primary.clone(),
                     "unique" => attributes.unique.clone(),
                     "index" => attributes.index.clone(),
+                    "spatialIndex" => attributes.spatial_index.clone(),
+                    "vectorIndex" => attributes.vector_index.clone(),
                     _ => attributes.fulltext.clone(),
                 };
                 let Some(flag) = flag else { continue };
@@ -1543,6 +1829,8 @@ impl Blueprint {
                             "primary" => "dropPrimary",
                             "unique" => "dropUnique",
                             "index" => "dropIndex",
+                            "spatialIndex" => "dropSpatialIndex",
+                            "vectorIndex" => "dropVectorIndex",
                             _ => "dropFullText",
                         };
                         self.drop_index_command(
@@ -1558,6 +1846,8 @@ impl Blueprint {
                     "primary" => guard.primary = None,
                     "unique" => guard.unique = None,
                     "index" => guard.index = None,
+                    "spatialIndex" => guard.spatial_index = None,
+                    "vectorIndex" => guard.vector_index = None,
                     _ => guard.fulltext = None,
                 }
                 break;

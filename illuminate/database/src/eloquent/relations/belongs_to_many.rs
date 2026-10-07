@@ -21,6 +21,7 @@ enum PivotWhere {
     Basic(String, String, Value),
     In(String, Vec<Value>, bool),
     Null(String, bool),
+    Between(String, Value, Value, bool),
 }
 
 /// A many-to-many relationship through a pivot table.
@@ -36,11 +37,17 @@ pub struct BelongsToMany<P: Model, R: Model> {
     parent_key: String,
     related_key: String,
     pivot_columns: Vec<String>,
-    pivot_wheres: Vec<PivotWhere>,
+    pivot_wheres: Vec<(String, PivotWhere)>,
     pivot_values: Map<String, Value>,
     timestamps: bool,
+    accessor: String,
     _parent: PhantomData<fn() -> P>,
 }
+
+/// A polymorphic many-to-many relationship (`self.morph_to_many("taggable")`
+/// and its inverse, `self.morphed_by_many("taggable")`): a
+/// [`BelongsToMany`] whose pivot table also holds the parent's type.
+pub type MorphToMany<P, R> = BelongsToMany<P, R>;
 
 impl<P: Model, R: Model> Clone for BelongsToMany<P, R> {
     fn clone(&self) -> Self {
@@ -56,6 +63,7 @@ impl<P: Model, R: Model> Clone for BelongsToMany<P, R> {
             pivot_wheres: self.pivot_wheres.clone(),
             pivot_values: self.pivot_values.clone(),
             timestamps: self.timestamps,
+            accessor: self.accessor.clone(),
             _parent: PhantomData,
         }
     }
@@ -77,8 +85,42 @@ impl<P: Model, R: Model> BelongsToMany<P, R> {
             pivot_wheres: Vec::new(),
             pivot_values: Map::new(),
             timestamps: false,
+            accessor: "pivot".to_string(),
             _parent: PhantomData,
         }
+    }
+
+    /// A polymorphic many-to-many relationship (`morph_to_many`): the
+    /// parent's key and type live in the `{name}_id` / `{name}_type` pivot
+    /// columns of the `{name}s` table.
+    pub(crate) fn morph_to_many(self, name: &str) -> Self {
+        let class = crate::eloquent::state::checked_morph_class::<P>();
+        let relation = self
+            .table(Str::plural(name))
+            .foreign_pivot_key(format!("{name}_id"));
+        relation.morph_type(name, class)
+    }
+
+    /// The inverse of a polymorphic many-to-many relationship
+    /// (`morphed_by_many`): the related model's key and type live in the
+    /// `{name}_id` / `{name}_type` pivot columns.
+    pub(crate) fn morphed_by_many(self, name: &str) -> Self {
+        let class = crate::eloquent::state::checked_morph_class::<R>();
+        let relation = self
+            .table(Str::plural(name))
+            .related_pivot_key(format!("{name}_id"));
+        relation.morph_type(name, class)
+    }
+
+    fn morph_type(mut self, name: &str, class: Result<String>) -> Self {
+        let class = match class {
+            Ok(class) => class,
+            Err(error) => {
+                self.query.query.error = Some(error.to_string());
+                String::new()
+            }
+        };
+        self.with_pivot_value(&format!("{name}_type"), class)
     }
 
     /// Use a different pivot table.
@@ -134,41 +176,166 @@ impl<P: Model, R: Model> BelongsToMany<P, R> {
     }
 
     /// Constrain the pivot table with an operator.
-    pub fn where_pivot_op(mut self, column: &str, operator: &str, value: impl Into<Value>) -> Self {
-        self.pivot_wheres.push(PivotWhere::Basic(
-            column.to_string(),
-            operator.to_string(),
-            value.into(),
-        ));
+    pub fn where_pivot_op(self, column: &str, operator: &str, value: impl Into<Value>) -> Self {
+        self.pivot_where(
+            "and",
+            PivotWhere::Basic(column.to_string(), operator.to_string(), value.into()),
+        )
+    }
+
+    fn pivot_where(mut self, boolean: &str, clause: PivotWhere) -> Self {
+        self.pivot_wheres.push((boolean.to_string(), clause));
         self
+    }
+
+    /// Add an "or" pivot table constraint. The pivot constraints are grouped
+    /// together, so an "or" never escapes the parent's constraint.
+    pub fn or_where_pivot(self, column: &str, value: impl Into<Value>) -> Self {
+        self.or_where_pivot_op(column, "=", value)
+    }
+
+    /// Add an "or" pivot table constraint with an operator.
+    pub fn or_where_pivot_op(self, column: &str, operator: &str, value: impl Into<Value>) -> Self {
+        self.pivot_where(
+            "or",
+            PivotWhere::Basic(column.to_string(), operator.to_string(), value.into()),
+        )
     }
 
     /// Constrain a pivot column to a list of values.
-    pub fn where_pivot_in(mut self, column: &str, values: impl IntoIds) -> Self {
-        self.pivot_wheres
-            .push(PivotWhere::In(column.to_string(), values.into_ids(), false));
-        self
+    pub fn where_pivot_in(self, column: &str, values: impl IntoIds) -> Self {
+        self.pivot_where(
+            "and",
+            PivotWhere::In(column.to_string(), values.into_ids(), false),
+        )
+    }
+
+    /// Add an "or where pivot in" constraint.
+    pub fn or_where_pivot_in(self, column: &str, values: impl IntoIds) -> Self {
+        self.pivot_where(
+            "or",
+            PivotWhere::In(column.to_string(), values.into_ids(), false),
+        )
     }
 
     /// Exclude a list of values of a pivot column.
-    pub fn where_pivot_not_in(mut self, column: &str, values: impl IntoIds) -> Self {
-        self.pivot_wheres
-            .push(PivotWhere::In(column.to_string(), values.into_ids(), true));
-        self
+    pub fn where_pivot_not_in(self, column: &str, values: impl IntoIds) -> Self {
+        self.pivot_where(
+            "and",
+            PivotWhere::In(column.to_string(), values.into_ids(), true),
+        )
+    }
+
+    /// Add an "or where pivot not in" constraint.
+    pub fn or_where_pivot_not_in(self, column: &str, values: impl IntoIds) -> Self {
+        self.pivot_where(
+            "or",
+            PivotWhere::In(column.to_string(), values.into_ids(), true),
+        )
     }
 
     /// Only pivot records where the column is null.
-    pub fn where_pivot_null(mut self, column: &str) -> Self {
-        self.pivot_wheres
-            .push(PivotWhere::Null(column.to_string(), false));
-        self
+    pub fn where_pivot_null(self, column: &str) -> Self {
+        self.pivot_where("and", PivotWhere::Null(column.to_string(), false))
+    }
+
+    /// Add an "or where pivot null" constraint.
+    pub fn or_where_pivot_null(self, column: &str) -> Self {
+        self.pivot_where("or", PivotWhere::Null(column.to_string(), false))
     }
 
     /// Only pivot records where the column is not null.
-    pub fn where_pivot_not_null(mut self, column: &str) -> Self {
-        self.pivot_wheres
-            .push(PivotWhere::Null(column.to_string(), true));
+    pub fn where_pivot_not_null(self, column: &str) -> Self {
+        self.pivot_where("and", PivotWhere::Null(column.to_string(), true))
+    }
+
+    /// Add an "or where pivot not null" constraint.
+    pub fn or_where_pivot_not_null(self, column: &str) -> Self {
+        self.pivot_where("or", PivotWhere::Null(column.to_string(), true))
+    }
+
+    /// Only pivot records where the column is between the two values.
+    pub fn where_pivot_between(
+        self,
+        column: &str,
+        min: impl Into<Value>,
+        max: impl Into<Value>,
+    ) -> Self {
+        self.pivot_where(
+            "and",
+            PivotWhere::Between(column.to_string(), min.into(), max.into(), false),
+        )
+    }
+
+    /// Add an "or where pivot between" constraint.
+    pub fn or_where_pivot_between(
+        self,
+        column: &str,
+        min: impl Into<Value>,
+        max: impl Into<Value>,
+    ) -> Self {
+        self.pivot_where(
+            "or",
+            PivotWhere::Between(column.to_string(), min.into(), max.into(), false),
+        )
+    }
+
+    /// Only pivot records where the column is outside the two values.
+    pub fn where_pivot_not_between(
+        self,
+        column: &str,
+        min: impl Into<Value>,
+        max: impl Into<Value>,
+    ) -> Self {
+        self.pivot_where(
+            "and",
+            PivotWhere::Between(column.to_string(), min.into(), max.into(), true),
+        )
+    }
+
+    /// Add an "or where pivot not between" constraint.
+    pub fn or_where_pivot_not_between(
+        self,
+        column: &str,
+        min: impl Into<Value>,
+        max: impl Into<Value>,
+    ) -> Self {
+        self.pivot_where(
+            "or",
+            PivotWhere::Between(column.to_string(), min.into(), max.into(), true),
+        )
+    }
+
+    /// Order the related models by a pivot column.
+    pub fn order_by_pivot(mut self, column: &str, direction: &str) -> Self {
+        self.query = self
+            .query
+            .order_by(format!("{}.{column}", self.table), direction);
         self
+    }
+
+    /// Order the related models by a pivot column, descending.
+    pub fn order_by_pivot_desc(self, column: &str) -> Self {
+        self.order_by_pivot(column, "desc")
+    }
+
+    /// Expose the pivot columns under a different attribute than `pivot`
+    /// (the related model needs a `#[computed]` field of that name).
+    pub fn as_(mut self, accessor: &str) -> Self {
+        self.accessor = accessor.to_string();
+        self
+    }
+
+    /// The attribute the pivot columns are exposed under.
+    pub fn get_pivot_accessor(&self) -> &str {
+        &self.accessor
+    }
+
+    /// The keys of every related model attached to the parent.
+    pub async fn all_related_ids(&self) -> Result<Collection<Value>> {
+        self.new_pivot_query()
+            .pluck(self.related_pivot_key.as_str())
+            .await
     }
 
     /// Constrain a pivot column and set it on attached records.
@@ -190,7 +357,15 @@ impl<P: Model, R: Model> BelongsToMany<P, R> {
 
     forward_eloquent!(query);
 
-    fn apply_pivot_wheres(&self, mut query: QueryBuilder, qualify: bool) -> QueryBuilder {
+    fn apply_pivot_wheres(&self, query: QueryBuilder, qualify: bool) -> QueryBuilder {
+        let has_or = self.pivot_wheres.iter().any(|(boolean, _)| boolean == "or");
+        if has_or {
+            return query.where_group(|nested| self.add_pivot_wheres(nested, qualify));
+        }
+        self.add_pivot_wheres(query, qualify)
+    }
+
+    fn add_pivot_wheres(&self, mut query: QueryBuilder, qualify: bool) -> QueryBuilder {
         let column = |name: &str| {
             if qualify {
                 format!("{}.{name}", self.table)
@@ -198,17 +373,33 @@ impl<P: Model, R: Model> BelongsToMany<P, R> {
                 name.to_string()
             }
         };
-        for clause in &self.pivot_wheres {
+        for (boolean, clause) in &self.pivot_wheres {
+            let boolean = boolean.as_str();
             query = match clause {
                 PivotWhere::Basic(name, operator, value) => {
-                    query.where_op(column(name), operator, value.clone())
+                    query.add_where(column(name), operator, value.clone(), boolean)
                 }
-                PivotWhere::In(name, values, false) => query.where_in(column(name), values.clone()),
-                PivotWhere::In(name, values, true) => {
-                    query.where_not_in(column(name), values.clone())
+                PivotWhere::In(name, values, not) => {
+                    query.add_where_in(column(name), values.clone(), boolean, *not)
+                }
+                PivotWhere::Null(name, false) if boolean == "or" => {
+                    query.or_where_null(column(name))
                 }
                 PivotWhere::Null(name, false) => query.where_null(column(name)),
+                PivotWhere::Null(name, true) if boolean == "or" => {
+                    query.or_where_not_null(column(name))
+                }
                 PivotWhere::Null(name, true) => query.where_not_null(column(name)),
+                PivotWhere::Between(name, min, max, not) => match (boolean, *not) {
+                    ("or", false) => {
+                        query.or_where_between(column(name), [min.clone(), max.clone()])
+                    }
+                    ("or", true) => {
+                        query.or_where_not_between(column(name), [min.clone(), max.clone()])
+                    }
+                    (_, false) => query.where_between(column(name), [min.clone(), max.clone()]),
+                    (_, true) => query.where_not_between(column(name), [min.clone(), max.clone()]),
+                },
             };
         }
         query
@@ -267,7 +458,7 @@ impl<P: Model, R: Model> BelongsToMany<P, R> {
         }
         let mut models = hydrate::<R>(cleaned)?;
         for (model, pivot) in models.iter_mut().zip(&pivots) {
-            model.set_attribute("pivot", Value::Object(pivot.clone()))?;
+            model.set_attribute(&self.accessor, Value::Object(pivot.clone()))?;
         }
         finish(&mut models, &eager).await?;
         Ok(models.into_iter().zip(pivots).collect())
@@ -503,6 +694,109 @@ impl<P: Model, R: Model> BelongsToMany<P, R> {
             self.attach(changes.attached.clone()).await?;
         }
         Ok(changes)
+    }
+
+    /// Create a related model and attach it, without firing events.
+    pub async fn create_quietly(&self, attributes: impl Into<Attributes>) -> Result<R> {
+        crate::eloquent::without_events(self.create(attributes)).await
+    }
+
+    /// Create and attach several related models, without firing events.
+    pub async fn create_many_quietly<A: Into<Attributes>>(
+        &self,
+        records: impl IntoIterator<Item = A>,
+    ) -> Result<Collection<R>> {
+        crate::eloquent::without_events(self.create_many(records)).await
+    }
+
+    /// Save and attach a related model, without firing events.
+    pub async fn save_quietly(&self, model: &mut R) -> Result<bool> {
+        crate::eloquent::without_events(self.save(model)).await
+    }
+
+    /// Save and attach several related models, without firing events.
+    pub async fn save_many_quietly(&self, models: &mut [R]) -> Result<()> {
+        crate::eloquent::without_events(self.save_many(models)).await
+    }
+
+    /// Create a related model and attach it, or — when a unique constraint
+    /// stops the insert — attach the existing one matching the attributes.
+    pub async fn create_or_first(
+        &self,
+        attributes: impl Into<Attributes>,
+        values: impl Into<Attributes>,
+    ) -> Result<R> {
+        let attributes = attributes.into();
+        let mut candidate = R::template();
+        candidate.fill(attributes.clone().merge(values))?;
+        let connection = R::get_connection();
+        let result = connection
+            .transaction(|| async move {
+                candidate.save().await?;
+                Ok(candidate)
+            })
+            .await;
+        let model = match result {
+            Ok(model) => model,
+            Err(error)
+                if error
+                    .downcast_ref::<crate::QueryException>()
+                    .is_some_and(crate::QueryException::is_unique_constraint_violation) =>
+            {
+                let existing = R::query()
+                    .use_write_pdo()
+                    .where_map(attributes.0)
+                    .first()
+                    .await?;
+                match existing {
+                    Some(model) => {
+                        let key = model.get_attribute(&self.related_key);
+                        if self
+                            .new_pivot_query()
+                            .where_(self.related_pivot_key.as_str(), key.clone())
+                            .exists()
+                            .await?
+                        {
+                            return Ok(model);
+                        }
+                        model
+                    }
+                    None => return Err(error),
+                }
+            }
+            Err(error) => return Err(error),
+        };
+        self.attach(vec![model.get_attribute(&self.related_key)])
+            .await?;
+        Ok(model)
+    }
+
+    /// Increment a column of the first related model matching the
+    /// attributes, or create (and attach) it with the column set to
+    /// `default`.
+    pub async fn increment_or_create(
+        &self,
+        attributes: impl Into<Attributes>,
+        column: &str,
+        default: impl Into<Value>,
+        step: impl Into<Value>,
+    ) -> Result<R> {
+        let attributes = attributes.into();
+        let mut query = self.get_query();
+        for (name, value) in &attributes.0 {
+            let name = query.qualify_column(name);
+            query.query = query.query.where_(name, Operand::from(value.clone()));
+        }
+        if let Some(mut model) = self.fetch(query.take(1)).await?.into_iter().next() {
+            model.increment(column, step.into()).await?;
+            return Ok(model);
+        }
+        let mut defaults = Attributes::new();
+        defaults.insert(column, default.into());
+        let mut model = R::template();
+        model.force_fill(attributes.merge(defaults))?;
+        self.save(&mut model).await?;
+        Ok(model)
     }
 
     /// Save a related model and attach it.

@@ -28,6 +28,7 @@ pub struct HasOneOrManyThrough<P: Model, R: Model, T: Model, const MANY: bool> {
     second_key: String,
     local_key: String,
     second_local_key: String,
+    with_trashed_parents: bool,
     _models: PhantomData<fn() -> (P, T)>,
 }
 
@@ -46,6 +47,7 @@ impl<P: Model, R: Model, T: Model, const MANY: bool> Clone for HasOneOrManyThrou
             second_key: self.second_key.clone(),
             local_key: self.local_key.clone(),
             second_local_key: self.second_local_key.clone(),
+            with_trashed_parents: self.with_trashed_parents,
             _models: PhantomData,
         }
     }
@@ -60,8 +62,22 @@ impl<P: Model, R: Model, T: Model, const MANY: bool> HasOneOrManyThrough<P, R, T
             second_key: T::get_foreign_key(),
             local_key: P::primary_key().to_string(),
             second_local_key: T::primary_key().to_string(),
+            with_trashed_parents: false,
             _models: PhantomData,
         }
+    }
+
+    /// Include related models whose intermediate (soft deleted) model is
+    /// trashed.
+    pub fn with_trashed_parents(mut self) -> Self {
+        self.with_trashed_parents = true;
+        self
+    }
+
+    /// Whether the intermediate model is soft deletable (Laravel's
+    /// `throughParentSoftDeletes`).
+    pub fn through_parent_soft_deletes(&self) -> bool {
+        T::soft_deletes()
     }
 
     /// The foreign key on the intermediate model (`country_id` on `users`).
@@ -108,7 +124,7 @@ impl<P: Model, R: Model, T: Model, const MANY: bool> HasOneOrManyThrough<P, R, T
             "=",
             second_key,
         );
-        if T::soft_deletes() {
+        if T::soft_deletes() && !self.with_trashed_parents {
             query.query = query
                 .query
                 .where_null(format!("{through}.{}", T::deleted_at_column()));
@@ -119,6 +135,9 @@ impl<P: Model, R: Model, T: Model, const MANY: bool> HasOneOrManyThrough<P, R, T
     /// The relationship query, constrained to the parent.
     pub fn get_query(&self) -> Builder<R> {
         let mut query = self.join_through(self.query.clone());
+        if super::constraints_disabled() {
+            return query;
+        }
         let first_key = format!("{}.{}", Self::through_table(), self.first_key);
         query.query = query.query.where_(first_key, self.get_parent_key());
         query
@@ -148,7 +167,7 @@ impl<P: Model, R: Model, T: Model, const MANY: bool> HasOneOrManyThrough<P, R, T
     }
 
     async fn fetch(&self, query: Builder<R>) -> Result<Vec<R>> {
-        if !key_is_set(&self.get_parent_key()) {
+        if !key_is_set(&self.get_parent_key()) && !super::constraints_disabled() {
             return Ok(Vec::new());
         }
         Ok(self
@@ -190,6 +209,20 @@ impl<P: Model, R: Model, T: Model> HasOneOrManyThrough<P, R, T, true> {
     /// Get the related models.
     pub async fn get(&self) -> Result<Collection<R>> {
         Ok(self.fetch(self.get_query()).await?.into())
+    }
+
+    /// The same relationship as a has-one-through relationship.
+    pub fn one(self) -> HasOneOrManyThrough<P, R, T, false> {
+        HasOneOrManyThrough {
+            query: self.query,
+            parent: self.parent,
+            first_key: self.first_key,
+            second_key: self.second_key,
+            local_key: self.local_key,
+            second_local_key: self.second_local_key,
+            with_trashed_parents: self.with_trashed_parents,
+            _models: PhantomData,
+        }
     }
 }
 

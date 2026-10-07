@@ -46,7 +46,7 @@ use super::{BoxFuture, key_string};
 use crate::query::Builder as QueryBuilder;
 
 pub use belongs_to::{BelongsTo, MorphTo};
-pub use belongs_to_many::BelongsToMany;
+pub use belongs_to_many::{BelongsToMany, MorphToMany};
 pub use has_one_or_many::{HasMany, HasOne, HasOneOrMany, MorphMany, MorphOne};
 pub use through::{HasManyThrough, HasOneOrManyThrough, HasOneThrough};
 
@@ -63,6 +63,9 @@ pub struct EagerSpec {
     pub constraint: Option<Constraint>,
     /// The columns to select (`posts:id,title`).
     pub columns: Option<Vec<String>>,
+    /// Relationship aggregates to add to the related models: `(relation,
+    /// column, function)`, as `with_count` / `with_sum` / ... would.
+    pub aggregates: Vec<(String, String, String)>,
 }
 
 impl fmt::Debug for EagerSpec {
@@ -71,6 +74,7 @@ impl fmt::Debug for EagerSpec {
             .field("nested", &self.nested)
             .field("constrained", &self.constraint.is_some())
             .field("columns", &self.columns)
+            .field("aggregates", &self.aggregates)
             .finish()
     }
 }
@@ -112,10 +116,40 @@ impl EagerSpec {
         if let Some(constraint) = &self.constraint {
             builder.query = constraint(builder.query);
         }
+        for (relation, column, function) in &self.aggregates {
+            builder = builder.with_aggregate(relation, column, function, |query| query);
+        }
         for (name, spec) in &self.nested {
             merge_spec(&mut builder.eager, name, spec.clone());
         }
         builder
+    }
+
+    /// The eager load tree for a polymorphic relationship and the
+    /// relationships to load on the model it points to (`load_morph`).
+    pub fn morph_tree(relation: &str, relations: Vec<String>) -> Vec<(String, EagerSpec)> {
+        let mut tree = Vec::new();
+        add_path(&mut tree, relation, None);
+        for nested in relations {
+            add_path(&mut tree, &format!("{relation}.{nested}"), None);
+        }
+        tree
+    }
+
+    /// The eager load tree for a polymorphic relationship with relationship
+    /// aggregates on the model it points to (`load_morph_count`, ...).
+    pub fn morph_aggregate_tree(
+        relation: &str,
+        relations: Vec<String>,
+        column: &str,
+        function: &str,
+    ) -> Vec<(String, EagerSpec)> {
+        let mut spec = EagerSpec::default();
+        for nested in relations {
+            spec.aggregates
+                .push((nested, column.to_string(), function.to_string()));
+        }
+        vec![(relation.to_string(), spec)]
     }
 
     /// Parse relationship paths (`posts.comments`, `posts:id,title`) into
@@ -138,6 +172,7 @@ fn merge_spec(tree: &mut Vec<(String, EagerSpec)>, name: &str, spec: EagerSpec) 
             if spec.columns.is_some() {
                 existing.columns = spec.columns;
             }
+            existing.aggregates.extend(spec.aggregates);
             for (nested, nested_spec) in spec.nested {
                 merge_spec(&mut existing.nested, &nested, nested_spec);
             }
@@ -358,6 +393,86 @@ impl<R: Model> RelationValue for Option<R> {
             .map(|model| Value::Object(model.to_array()))
             .unwrap_or(Value::Null)
     }
+}
+
+/// A `#[relation]` field whose loaded models can be saved (`push`).
+pub trait PushRelation: Send {
+    /// Push every loaded related model, returning `false` when one of them
+    /// couldn't be saved.
+    fn push_related(&mut self) -> BoxFuture<'_, Result<bool>>;
+}
+
+fn push_models<R: Model>(models: &mut [R]) -> BoxFuture<'_, Result<bool>> {
+    Box::pin(async move {
+        for model in models.iter_mut() {
+            if !model.push().await? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    })
+}
+
+impl<R: Model> PushRelation for Option<Vec<R>> {
+    fn push_related(&mut self) -> BoxFuture<'_, Result<bool>> {
+        match self {
+            Some(models) => push_models(models),
+            None => Box::pin(async { Ok(true) }),
+        }
+    }
+}
+
+impl<R: Model> PushRelation for Vec<R> {
+    fn push_related(&mut self) -> BoxFuture<'_, Result<bool>> {
+        push_models(self)
+    }
+}
+
+impl<R: Model> PushRelation for Option<Collection<R>> {
+    fn push_related(&mut self) -> BoxFuture<'_, Result<bool>> {
+        match self {
+            Some(models) => push_models(&mut models[..]),
+            None => Box::pin(async { Ok(true) }),
+        }
+    }
+}
+
+impl<R: Model> PushRelation for Collection<R> {
+    fn push_related(&mut self) -> BoxFuture<'_, Result<bool>> {
+        push_models(&mut self[..])
+    }
+}
+
+/// Also covers `Option<Box<R>>`, since boxed models are models.
+impl<R: Model> PushRelation for Option<R> {
+    fn push_related(&mut self) -> BoxFuture<'_, Result<bool>> {
+        match self {
+            Some(model) => push_models(std::slice::from_mut(model)),
+            None => Box::pin(async { Ok(true) }),
+        }
+    }
+}
+
+tokio::task_local! {
+    static WITHOUT_CONSTRAINTS: bool;
+}
+
+/// Run the future with relationship constraints disabled (Laravel's
+/// `Relation::noConstraints`): relation queries built inside don't
+/// constrain the related models to the parent.
+///
+/// ```ignore
+/// let every_post = relations::no_constraints(async { user.posts().get().await }).await?;
+/// ```
+pub async fn no_constraints<F: std::future::Future>(future: F) -> F::Output {
+    WITHOUT_CONSTRAINTS.scope(true, future).await
+}
+
+/// Whether relationship constraints are currently disabled.
+pub fn constraints_disabled() -> bool {
+    WITHOUT_CONSTRAINTS
+        .try_with(|disabled| *disabled)
+        .unwrap_or(false)
 }
 
 /// Convert what a relationship loaded into a `#[relation]` field's type.

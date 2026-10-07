@@ -7,7 +7,7 @@ use illuminate_support::{Collection, Result, Value};
 use super::builder::Builder;
 use super::model::Model;
 use super::relations::{EagerSpec, collect_keys};
-use super::{IntoIds, IntoRelations, key_string};
+use super::{IntoAttributeNames, IntoIds, IntoRelations, key_string};
 
 /// Methods for collections of models (Laravel's `Eloquent\Collection`).
 ///
@@ -49,6 +49,87 @@ pub trait EloquentCollection<M: Model> {
         &mut self,
         relations: impl IntoRelations,
     ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Load `{relation}_{function}_{column}` aggregate attributes (`sum`,
+    /// `avg`, `min`, `max`, `count`, `exists`) onto every model with one
+    /// query.
+    fn load_aggregate(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+        function: &str,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Load `{relation}_sum_{column}` attributes onto every model.
+    fn load_sum(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, column, "sum")
+    }
+
+    /// Load `{relation}_avg_{column}` attributes onto every model.
+    fn load_avg(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, column, "avg")
+    }
+
+    /// Load `{relation}_min_{column}` attributes onto every model.
+    fn load_min(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, column, "min")
+    }
+
+    /// Load `{relation}_max_{column}` attributes onto every model.
+    fn load_max(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, column, "max")
+    }
+
+    /// Load `{relation}_exists` attributes onto every model.
+    fn load_exists(
+        &mut self,
+        relations: impl IntoRelations,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, "*", "exists")
+    }
+
+    /// Eager load a polymorphic (`morph_to`) relationship and the given
+    /// relationships of the models it points to.
+    fn load_morph(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Eager load a polymorphic relationship with relationship counts on
+    /// the models it points to.
+    fn load_morph_count(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+    ) -> impl Future<Output = Result<()>> + Send;
+
+    /// Hide the given attributes on every model (models with an
+    /// [`Original`](super::Original) field).
+    fn make_hidden(&mut self, attributes: impl IntoAttributeNames) -> &mut Self;
+
+    /// Make the given attributes visible on every model (models with an
+    /// [`Original`](super::Original) field).
+    fn make_visible(&mut self, attributes: impl IntoAttributeNames) -> &mut Self;
+
+    /// Every model without its loaded relationships.
+    fn without_relations(&self) -> Collection<M>;
 
     /// Reload every model from the database (models that no longer exist
     /// are dropped).
@@ -124,6 +205,66 @@ impl<M: Model> EloquentCollection<M> for Collection<M> {
         async move { load_counts(self, relations).await }
     }
 
+    fn load_aggregate(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+        function: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        let relations = relations.into_relations();
+        let (column, function) = (column.to_string(), function.to_string());
+        async move { load_aggregates(self, relations, &column, &function).await }
+    }
+
+    fn load_morph(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+    ) -> impl Future<Output = Result<()>> + Send {
+        let tree = EagerSpec::morph_tree(relation, relations.into_relations());
+        async move {
+            for (name, spec) in tree {
+                M::eager_load(self, &name, spec).await?;
+            }
+            Ok(())
+        }
+    }
+
+    fn load_morph_count(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+    ) -> impl Future<Output = Result<()>> + Send {
+        let tree =
+            EagerSpec::morph_aggregate_tree(relation, relations.into_relations(), "*", "count");
+        async move {
+            for (name, spec) in tree {
+                M::eager_load(self, &name, spec).await?;
+            }
+            Ok(())
+        }
+    }
+
+    fn make_hidden(&mut self, attributes: impl IntoAttributeNames) -> &mut Self {
+        let attributes = attributes.into_attribute_names();
+        for model in self.iter_mut() {
+            model.make_hidden(attributes.clone());
+        }
+        self
+    }
+
+    fn make_visible(&mut self, attributes: impl IntoAttributeNames) -> &mut Self {
+        let attributes = attributes.into_attribute_names();
+        for model in self.iter_mut() {
+            model.make_visible(attributes.clone());
+        }
+        self
+    }
+
+    fn without_relations(&self) -> Collection<M> {
+        self.iter().map(|model| model.without_relations()).collect()
+    }
+
     fn fresh(&self) -> impl Future<Output = Result<Collection<M>>> + Send {
         let keys = self.model_keys();
         async move {
@@ -146,19 +287,28 @@ impl<M: Model> EloquentCollection<M> for Collection<M> {
 /// Load `{relation}_count` (or aliased) attributes onto the models with one
 /// query.
 pub(crate) async fn load_counts<M: Model>(models: &mut [M], relations: Vec<String>) -> Result<()> {
+    load_aggregates(models, relations, "*", "count").await
+}
+
+/// Load relationship aggregate attributes (`{relation}_{function}_{column}`)
+/// onto the models with one query.
+pub(crate) async fn load_aggregates<M: Model>(
+    models: &mut [M],
+    relations: Vec<String>,
+    column: &str,
+    function: &str,
+) -> Result<()> {
     let keys = collect_keys(models, M::primary_key());
     if keys.is_empty() || relations.is_empty() {
         return Ok(());
     }
     let query = M::query().without_global_scopes();
     let key = query.qualify_column(M::primary_key());
-    let rows = query
-        .select(key)
-        .with_count(relations)
-        .where_key(Value::Array(keys))
-        .to_base()
-        .get()
-        .await?;
+    let mut query = query.select(key);
+    for relation in &relations {
+        query = query.with_aggregate(relation, column, function, |query| query);
+    }
+    let rows = query.where_key(Value::Array(keys)).to_base().get().await?;
     for row in rows {
         let Value::Object(row) = row else { continue };
         let row_key = key_string(row.get(M::primary_key()).unwrap_or(&Value::Null));

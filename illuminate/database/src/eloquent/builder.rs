@@ -3,7 +3,12 @@
 use std::fmt;
 use std::future::Future;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
+use futures::StreamExt;
+use futures::stream::BoxStream;
+
+use futures::TryStreamExt;
 use illuminate_pagination::{
     LengthAwarePaginator, Paginator, PaginatorOptions, current_page, current_path,
 };
@@ -14,12 +19,16 @@ use super::events::{ModelEvent, fire};
 use super::model::{Model, normalize_key, now};
 use super::relations::{self, Constraint, DynRelation, EagerSpec};
 use super::scope::{Scope, scope_name};
-use super::state::EloquentState;
+use super::state::{EloquentState, ScopeFn};
 use super::{Attributes, IntoIds, IntoRelations};
 use crate::error::MultipleRecordsFoundException;
 use crate::expression::{Expression, Ident};
+use crate::pagination::{Cursor, CursorPaginator, CursorPaginatorOptions, resolve_current_cursor};
 use crate::query::Builder as QueryBuilder;
 use crate::{Connection, DatabaseManager};
+
+/// A callback run on the models a query returns (`after_query`).
+pub type ModelsCallback<M> = Arc<dyn Fn(Collection<M>) -> Collection<M> + Send + Sync>;
 
 /// Which soft deleted models a query includes.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -55,6 +64,9 @@ pub struct Builder<M: Model> {
     trashed: TrashedMode,
     pub(crate) qualifier: String,
     scopes_applied: bool,
+    local_scopes: Vec<(String, ScopeFn<M>)>,
+    pending_attributes: Attributes,
+    after_query_callbacks: Vec<ModelsCallback<M>>,
     _model: PhantomData<fn() -> M>,
 }
 
@@ -68,6 +80,9 @@ impl<M: Model> Clone for Builder<M> {
             trashed: self.trashed,
             qualifier: self.qualifier.clone(),
             scopes_applied: self.scopes_applied,
+            local_scopes: self.local_scopes.clone(),
+            pending_attributes: self.pending_attributes.clone(),
+            after_query_callbacks: self.after_query_callbacks.clone(),
             _model: PhantomData,
         }
     }
@@ -115,6 +130,9 @@ impl<M: Model> Builder<M> {
             trashed: TrashedMode::Without,
             qualifier: M::table(),
             scopes_applied: false,
+            local_scopes: Vec::new(),
+            pending_attributes: Attributes::new(),
+            after_query_callbacks: Vec::new(),
             _model: PhantomData,
         }
     }
@@ -131,6 +149,9 @@ impl<M: Model> Builder<M> {
             trashed: TrashedMode::Without,
             qualifier,
             scopes_applied: false,
+            local_scopes: Vec::new(),
+            pending_attributes: Attributes::new(),
+            after_query_callbacks: Vec::new(),
             _model: PhantomData,
         }
     }
@@ -235,6 +256,89 @@ impl<M: Model> Builder<M> {
         self
     }
 
+    /// Exclude the given model(s) from the results.
+    ///
+    /// ```ignore
+    /// let others = User::query().except(&current_user).get().await?;
+    /// ```
+    pub fn except(self, models: impl super::RelatedModels<M>) -> Self {
+        let (models, _) = models.into_related_models();
+        let keys: Vec<Value> = models.iter().map(|model| model.get_key()).collect();
+        self.where_key_not(Value::Array(keys))
+    }
+
+    /// Add an "or" clause matching the given primary key(s).
+    pub fn or_where_key(mut self, id: impl Into<Value>) -> Self {
+        let column = self.qualify_column(M::primary_key());
+        self.query = match id.into() {
+            Value::Array(ids) => {
+                let ids: Vec<Value> = ids.into_iter().map(normalize_key::<M>).collect();
+                self.query.or_where_in(column, ids)
+            }
+            id => self.query.or_where(column, normalize_key::<M>(id)),
+        };
+        self
+    }
+
+    /// Add an "or" clause excluding the given primary key(s).
+    pub fn or_where_key_not(mut self, id: impl Into<Value>) -> Self {
+        let column = self.qualify_column(M::primary_key());
+        self.query = match id.into() {
+            Value::Array(ids) => {
+                let ids: Vec<Value> = ids.into_iter().map(normalize_key::<M>).collect();
+                self.query.or_where_not_in(column, ids)
+            }
+            id => self.query.or_where_op(column, "!=", normalize_key::<M>(id)),
+        };
+        self
+    }
+
+    /// Constrain the query to the attributes, and give them to every model
+    /// the builder creates (`create`, `first_or_create`, `make`, ...).
+    ///
+    /// ```ignore
+    /// let drafts = Post::query().with_attributes(json!({"status": "draft"}));
+    /// let post = drafts.create(json!({"title": "Hello"})).await?; // status = draft
+    /// ```
+    pub fn with_attributes(self, attributes: impl Into<Attributes>) -> Self {
+        self.with_attributes_as(attributes, true)
+    }
+
+    /// Give the attributes to every model the builder creates, constraining
+    /// the query to them only when `as_conditions` is true.
+    pub fn with_attributes_as(
+        mut self,
+        attributes: impl Into<Attributes>,
+        as_conditions: bool,
+    ) -> Self {
+        let attributes = attributes.into();
+        if as_conditions {
+            for (column, value) in &attributes.0 {
+                let column = self.qualify_column(column);
+                self.query = self.query.where_(column, value.clone());
+            }
+        }
+        self.pending_attributes = std::mem::take(&mut self.pending_attributes).merge(attributes);
+        self
+    }
+
+    /// A new model instance carrying the builder's pending attributes.
+    pub fn new_model_instance(&self, attributes: impl Into<Attributes>) -> Result<M> {
+        let mut model = M::template();
+        if !self.pending_attributes.is_empty() {
+            model.force_fill(self.pending_attributes.clone())?;
+        }
+        model.fill(attributes)?;
+        Ok(model)
+    }
+
+    /// A new model instance, filled without mass assignment protection.
+    fn new_model_instance_forced(&self, attributes: impl Into<Attributes>) -> Result<M> {
+        let mut model = M::template();
+        model.force_fill(self.pending_attributes.clone().merge(attributes))?;
+        Ok(model)
+    }
+
     /// Apply a local scope.
     ///
     /// ```ignore
@@ -294,6 +398,67 @@ impl<M: Model> Builder<M> {
         self
     }
 
+    /// Remove every global scope except the given ones (by name; the soft
+    /// delete scope is `"SoftDeletingScope"`).
+    pub fn without_global_scopes_except(mut self, scopes: impl IntoRelations) -> Self {
+        let keep = scopes.into_relations();
+        let names: Vec<String> = EloquentState::resolve()
+            .global_scopes::<M>()
+            .into_iter()
+            .map(|(name, _)| name)
+            .chain(self.local_scopes.iter().map(|(name, _)| name.clone()))
+            .collect();
+        for name in names {
+            if !keep.contains(&name) {
+                self.removed_scopes.push(name);
+            }
+        }
+        if !keep.iter().any(|name| name == "SoftDeletingScope") {
+            self.trashed = TrashedMode::With;
+        }
+        self
+    }
+
+    /// Register a global scope on this query only.
+    pub fn with_global_scope(
+        mut self,
+        name: &str,
+        scope: impl Fn(Builder<M>) -> Builder<M> + Send + Sync + 'static,
+    ) -> Self {
+        self.local_scopes.retain(|(existing, _)| existing != name);
+        self.local_scopes.push((name.to_string(), Arc::new(scope)));
+        self
+    }
+
+    /// The names of the global scopes removed from the query.
+    pub fn removed_scopes(&self) -> &[String] {
+        &self.removed_scopes
+    }
+
+    /// Register a callback run on the models the query returns.
+    ///
+    /// ```ignore
+    /// let users = User::query()
+    ///     .after_query(|users| users.filter(|user| user.active))
+    ///     .get()
+    ///     .await?;
+    /// ```
+    pub fn after_query(
+        mut self,
+        callback: impl Fn(Collection<M>) -> Collection<M> + Send + Sync + 'static,
+    ) -> Self {
+        self.after_query_callbacks.push(Arc::new(callback));
+        self
+    }
+
+    /// Run the "after query" callbacks on the models.
+    pub fn apply_after_query_callbacks(&self, mut models: Collection<M>) -> Collection<M> {
+        for callback in &self.after_query_callbacks {
+            models = callback(models);
+        }
+        models
+    }
+
     /// Apply the global scopes and the soft delete scope.
     pub(crate) fn applied(&self) -> Self {
         let mut builder = self.clone();
@@ -307,6 +472,7 @@ impl<M: Model> Builder<M> {
             EloquentState::resolve()
                 .global_scopes::<M>()
                 .into_iter()
+                .chain(builder.local_scopes.iter().cloned())
                 .filter(|(name, _)| !builder.removed_scopes.contains(name))
                 .collect()
         };
@@ -376,6 +542,17 @@ impl<M: Model> Builder<M> {
     pub fn with_only(mut self, relations: impl IntoRelations) -> Self {
         self.eager.clear();
         self.with(relations)
+    }
+
+    /// Stop eager loading the given relationships (an alias of `without`).
+    pub fn without_eager_load(self, relations: impl IntoRelations) -> Self {
+        self.without(relations)
+    }
+
+    /// Stop eager loading every relationship.
+    pub fn without_eager_loads(mut self) -> Self {
+        self.eager.clear();
+        self
     }
 
     // ------------------------------------------------------------------
@@ -640,6 +817,496 @@ impl<M: Model> Builder<M> {
         self.or_where_has(relation, move |query| query.where_(column, value))
     }
 
+    /// Add an "or where relation" clause with an operator.
+    pub fn or_where_relation_op(
+        self,
+        relation: &str,
+        column: &str,
+        operator: &str,
+        value: impl Into<crate::Operand>,
+    ) -> Self {
+        let column = column.to_string();
+        self.or_where_has(relation, move |query| {
+            query.where_op(column, operator, value)
+        })
+    }
+
+    /// Only models without a related model whose column equals the value.
+    pub fn where_doesnt_have_relation(
+        self,
+        relation: &str,
+        column: &str,
+        value: impl Into<crate::Operand>,
+    ) -> Self {
+        let column = column.to_string();
+        self.where_doesnt_have(relation, move |query| query.where_(column, value))
+    }
+
+    /// Only models without a related model matching the operator and value.
+    pub fn where_doesnt_have_relation_op(
+        self,
+        relation: &str,
+        column: &str,
+        operator: &str,
+        value: impl Into<crate::Operand>,
+    ) -> Self {
+        let column = column.to_string();
+        self.where_doesnt_have(relation, move |query| {
+            query.where_op(column, operator, value)
+        })
+    }
+
+    /// Add an "or where doesn't have relation" clause.
+    pub fn or_where_doesnt_have_relation(
+        self,
+        relation: &str,
+        column: &str,
+        value: impl Into<crate::Operand>,
+    ) -> Self {
+        let column = column.to_string();
+        self.or_where_doesnt_have(relation, move |query| query.where_(column, value))
+    }
+
+    /// Only models whose relationship matches the constraint, eager loading
+    /// the matching related models.
+    ///
+    /// ```ignore
+    /// let users = User::query()
+    ///     .with_where_has("posts", |query| query.where_("featured", true))
+    ///     .get()
+    ///     .await?;
+    /// ```
+    pub fn with_where_has(
+        self,
+        relation: &str,
+        constraint: impl Fn(QueryBuilder) -> QueryBuilder + Send + Sync + 'static,
+    ) -> Self {
+        let constraint: Constraint = Arc::new(constraint);
+        let name = relation.split(':').next().unwrap_or(relation).to_string();
+        let existence = constraint.clone();
+        self.where_has(&name, move |query| existence(query))
+            .with_constrained(relation, move |query| constraint(query))
+    }
+
+    /// Only models with a related model whose column equals the value,
+    /// eager loading the matching related models.
+    pub fn with_where_relation(
+        self,
+        relation: &str,
+        column: &str,
+        value: impl Into<crate::Operand> + Clone + Send + Sync + 'static,
+    ) -> Self {
+        let column = column.to_string();
+        let value: crate::Operand = value.into();
+        self.with_where_has(relation, move |query| {
+            query.where_(column.clone(), value.clone())
+        })
+    }
+
+    /// The relationship used by `where_belongs_to` / `where_morphed_to`,
+    /// checked to be an inverse (belongs-to) relationship.
+    fn belongs_to_relation(&self, name: &str) -> Result<Box<dyn DynRelation>> {
+        match M::relation(name) {
+            Some(relation) if relation.kind() == relations::RelationKind::BelongsTo => Ok(relation),
+            _ => Err(RelationNotFoundException::new(M::class_name(), name).into()),
+        }
+    }
+
+    fn add_where_belongs_to<R: Model>(
+        mut self,
+        related: impl super::RelatedModels<R>,
+        relation: Option<&str>,
+        boolean: &str,
+    ) -> Self {
+        let name = relation
+            .map(String::from)
+            .unwrap_or_else(|| Str::snake(R::class_name()));
+        let relation = match self.belongs_to_relation(&name) {
+            Ok(relation) => relation,
+            Err(error) => return self.fail(error.to_string()),
+        };
+        let (models, many) = related.into_related_models();
+        let template = relation.attributes_for_parent(&R::template().to_attributes());
+        let Some(foreign_key) = template.keys().next().cloned() else {
+            return self;
+        };
+        let column = self.qualify_column(&foreign_key);
+        let keys: Vec<Value> = models
+            .iter()
+            .map(|model| {
+                relation
+                    .attributes_for_parent(&model.to_attributes())
+                    .get(&foreign_key)
+                    .cloned()
+                    .unwrap_or(Value::Null)
+            })
+            .collect();
+        self.query = if many {
+            self.query.add_where_in(column, keys, boolean, false)
+        } else {
+            let key = keys.into_iter().next().unwrap_or(Value::Null);
+            self.query.add_where(column, "=", key, boolean)
+        };
+        self
+    }
+
+    /// Only models belonging to the given model(s), through the
+    /// belongs-to relationship named after the related model (`user` for
+    /// `User`).
+    ///
+    /// ```ignore
+    /// let posts = Post::query().where_belongs_to(&user).get().await?;
+    /// let posts = Post::query().where_belongs_to(users).get().await?;
+    /// ```
+    pub fn where_belongs_to<R: Model>(self, related: impl super::RelatedModels<R>) -> Self {
+        self.add_where_belongs_to(related, None, "and")
+    }
+
+    /// Only models belonging to the given model(s) through the named
+    /// relationship.
+    pub fn where_belongs_to_relation<R: Model>(
+        self,
+        related: impl super::RelatedModels<R>,
+        relation: &str,
+    ) -> Self {
+        self.add_where_belongs_to(related, Some(relation), "and")
+    }
+
+    /// Add an "or where belongs to" clause.
+    pub fn or_where_belongs_to<R: Model>(self, related: impl super::RelatedModels<R>) -> Self {
+        self.add_where_belongs_to(related, None, "or")
+    }
+
+    /// Add an "or where belongs to" clause through the named relationship.
+    pub fn or_where_belongs_to_relation<R: Model>(
+        self,
+        related: impl super::RelatedModels<R>,
+        relation: &str,
+    ) -> Self {
+        self.add_where_belongs_to(related, Some(relation), "or")
+    }
+
+    fn add_where_attached_to<R: Model>(
+        self,
+        related: impl super::RelatedModels<R>,
+        relation: Option<&str>,
+        boolean: &str,
+    ) -> Self {
+        let name = relation
+            .map(String::from)
+            .unwrap_or_else(|| Str::plural(&Str::snake(R::class_name())));
+        match M::relation(&name) {
+            Some(relation) if relation.kind() == relations::RelationKind::BelongsToMany => {}
+            _ => {
+                return self
+                    .fail(RelationNotFoundException::new(M::class_name(), &name).to_string());
+            }
+        }
+        let (models, _) = related.into_related_models();
+        let keys: Vec<Value> = models.iter().map(|model| model.get_key()).collect();
+        let column = format!("{}.{}", R::table(), R::primary_key());
+        self.add_has(
+            &name,
+            ">=",
+            1,
+            boolean,
+            Some(move |query: QueryBuilder| query.where_in(column, keys)),
+        )
+    }
+
+    /// Only models attached to the given model(s) through the many-to-many
+    /// relationship named after the related model (`roles` for `Role`).
+    ///
+    /// ```ignore
+    /// let users = User::query().where_attached_to(&admin_role).get().await?;
+    /// ```
+    pub fn where_attached_to<R: Model>(self, related: impl super::RelatedModels<R>) -> Self {
+        self.add_where_attached_to(related, None, "and")
+    }
+
+    /// Only models attached to the given model(s) through the named
+    /// relationship.
+    pub fn where_attached_to_relation<R: Model>(
+        self,
+        related: impl super::RelatedModels<R>,
+        relation: &str,
+    ) -> Self {
+        self.add_where_attached_to(related, Some(relation), "and")
+    }
+
+    /// Add an "or where attached to" clause.
+    pub fn or_where_attached_to<R: Model>(self, related: impl super::RelatedModels<R>) -> Self {
+        self.add_where_attached_to(related, None, "or")
+    }
+
+    /// Add an "or where attached to" clause through the named relationship.
+    pub fn or_where_attached_to_relation<R: Model>(
+        self,
+        related: impl super::RelatedModels<R>,
+        relation: &str,
+    ) -> Self {
+        self.add_where_attached_to(related, Some(relation), "or")
+    }
+
+    /// Constrain the query by several polymorphic relationships at once:
+    /// a model matches when *any* of them matches. Rust `morph_to`
+    /// relationships are typed (`imageable_post`, `imageable_video`), so
+    /// each name covers one morph type.
+    fn add_has_morph(
+        mut self,
+        relations: impl IntoRelations,
+        operator: &str,
+        count: i64,
+        boolean: &str,
+        constraint: Option<&(dyn Fn(QueryBuilder) -> QueryBuilder + Send + Sync)>,
+    ) -> Self {
+        let mut nested = Builder::<M>::from_query(self.query.for_nested_where());
+        nested.qualifier = self.qualifier.clone();
+        for (index, relation) in relations.into_relations().iter().enumerate() {
+            let inner = if index == 0 { "and" } else { "or" };
+            nested = match constraint {
+                Some(constraint) => nested.add_has(
+                    relation,
+                    operator,
+                    count,
+                    inner,
+                    Some(|query: QueryBuilder| constraint(query)),
+                ),
+                None => nested.add_has(
+                    relation,
+                    operator,
+                    count,
+                    inner,
+                    None::<fn(QueryBuilder) -> QueryBuilder>,
+                ),
+            };
+        }
+        self.query = self.query.add_nested_where_query(nested.query, boolean);
+        self
+    }
+
+    /// Only models whose polymorphic relationship (any of the given typed
+    /// `morph_to` relations) exists.
+    ///
+    /// ```ignore
+    /// let comments = Comment::query()
+    ///     .has_morph(["commentable_post", "commentable_video"])
+    ///     .get()
+    ///     .await?;
+    /// ```
+    pub fn has_morph(self, relations: impl IntoRelations) -> Self {
+        self.add_has_morph(relations, ">=", 1, "and", None)
+    }
+
+    /// Only models with a number of morphed related models matching the
+    /// operator and count.
+    pub fn has_morph_op(self, relations: impl IntoRelations, operator: &str, count: i64) -> Self {
+        self.add_has_morph(relations, operator, count, "and", None)
+    }
+
+    /// Add an "or has morph" clause.
+    pub fn or_has_morph(self, relations: impl IntoRelations) -> Self {
+        self.add_has_morph(relations, ">=", 1, "or", None)
+    }
+
+    /// Only models whose polymorphic relationship doesn't exist.
+    pub fn doesnt_have_morph(self, relations: impl IntoRelations) -> Self {
+        self.add_has_morph(relations, "<", 1, "and", None)
+    }
+
+    /// Add an "or doesn't have morph" clause.
+    pub fn or_doesnt_have_morph(self, relations: impl IntoRelations) -> Self {
+        self.add_has_morph(relations, "<", 1, "or", None)
+    }
+
+    /// Only models whose polymorphic relationship matches the constraint.
+    ///
+    /// ```ignore
+    /// let comments = Comment::query()
+    ///     .where_has_morph(["commentable_post", "commentable_video"], |query| {
+    ///         query.where_like("title", "code%")
+    ///     })
+    ///     .get()
+    ///     .await?;
+    /// ```
+    pub fn where_has_morph(
+        self,
+        relations: impl IntoRelations,
+        constraint: impl Fn(QueryBuilder) -> QueryBuilder + Send + Sync,
+    ) -> Self {
+        self.add_has_morph(relations, ">=", 1, "and", Some(&constraint))
+    }
+
+    /// Add an "or where has morph" clause.
+    pub fn or_where_has_morph(
+        self,
+        relations: impl IntoRelations,
+        constraint: impl Fn(QueryBuilder) -> QueryBuilder + Send + Sync,
+    ) -> Self {
+        self.add_has_morph(relations, ">=", 1, "or", Some(&constraint))
+    }
+
+    /// Only models whose polymorphic relationship doesn't match the
+    /// constraint.
+    pub fn where_doesnt_have_morph(
+        self,
+        relations: impl IntoRelations,
+        constraint: impl Fn(QueryBuilder) -> QueryBuilder + Send + Sync,
+    ) -> Self {
+        self.add_has_morph(relations, "<", 1, "and", Some(&constraint))
+    }
+
+    /// Add an "or where doesn't have morph" clause.
+    pub fn or_where_doesnt_have_morph(
+        self,
+        relations: impl IntoRelations,
+        constraint: impl Fn(QueryBuilder) -> QueryBuilder + Send + Sync,
+    ) -> Self {
+        self.add_has_morph(relations, "<", 1, "or", Some(&constraint))
+    }
+
+    /// Only models whose polymorphic relationship has the column value.
+    pub fn where_morph_relation(
+        self,
+        relations: impl IntoRelations,
+        column: &str,
+        value: impl Into<crate::Operand>,
+    ) -> Self {
+        let value: crate::Operand = value.into();
+        self.where_has_morph(relations, move |query| query.where_(column, value.clone()))
+    }
+
+    /// Add an "or where morph relation" clause.
+    pub fn or_where_morph_relation(
+        self,
+        relations: impl IntoRelations,
+        column: &str,
+        value: impl Into<crate::Operand>,
+    ) -> Self {
+        let value: crate::Operand = value.into();
+        self.or_where_has_morph(relations, move |query| query.where_(column, value.clone()))
+    }
+
+    /// Only models whose polymorphic relationship doesn't have the column
+    /// value.
+    pub fn where_morph_doesnt_have_relation(
+        self,
+        relations: impl IntoRelations,
+        column: &str,
+        value: impl Into<crate::Operand>,
+    ) -> Self {
+        let value: crate::Operand = value.into();
+        self.where_doesnt_have_morph(relations, move |query| query.where_(column, value.clone()))
+    }
+
+    /// Add an "or where morph doesn't have relation" clause.
+    pub fn or_where_morph_doesnt_have_relation(
+        self,
+        relations: impl IntoRelations,
+        column: &str,
+        value: impl Into<crate::Operand>,
+    ) -> Self {
+        let value: crate::Operand = value.into();
+        self.or_where_doesnt_have_morph(relations, move |query| query.where_(column, value.clone()))
+    }
+
+    /// The `(type column, foreign key)` of a polymorphic relationship.
+    fn morph_columns<R: Model>(
+        &self,
+        name: &str,
+    ) -> Result<(Box<dyn DynRelation>, String, String)> {
+        let relation = self.belongs_to_relation(name)?;
+        let template = relation.attributes_for_parent(&R::template().to_attributes());
+        let mut keys = template.keys().cloned();
+        match (keys.next(), keys.next()) {
+            (Some(foreign_key), Some(morph_type)) => Ok((relation, morph_type, foreign_key)),
+            _ => Err(RelationNotFoundException::new(M::class_name(), name).into()),
+        }
+    }
+
+    fn add_where_morphed_to<R: Model>(
+        mut self,
+        relation: &str,
+        related: impl super::RelatedModels<R>,
+        boolean: &str,
+        not: bool,
+    ) -> Self {
+        let (relation, morph_type, foreign_key) = match self.morph_columns::<R>(relation) {
+            Ok(columns) => columns,
+            Err(error) => return self.fail(error.to_string()),
+        };
+        let (models, _) = related.into_related_models();
+        let class = relation
+            .attributes_for_parent(&R::template().to_attributes())
+            .get(&morph_type)
+            .cloned()
+            .unwrap_or(Value::Null);
+        let keys: Vec<Value> = models.iter().map(|model| model.get_key()).collect();
+        let (morph_type, foreign_key) = (
+            self.qualify_column(&morph_type),
+            self.qualify_column(&foreign_key),
+        );
+        let group = move |query: QueryBuilder| {
+            query.or_where_group(|query| {
+                let query = if not {
+                    query.where_null_safe_equals(morph_type, class)
+                } else {
+                    query.where_(morph_type, class)
+                };
+                query.where_in(foreign_key, keys)
+            })
+        };
+        self.query = if not {
+            self.query
+                .add_nested_where(group, &format!("{boolean} not"))
+        } else {
+            self.query.add_nested_where(group, boolean)
+        };
+        self
+    }
+
+    /// Only models whose polymorphic relationship points at the given
+    /// model(s).
+    ///
+    /// ```ignore
+    /// let comments = Comment::query().where_morphed_to("commentable_post", &post).get().await?;
+    /// ```
+    pub fn where_morphed_to<R: Model>(
+        self,
+        relation: &str,
+        related: impl super::RelatedModels<R>,
+    ) -> Self {
+        self.add_where_morphed_to(relation, related, "and", false)
+    }
+
+    /// Add an "or where morphed to" clause.
+    pub fn or_where_morphed_to<R: Model>(
+        self,
+        relation: &str,
+        related: impl super::RelatedModels<R>,
+    ) -> Self {
+        self.add_where_morphed_to(relation, related, "or", false)
+    }
+
+    /// Only models whose polymorphic relationship doesn't point at the given
+    /// model(s).
+    pub fn where_not_morphed_to<R: Model>(
+        self,
+        relation: &str,
+        related: impl super::RelatedModels<R>,
+    ) -> Self {
+        self.add_where_morphed_to(relation, related, "and", true)
+    }
+
+    /// Add an "or where not morphed to" clause.
+    pub fn or_where_not_morphed_to<R: Model>(
+        self,
+        relation: &str,
+        related: impl super::RelatedModels<R>,
+    ) -> Self {
+        self.add_where_morphed_to(relation, related, "or", true)
+    }
+
     fn add_has(
         mut self,
         relation: &str,
@@ -685,7 +1352,7 @@ impl<M: Model> Builder<M> {
         let (rows, eager) = self.get_rows().await?;
         let mut models = hydrate::<M>(rows)?;
         finish(&mut models, &eager).await?;
-        Ok(models.into())
+        Ok(self.apply_after_query_callbacks(models.into()))
     }
 
     /// Execute the query and get the raw rows (with scopes applied), plus
@@ -740,6 +1407,62 @@ impl<M: Model> Builder<M> {
         self.clone().where_key(id.into()).first().await
     }
 
+    /// Find a model by its primary key, or call the callback when there is
+    /// none.
+    ///
+    /// ```ignore
+    /// let user = User::query().find_or(1, || async { abort(404) }).await?;
+    /// ```
+    pub async fn find_or<F, Fut, E>(&self, id: impl Into<Value>, callback: F) -> Result<M>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = std::result::Result<M, E>>,
+        E: Into<illuminate_support::Error>,
+    {
+        match self.find(id).await? {
+            Some(model) => Ok(model),
+            None => callback().await.map_err(Into::into),
+        }
+    }
+
+    /// Find the only model with the primary key, failing when there is
+    /// none or several.
+    pub async fn find_sole(&self, id: impl Into<Value>) -> Result<M> {
+        self.clone().where_key(id.into()).sole().await
+    }
+
+    /// Get the first model, or call the callback when there is none.
+    pub async fn first_or<F, Fut, E>(&self, callback: F) -> Result<M>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = std::result::Result<M, E>>,
+        E: Into<illuminate_support::Error>,
+    {
+        match self.first().await? {
+            Some(model) => Ok(model),
+            None => callback().await.map_err(Into::into),
+        }
+    }
+
+    /// Get a single column's value from the first result, or fail with a
+    /// [`ModelNotFoundException`].
+    pub async fn value_or_fail(&self, column: impl Into<Ident>) -> Result<Value> {
+        let column = column.into();
+        let builder = self.applied();
+        let mut query = builder.query.limit(1);
+        if query.columns.is_none() {
+            query = query.select(vec![column.clone()]);
+        }
+        match query.first().await? {
+            Some(Value::Object(row)) => Ok(row
+                .into_iter()
+                .next()
+                .map(|(_, v)| v)
+                .unwrap_or(Value::Null)),
+            _ => Err(ModelNotFoundException::new(M::class_name(), Vec::new()).into()),
+        }
+    }
+
     /// Find a model by its primary key or fail with a [`ModelNotFoundException`].
     pub async fn find_or_fail(&self, id: impl Into<Value>) -> Result<M> {
         let id = id.into();
@@ -759,7 +1482,10 @@ impl<M: Model> Builder<M> {
 
     /// Find a model by its primary key or return a new instance.
     pub async fn find_or_new(&self, id: impl Into<Value>) -> Result<M> {
-        Ok(self.find(id).await?.unwrap_or_else(M::template))
+        match self.find(id).await? {
+            Some(model) => Ok(model),
+            None => self.new_model_instance(Attributes::new()),
+        }
     }
 
     /// Get the first model matching the attributes, or instantiate a new one
@@ -773,9 +1499,7 @@ impl<M: Model> Builder<M> {
         if let Some(model) = self.clone().where_map(attributes.0.clone()).first().await? {
             return Ok(model);
         }
-        let mut model = M::template();
-        model.fill(attributes.merge(values))?;
-        Ok(model)
+        self.new_model_instance(attributes.merge(values))
     }
 
     /// Get the first model matching the attributes, or create one with the
@@ -789,10 +1513,86 @@ impl<M: Model> Builder<M> {
         if let Some(model) = self.clone().where_map(attributes.0.clone()).first().await? {
             return Ok(model);
         }
-        let mut model = M::template();
-        model.fill(attributes.merge(values))?;
+        let mut model = self.new_model_instance(attributes.merge(values))?;
         model.save().await?;
         Ok(model)
+    }
+
+    /// Create the model, or — when a unique constraint stops the insert —
+    /// get the existing one matching the attributes. Faster than
+    /// `first_or_create` when the model usually doesn't exist yet, and safe
+    /// under concurrent requests.
+    pub async fn create_or_first(
+        &self,
+        attributes: impl Into<Attributes>,
+        values: impl Into<Attributes>,
+    ) -> Result<M> {
+        let attributes = attributes.into();
+        let connection = self.query.get_connection().clone();
+        let candidate = self.new_model_instance(attributes.clone().merge(values));
+        let result = connection
+            .transaction(|| async move {
+                let mut model = candidate?;
+                model.save().await?;
+                Ok(model)
+            })
+            .await;
+        match result {
+            Ok(model) => Ok(model),
+            Err(error)
+                if error
+                    .downcast_ref::<crate::QueryException>()
+                    .is_some_and(crate::QueryException::is_unique_constraint_violation) =>
+            {
+                match self
+                    .clone()
+                    .use_write_pdo()
+                    .where_map(attributes.0)
+                    .first()
+                    .await?
+                {
+                    Some(model) => Ok(model),
+                    None => Err(error),
+                }
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    /// Increment a column of the first model matching the attributes, or
+    /// create it with the column set to `default`.
+    ///
+    /// ```ignore
+    /// let counter = PageView::query().increment_or_create(json!({"page": "/"}), "count", 1, 1).await?;
+    /// ```
+    pub async fn increment_or_create(
+        &self,
+        attributes: impl Into<Attributes>,
+        column: &str,
+        default: impl Into<Value>,
+        step: impl Into<Value>,
+    ) -> Result<M> {
+        let attributes = attributes.into();
+        if let Some(mut model) = self.clone().where_map(attributes.0.clone()).first().await? {
+            model.increment(column, step.into()).await?;
+            return Ok(model);
+        }
+        let mut defaults = Attributes::new();
+        defaults.insert(column, default.into());
+        let mut model = self.new_model_instance_forced(attributes.merge(defaults))?;
+        model.save().await?;
+        Ok(model)
+    }
+
+    /// Create and save a new model without firing any events.
+    pub async fn create_quietly(&self, attributes: impl Into<Attributes>) -> Result<M> {
+        super::state::without_events(self.create(attributes)).await
+    }
+
+    /// Create and save a new model, ignoring mass assignment protection,
+    /// without firing any events.
+    pub async fn force_create_quietly(&self, attributes: impl Into<Attributes>) -> Result<M> {
+        super::state::without_events(self.force_create(attributes)).await
     }
 
     /// Update the first model matching the attributes with the values, or
@@ -812,18 +1612,21 @@ impl<M: Model> Builder<M> {
 
     /// Create and save a new model.
     pub async fn create(&self, attributes: impl Into<Attributes>) -> Result<M> {
-        let mut model = M::template();
-        model.fill(attributes)?;
+        let mut model = self.new_model_instance(attributes)?;
         model.save().await?;
         Ok(model)
     }
 
     /// Create and save a new model, ignoring mass assignment protection.
     pub async fn force_create(&self, attributes: impl Into<Attributes>) -> Result<M> {
-        let mut model = M::template();
-        model.force_fill(attributes)?;
+        let mut model = self.new_model_instance_forced(attributes)?;
         model.save().await?;
         Ok(model)
+    }
+
+    /// A new, unsaved model carrying the builder's pending attributes.
+    pub fn make(&self, attributes: impl Into<Attributes>) -> Result<M> {
+        self.new_model_instance(attributes)
     }
 
     /// Get a single column's value from the first result.
@@ -936,6 +1739,194 @@ impl<M: Model> Builder<M> {
         Ok(Paginator::new(items, per_page, page, options))
     }
 
+    /// Stream the models one at a time from a single query (Laravel's
+    /// `cursor`): only one model is hydrated at a time. Relationships
+    /// can't be eager loaded on a cursor.
+    ///
+    /// ```ignore
+    /// use futures::StreamExt;
+    ///
+    /// let mut users = User::query().cursor();
+    /// while let Some(user) = users.next().await {
+    ///     let user = user?;
+    /// }
+    /// ```
+    pub fn cursor(&self) -> BoxStream<'static, Result<M>> {
+        let builder = self.applied();
+        let callbacks = builder.after_query_callbacks.clone();
+        builder
+            .query
+            .cursor()
+            .then(move |row| {
+                let callbacks = callbacks.clone();
+                async move {
+                    let row = match row? {
+                        Value::Object(row) => row,
+                        _ => return Ok(None),
+                    };
+                    let mut models = hydrate::<M>(vec![row])?;
+                    finish(&mut models, &[]).await?;
+                    let mut models = Collection::from(models);
+                    for callback in &callbacks {
+                        models = callback(models);
+                    }
+                    Ok(models.into_iter().next())
+                }
+            })
+            .filter_map(|model: Result<Option<M>>| futures::future::ready(model.transpose()))
+            .boxed()
+    }
+
+    /// Paginate the models with a cursor (`None` uses the model's
+    /// `per_page`); the cursor comes from the request's `cursor` parameter
+    /// unless one is given.
+    pub async fn cursor_paginate(
+        &self,
+        per_page: impl Into<Option<u64>>,
+        cursor: Option<Cursor>,
+    ) -> Result<CursorPaginator<M>> {
+        self.cursor_paginate_with(per_page, "cursor", cursor).await
+    }
+
+    /// Cursor pagination with a custom cursor parameter name.
+    pub async fn cursor_paginate_with(
+        &self,
+        per_page: impl Into<Option<u64>>,
+        cursor_name: &str,
+        cursor: Option<Cursor>,
+    ) -> Result<CursorPaginator<M>> {
+        let per_page = per_page.into().unwrap_or_else(M::per_page).max(1);
+        let cursor = cursor.or_else(|| resolve_current_cursor(cursor_name));
+        let mut builder = self.applied();
+        let (query, parameters) = builder
+            .query
+            .clone()
+            .prepare_cursor_pagination(per_page, cursor.as_ref())?;
+        builder.query = query;
+        let items = builder.get().await?;
+        Ok(CursorPaginator::new(
+            items,
+            per_page,
+            cursor,
+            CursorPaginatorOptions {
+                path: current_path(),
+                cursor_name: cursor_name.to_string(),
+                parameters,
+                ..Default::default()
+            },
+        ))
+    }
+
+    /// Stream the models, loading them in chunks (Laravel's `lazy`).
+    /// Results are ordered by primary key unless the query is ordered.
+    pub fn lazy(&self, chunk_size: i64) -> BoxStream<'static, Result<M>> {
+        let mut builder = self.applied();
+        if builder.query.orders.is_empty() {
+            let key = builder.qualify_column(M::primary_key());
+            builder = builder.order_by(key, "asc");
+        }
+        let chunk_size = chunk_size.max(1);
+        futures::stream::try_unfold(Some((builder, 1_i64)), move |state| async move {
+            let Some((builder, page)) = state else {
+                return Ok::<_, illuminate_support::Error>(None);
+            };
+            let models = builder
+                .clone()
+                .for_page(page, chunk_size)
+                .get()
+                .await?
+                .into_vec();
+            if models.is_empty() {
+                return Ok(None);
+            }
+            let next = (models.len() as i64 == chunk_size).then_some((builder, page + 1));
+            Ok(Some((
+                futures::stream::iter(models.into_iter().map(Ok::<M, illuminate_support::Error>)),
+                next,
+            )))
+        })
+        .try_flatten()
+        .boxed()
+    }
+
+    /// Stream the models in chunks paginated by primary key (safe while
+    /// updating them).
+    pub fn lazy_by_id(&self, chunk_size: i64) -> BoxStream<'static, Result<M>> {
+        self.lazy_by_key(chunk_size, false)
+    }
+
+    /// Stream the models in chunks paginated by primary key, descending.
+    pub fn lazy_by_id_desc(&self, chunk_size: i64) -> BoxStream<'static, Result<M>> {
+        self.lazy_by_key(chunk_size, true)
+    }
+
+    fn lazy_by_key(&self, chunk_size: i64, descending: bool) -> BoxStream<'static, Result<M>> {
+        let builder = self.applied();
+        let key = builder.qualify_column(M::primary_key());
+        let chunk_size = chunk_size.max(1);
+        let initial: Option<(Builder<M>, Option<Value>)> = Some((builder, None));
+        futures::stream::try_unfold(initial, move |state| {
+            let key = key.clone();
+            async move {
+                let Some((builder, last)) = state else {
+                    return Ok::<_, illuminate_support::Error>(None);
+                };
+                let mut query = builder
+                    .clone()
+                    .reorder_by(key.clone(), if descending { "desc" } else { "asc" })
+                    .limit(chunk_size);
+                if let Some(last) = &last {
+                    query = query.where_op(key, if descending { "<" } else { ">" }, last.clone());
+                }
+                let models = query.get().await?.into_vec();
+                if models.is_empty() {
+                    return Ok(None);
+                }
+                let next = (models.len() as i64 == chunk_size)
+                    .then(|| models.last().map(|model| (builder, Some(model.get_key()))))
+                    .flatten();
+                Ok(Some((
+                    futures::stream::iter(
+                        models.into_iter().map(Ok::<M, illuminate_support::Error>),
+                    ),
+                    next,
+                )))
+            }
+        })
+        .try_flatten()
+        .boxed()
+    }
+
+    /// Run the callback for each model, loading them in chunks paginated by
+    /// primary key; return `Ok(false)` to stop.
+    pub async fn each_by_id<F, Fut>(&self, count: i64, mut callback: F) -> Result<bool>
+    where
+        F: FnMut(M) -> Fut,
+        Fut: Future<Output = Result<bool>>,
+    {
+        let mut models = self.lazy_by_id(count);
+        while let Some(model) = models.next().await {
+            if !callback(model?).await? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    /// Map every model, loading them in chunks, into a collection.
+    pub async fn chunk_map<T, F, Fut>(&self, mut callback: F, count: i64) -> Result<Collection<T>>
+    where
+        F: FnMut(M) -> Fut,
+        Fut: Future<Output = Result<T>>,
+    {
+        let mut models = self.lazy(count);
+        let mut mapped = Vec::new();
+        while let Some(model) = models.next().await {
+            mapped.push(callback(model?).await?);
+        }
+        Ok(mapped.into())
+    }
+
     /// Process the models in chunks: the callback receives each chunk and
     /// its page number, and returns `Ok(false)` to stop. Results are ordered
     /// by primary key unless the query is already ordered.
@@ -1039,7 +2030,10 @@ impl<M: Model> Builder<M> {
     /// are fired.
     pub async fn update(&self, values: impl Into<Attributes>) -> Result<u64> {
         let mut values = values.into().0;
-        if M::timestamps() && M::uses_updated_at() && !values.contains_key(M::updated_at_column()) {
+        if M::uses_timestamps()
+            && M::uses_updated_at()
+            && !values.contains_key(M::updated_at_column())
+        {
             values.insert(M::updated_at_column().to_string(), now());
         }
         self.applied().query.update(values).await
@@ -1063,7 +2057,7 @@ impl<M: Model> Builder<M> {
 
     fn touch_record(&self) -> Map<String, Value> {
         let mut record = Map::new();
-        if M::timestamps() && M::uses_updated_at() {
+        if M::uses_timestamps() && M::uses_updated_at() {
             record.insert(M::updated_at_column().to_string(), now());
         }
         record
@@ -1122,12 +2116,20 @@ fn nest_wheres_from(mut query: QueryBuilder, wheres: usize, bindings: usize) -> 
 }
 
 /// Hydrate models from rows. Models that track their originals start out
-/// clean and existing.
+/// clean and existing, remembering the columns the row didn't have.
 pub(crate) fn hydrate<M: Model>(rows: Vec<Map<String, Value>>) -> Result<Vec<M>> {
     rows.into_iter()
         .map(|row| {
+            let missing: Vec<String> = M::columns()
+                .iter()
+                .filter(|column| !row.contains_key(**column))
+                .map(|column| column.to_string())
+                .collect();
             let mut model = M::from_attributes(row)?;
             super::original::hydrated(&mut model);
+            if let Some(original) = model.original_state_mut() {
+                original.missing = missing;
+            }
             Ok(model)
         })
         .collect()

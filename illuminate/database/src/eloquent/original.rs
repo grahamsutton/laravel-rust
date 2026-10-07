@@ -78,6 +78,12 @@ pub struct Original {
     pub(crate) exists: bool,
     /// Whether the model was inserted during the current request.
     pub(crate) recently_created: bool,
+    /// The instance's hidden attributes (`make_hidden`), when changed.
+    pub(crate) hidden: Option<Vec<String>>,
+    /// The instance's visible attributes (`make_visible`), when changed.
+    pub(crate) visible: Option<Vec<String>>,
+    /// The columns that weren't retrieved (a partial select).
+    pub(crate) missing: Vec<String>,
 }
 
 impl Original {

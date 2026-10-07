@@ -9,6 +9,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
+use futures::stream::BoxStream;
+use futures::{SinkExt, StreamExt};
 use illuminate_support::{Error, Result, Value, ValueExt};
 use sqlx::{Database, MySql, Postgres, Sqlite, TransactionManager};
 
@@ -391,6 +393,95 @@ impl Connection {
         bindings: impl IntoBindings,
     ) -> Result<Vec<Value>> {
         self.select(query, bindings).await
+    }
+
+    /// Run a select statement and stream its rows one at a time (Laravel's
+    /// `cursor`).
+    ///
+    /// The rows are read from a dedicated pooled connection as you consume
+    /// them, so only one row is held in memory at a time. Inside a
+    /// transaction, or when the pool holds a single connection (an
+    /// in-memory SQLite database), that connection must stay available to
+    /// other queries, so the rows are fetched up front instead.
+    pub fn cursor(
+        &self,
+        query: &str,
+        bindings: impl IntoBindings,
+    ) -> BoxStream<'static, Result<Value>> {
+        let bindings = bindings.into_bindings();
+        let query = query.to_string();
+        let connection = self.clone();
+        let streamable = !self.pretending()
+            && self.current_transaction().is_none()
+            && self.pool().is_ok_and(|pool| pool.max_connections() > 1);
+        if !streamable {
+            return futures::stream::once(async move { connection.select(&query, bindings).await })
+                .flat_map(|result| match result {
+                    Ok(rows) => futures::stream::iter(rows.into_iter().map(Ok)).boxed(),
+                    Err(error) => futures::stream::iter(vec![Err(error)]).boxed(),
+                })
+                .boxed();
+        }
+
+        let (mut sender, receiver) = futures::channel::mpsc::channel::<Result<Value>>(64);
+        let producer = async move {
+            let start = Instant::now();
+            let pool = match connection.pool() {
+                Ok(pool) => pool,
+                Err(error) => {
+                    let _ = sender
+                        .send(Err(connection.query_exception(&query, bindings, error)))
+                        .await;
+                    return;
+                }
+            };
+            let sql = match connection.inner.driver {
+                Driver::Sqlite => query.clone(),
+                _ => match connection.interpolate(&query, &bindings) {
+                    Ok(sql) => sql,
+                    Err(error) => {
+                        let _ = sender
+                            .send(Err(connection.query_exception(&query, bindings, error)))
+                            .await;
+                        return;
+                    }
+                },
+            };
+            let mut failure = None;
+            {
+                let mut rows = pool.stream(&sql, &bindings);
+                while let Some(row) = rows.next().await {
+                    match row {
+                        Ok(row) => {
+                            if sender.send(Ok(row)).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(error) => {
+                            failure = Some(error);
+                            break;
+                        }
+                    }
+                }
+            }
+            match failure {
+                Some(error) => {
+                    let _ = sender
+                        .send(Err(connection.query_exception(
+                            &query,
+                            bindings,
+                            error.into(),
+                        )))
+                        .await;
+                }
+                None => connection.log_query(&query, bindings, Some(elapsed_ms(start))),
+            }
+        };
+        CursorStream {
+            producer: Some(Box::pin(producer)),
+            rows: receiver,
+        }
+        .boxed()
     }
 
     /// Run a select statement and return a single result.
@@ -851,7 +942,11 @@ impl Connection {
         match self.current_transaction() {
             Some(handle) if handle.level() > 0 => {
                 let level = handle.level();
-                handle.after_rollback.lock().unwrap().push((level, callback));
+                handle
+                    .after_rollback
+                    .lock()
+                    .unwrap()
+                    .push((level, callback));
                 Ok(())
             }
             _ => Err(callback),
@@ -1107,6 +1202,29 @@ impl Connection {
 }
 
 pub(crate) type BoxError = Box<dyn std::error::Error + Send + Sync + 'static>;
+
+/// The stream behind [`Connection::cursor`]: polling it drives the query
+/// (the producer), which hands each row over through a bounded channel.
+struct CursorStream {
+    producer: Option<futures::future::BoxFuture<'static, ()>>,
+    rows: futures::channel::mpsc::Receiver<Result<Value>>,
+}
+
+impl futures::Stream for CursorStream {
+    type Item = Result<Value>;
+
+    fn poll_next(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        if let Some(producer) = self.producer.as_mut()
+            && producer.as_mut().poll(cx).is_ready()
+        {
+            self.producer = None;
+        }
+        self.rows.poll_next_unpin(cx)
+    }
+}
 
 fn elapsed_ms(start: Instant) -> f64 {
     (start.elapsed().as_secs_f64() * 1_000_000.0).round() / 1000.0

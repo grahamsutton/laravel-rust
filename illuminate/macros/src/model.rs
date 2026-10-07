@@ -408,7 +408,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
         let ident = &f.ident;
         let name = &f.name;
         quote! {
-            if #eloquent::__private::is_visible(#name, Self::hidden(), Self::visible()) {
+            if #eloquent::__private::is_visible_in(#name, &hidden, &visible) {
                 array.insert(::std::string::String::from(#name), #support::to_value(&self.#ident));
             }
         }
@@ -416,7 +416,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
     let append_fields = options.appends.iter().map(|name| {
         let method = format_ident!("{}", name);
         quote! {
-            if #eloquent::__private::is_visible(#name, Self::hidden(), Self::visible()) {
+            if #eloquent::__private::is_visible_in(#name, &hidden, &visible) {
                 array.insert(::std::string::String::from(#name), #support::to_value(&self.#method()));
             }
         }
@@ -425,7 +425,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
         let ident = &f.ident;
         let name = &f.name;
         quote! {
-            if #eloquent::__private::is_visible(#name, Self::hidden(), Self::visible())
+            if #eloquent::__private::is_visible_in(#name, &hidden, &visible)
                 && #eloquent::RelationValue::is_loaded(&self.#ident)
             {
                 array.insert(::std::string::String::from(#name), #eloquent::RelationValue::to_value(&self.#ident));
@@ -491,6 +491,47 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
             let mut loaded = ::std::vec::Vec::new();
             #(#checks)*
             loaded
+        }
+    };
+
+    let unset_relation_arms = relations.iter().map(|f| {
+        let ident = &f.ident;
+        let name = &f.name;
+        quote!(#name => self.#ident = ::core::default::Default::default(),)
+    });
+    let unset_all_relations = relations.iter().map(|f| {
+        let ident = &f.ident;
+        quote!(self.#ident = ::core::default::Default::default();)
+    });
+    let push_relations = relations.iter().map(|f| {
+        let ident = &f.ident;
+        quote! {
+            if !#eloquent::PushRelation::push_related(&mut self.#ident).await? {
+                return ::core::result::Result::Ok(false);
+            }
+        }
+    });
+    let relation_methods = if relations.is_empty() {
+        quote!()
+    } else {
+        quote! {
+            fn unset_relation(&mut self, name: &str) {
+                match name {
+                    #(#unset_relation_arms)*
+                    _ => {}
+                }
+            }
+
+            fn unset_relations(&mut self) {
+                #(#unset_all_relations)*
+            }
+
+            fn push_relations<'a>(&'a mut self) -> #eloquent::BoxFuture<'a, #support::Result<bool>> {
+                ::std::boxed::Box::pin(async move {
+                    #(#push_relations)*
+                    ::core::result::Result::Ok(true)
+                })
+            }
         }
     };
 
@@ -635,6 +676,8 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
             }
 
             fn to_array(&self) -> #support::Map<::std::string::String, #support::Value> {
+                let (hidden, visible) = #eloquent::__private::visibility(self);
+                let _ = (&hidden, &visible);
                 let mut array = #support::Map::new();
                 #(#array_fields)*
                 #(#append_fields)*
@@ -686,6 +729,8 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream> {
             fn loaded_relations(&self) -> ::std::vec::Vec<&'static str> {
                 #loaded_relations
             }
+
+            #relation_methods
 
             #original_accessors
 

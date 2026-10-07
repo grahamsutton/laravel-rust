@@ -25,7 +25,8 @@ use illuminate_support::{Result, Value, ValueExt};
 pub use blueprint::{
     Blueprint, ColumnAttributes, ColumnDefault, ColumnDefinition, Command, CommandAttributes,
     CommandDefinition, ForeignKeyDefinition, IndexDefinition, IndexFlag, default_string_length,
-    set_default_morph_key_type, set_default_string_length,
+    default_time_precision, set_default_morph_key_type, set_default_string_length,
+    set_default_time_precision,
 };
 pub use grammar::SchemaGrammar;
 pub use state::TableState;
@@ -643,6 +644,131 @@ impl SchemaBuilder {
         Ok(())
     }
 
+    /// Modify the table when it has the given column.
+    ///
+    /// ```no_run
+    /// # async fn example(schema: illuminate_database::SchemaBuilder) -> illuminate_support::Result<()> {
+    /// schema.when_table_has_column("users", "nickname", |table| {
+    ///     table.drop_column("nickname");
+    /// }).await?;
+    /// # Ok(()) }
+    /// ```
+    pub async fn when_table_has_column(
+        &self,
+        table: &str,
+        column: &str,
+        callback: impl FnOnce(&mut Blueprint),
+    ) -> Result<()> {
+        if self.has_column(table, column).await? {
+            self.table(table, callback).await?;
+        }
+        Ok(())
+    }
+
+    /// Modify the table when it doesn't have the given column.
+    pub async fn when_table_doesnt_have_column(
+        &self,
+        table: &str,
+        column: &str,
+        callback: impl FnOnce(&mut Blueprint),
+    ) -> Result<()> {
+        if !self.has_column(table, column).await? {
+            self.table(table, callback).await?;
+        }
+        Ok(())
+    }
+
+    /// Modify the table when it has the given index (by name, or by its
+    /// columns), optionally of a given type.
+    pub async fn when_table_has_index(
+        &self,
+        table: &str,
+        index: impl Into<IndexName>,
+        kind: Option<&str>,
+        callback: impl FnOnce(&mut Blueprint),
+    ) -> Result<()> {
+        if self.has_index(table, index, kind).await? {
+            self.table(table, callback).await?;
+        }
+        Ok(())
+    }
+
+    /// Modify the table when it doesn't have the given index.
+    pub async fn when_table_doesnt_have_index(
+        &self,
+        table: &str,
+        index: impl Into<IndexName>,
+        kind: Option<&str>,
+        callback: impl FnOnce(&mut Blueprint),
+    ) -> Result<()> {
+        if !self.has_index(table, index, kind).await? {
+            self.table(table, callback).await?;
+        }
+        Ok(())
+    }
+
+    /// Create the `pgvector` extension if it is missing (PostgreSQL), so
+    /// `vector` columns can be created.
+    pub async fn ensure_vector_extension_exists(&self, schema: Option<&str>) -> Result<()> {
+        self.ensure_extension_exists("vector", schema).await
+    }
+
+    /// Create a database extension if it is missing (PostgreSQL).
+    pub async fn ensure_extension_exists(&self, name: &str, schema: Option<&str>) -> Result<()> {
+        if self.connection.driver() != Driver::Postgres {
+            anyhow::bail!(illuminate_support::error::RuntimeException::new(
+                "Extensions are only supported by Postgres."
+            ));
+        }
+        let schema = schema.filter(|schema| !schema.is_empty());
+        self.connection
+            .statement(&self.grammar().compile_create_extension(name, schema), ())
+            .await?;
+        Ok(())
+    }
+
+    /// Drop all user-defined types (and domains) from the database
+    /// (PostgreSQL).
+    pub async fn drop_all_types(&self) -> Result<()> {
+        if self.connection.driver() != Driver::Postgres {
+            anyhow::bail!(illuminate_support::error::LogicException::new(
+                "This database driver does not support dropping all types."
+            ));
+        }
+        let grammar = self.grammar();
+        let mut types = Vec::new();
+        let mut domains = Vec::new();
+        for row in self
+            .connection
+            .select_from_write_connection(&grammar.compile_types(), ())
+            .await?
+        {
+            let implicit = row
+                .get("implicit")
+                .is_some_and(|value| value.truthy() || value.as_str() == Some("t"));
+            if implicit {
+                continue;
+            }
+            let name = format!("{}.{}", string(&row, "schema"), string(&row, "name"));
+            if string(&row, "type") == "d" {
+                domains.push(name);
+            } else {
+                types.push(name);
+            }
+        }
+        if !types.is_empty() {
+            self.connection
+                .statement(&grammar.compile_drop_all_types(&types), ())
+                .await?;
+        }
+        if !domains.is_empty() {
+            self.connection
+                .statement(&grammar.compile_drop_all_domains(&domains), ())
+                .await?;
+        }
+        Ok(())
+    }
+
     /// Drop all views from the database.
     pub async fn drop_all_views(&self) -> Result<()> {
         let views: Vec<String> = self
@@ -755,6 +881,12 @@ impl Schema {
         set_default_string_length(length);
     }
 
+    /// Set the default precision of time columns (`None` leaves it to the
+    /// database).
+    pub fn default_time_precision(precision: Option<u32>) {
+        set_default_time_precision(precision);
+    }
+
     /// Set the default morph key type (`int`, `uuid` or `ulid`).
     pub fn default_morph_key_type(kind: &str) -> Result<()> {
         set_default_morph_key_type(kind)
@@ -863,6 +995,67 @@ impl Schema {
     /// Drop all views from the database.
     pub async fn drop_all_views() -> Result<()> {
         Self::builder().drop_all_views().await
+    }
+
+    /// Drop all user-defined types from the database (PostgreSQL).
+    pub async fn drop_all_types() -> Result<()> {
+        Self::builder().drop_all_types().await
+    }
+
+    /// Modify the table when it has the given column.
+    pub async fn when_table_has_column(
+        table: &str,
+        column: &str,
+        callback: impl FnOnce(&mut Blueprint),
+    ) -> Result<()> {
+        Self::builder()
+            .when_table_has_column(table, column, callback)
+            .await
+    }
+
+    /// Modify the table when it doesn't have the given column.
+    pub async fn when_table_doesnt_have_column(
+        table: &str,
+        column: &str,
+        callback: impl FnOnce(&mut Blueprint),
+    ) -> Result<()> {
+        Self::builder()
+            .when_table_doesnt_have_column(table, column, callback)
+            .await
+    }
+
+    /// Modify the table when it has the given index.
+    pub async fn when_table_has_index(
+        table: &str,
+        index: impl Into<IndexName>,
+        kind: Option<&str>,
+        callback: impl FnOnce(&mut Blueprint),
+    ) -> Result<()> {
+        Self::builder()
+            .when_table_has_index(table, index, kind, callback)
+            .await
+    }
+
+    /// Modify the table when it doesn't have the given index.
+    pub async fn when_table_doesnt_have_index(
+        table: &str,
+        index: impl Into<IndexName>,
+        kind: Option<&str>,
+        callback: impl FnOnce(&mut Blueprint),
+    ) -> Result<()> {
+        Self::builder()
+            .when_table_doesnt_have_index(table, index, kind, callback)
+            .await
+    }
+
+    /// Create the `pgvector` extension if it is missing (PostgreSQL).
+    pub async fn ensure_vector_extension_exists(schema: Option<&str>) -> Result<()> {
+        Self::builder().ensure_vector_extension_exists(schema).await
+    }
+
+    /// Create a database extension if it is missing (PostgreSQL).
+    pub async fn ensure_extension_exists(name: &str, schema: Option<&str>) -> Result<()> {
+        Self::builder().ensure_extension_exists(name, schema).await
     }
 
     /// Enable foreign key constraints.

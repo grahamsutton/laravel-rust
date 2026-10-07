@@ -11,7 +11,7 @@ use super::events::{self, EventOutcome, ModelEvent, Observer, fire};
 use super::original::{self, IntoAttributeNames, Original, has_changes, is_equivalent};
 use super::relations::{
     BelongsTo, BelongsToMany, DynRelation, EagerSpec, HasMany, HasManyThrough, HasOne,
-    HasOneThrough, MorphMany, MorphOne, MorphTo,
+    HasOneThrough, MorphMany, MorphOne, MorphTo, MorphToMany,
 };
 use super::scope::{Scope, scope_name};
 use super::state::{self, EloquentState};
@@ -146,6 +146,22 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
         None
     }
 
+    /// Unset a loaded relationship (generated for models with `#[relation]`
+    /// fields).
+    fn unset_relation(&mut self, name: &str) {
+        let _ = name;
+    }
+
+    /// Unset every loaded relationship (generated for models with
+    /// `#[relation]` fields).
+    fn unset_relations(&mut self) {}
+
+    /// Save every loaded related model, recursively (generated for models
+    /// with `#[relation]` fields; used by [`push`](Model::push)).
+    fn push_relations<'a>(&'a mut self) -> BoxFuture<'a, Result<bool>> {
+        Box::pin(async { Ok(true) })
+    }
+
     // ------------------------------------------------------------------
     // Conventions
     // ------------------------------------------------------------------
@@ -163,6 +179,61 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
     /// The "deleted at" column used by soft deletes.
     fn deleted_at_column() -> &'static str {
         "deleted_at"
+    }
+
+    /// Whether the model maintains its timestamps right now: it has them,
+    /// and isn't inside [`without_timestamps`](Model::without_timestamps).
+    fn uses_timestamps() -> bool {
+        Self::timestamps() && !state::is_ignoring_timestamps::<Self>()
+    }
+
+    /// Run the future without the model maintaining its `created_at` /
+    /// `updated_at` timestamps (Laravel's `Model::withoutTimestamps`).
+    ///
+    /// ```ignore
+    /// User::without_timestamps(async { user.save().await }).await?;
+    /// ```
+    fn without_timestamps<F: Future + Send>(future: F) -> impl Future<Output = F::Output> + Send
+    where
+        F::Output: Send,
+    {
+        state::without_timestamps_for::<Self, F>(future)
+    }
+
+    /// Determine whether the model is currently ignoring its timestamps.
+    fn is_ignoring_timestamps() -> bool {
+        state::is_ignoring_timestamps::<Self>()
+    }
+
+    /// A fresh timestamp for the model.
+    fn fresh_timestamp() -> Carbon {
+        Carbon::now()
+    }
+
+    /// A fresh timestamp for the model, in storage format.
+    fn fresh_timestamp_string() -> String {
+        Carbon::now().to_date_time_string()
+    }
+
+    /// Set the `updated_at` timestamp (and `created_at` for new models)
+    /// to now, unless they were set by hand.
+    fn update_timestamps(&mut self) -> Result<&mut Self> {
+        if !Self::uses_timestamps() {
+            return Ok(self);
+        }
+        let time = now();
+        let set_by_hand = !self.get_attribute(Self::updated_at_column()).is_null()
+            && self.is_dirty_any(Self::updated_at_column());
+        if Self::uses_updated_at() && !set_by_hand {
+            self.set_attribute(Self::updated_at_column(), time.clone())?;
+        }
+        if !self.exists()
+            && Self::uses_created_at()
+            && self.get_attribute(Self::created_at_column()).is_null()
+        {
+            self.set_attribute(Self::created_at_column(), time)?;
+        }
+        Ok(self)
     }
 
     /// The default foreign key name for the model (`user_id`).
@@ -197,6 +268,19 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
     /// Begin querying the model.
     fn query() -> Builder<Self> {
         Builder::new()
+    }
+
+    /// Begin querying the model on the write connection.
+    fn on_write_connection() -> Builder<Self> {
+        Self::query().use_write_pdo()
+    }
+
+    /// The conventional pivot table joining the model with `R`: both snake
+    /// cased model names, in alphabetical order (`role_user`).
+    fn joining_table<R: Model>() -> String {
+        let mut segments = [Str::snake(Self::class_name()), Str::snake(R::class_name())];
+        segments.sort();
+        segments.join("_")
     }
 
     /// Begin querying the model on the given connection.
@@ -252,6 +336,58 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
             model.fill(attributes)?;
             model.save().await?;
             Ok(model)
+        }
+    }
+
+    /// Create and save a new model without firing any events.
+    fn create_quietly(
+        attributes: impl Into<Attributes> + Send,
+    ) -> impl Future<Output = Result<Self>> + Send {
+        state::without_events(Self::create(attributes))
+    }
+
+    /// Create and save a new model, ignoring mass assignment protection and
+    /// without firing any events.
+    fn force_create_quietly(
+        attributes: impl Into<Attributes> + Send,
+    ) -> impl Future<Output = Result<Self>> + Send {
+        state::without_events(Self::force_create(attributes))
+    }
+
+    /// Find a model by its primary key, or call the callback when there is
+    /// none.
+    fn find_or<F, Fut, E>(
+        id: impl Into<Value> + Send,
+        callback: F,
+    ) -> impl Future<Output = Result<Self>> + Send
+    where
+        F: FnOnce() -> Fut + Send,
+        Fut: Future<Output = std::result::Result<Self, E>> + Send,
+        E: Into<illuminate_support::Error>,
+    {
+        async move { Self::query().find_or(id, callback).await }
+    }
+
+    /// Permanently delete the models with the given keys (even soft
+    /// deletable ones), firing their events.
+    fn force_destroy(ids: impl IntoIds + Send) -> impl Future<Output = Result<u64>> + Send {
+        async move {
+            let ids = ids.into_ids();
+            if ids.is_empty() {
+                return Ok(0);
+            }
+            let mut count = 0;
+            for mut model in Self::query()
+                .with_trashed()
+                .find_many(ids)
+                .await?
+                .into_vec()
+            {
+                if model.force_delete().await? {
+                    count += 1;
+                }
+            }
+            Ok(count)
         }
     }
 
@@ -693,14 +829,163 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
     fn fill(&mut self, attributes: impl Into<Attributes>) -> Result<&mut Self> {
         let unguarded = EloquentState::resolve().is_unguarded();
         let totally_guarded = Self::totally_guarded();
+        let prevent = state::prevents_silently_discarding_attributes();
+        let only_fillable = !unguarded && !Self::fillable().is_empty();
+        let violation = |keys: Vec<String>| -> Result<()> {
+            match state::discarded_attribute_handler() {
+                Some(handler) => {
+                    handler(Self::class_name(), &keys);
+                    Ok(())
+                }
+                None => {
+                    Err(MassAssignmentException::new(keys.join(", "), Self::class_name()).into())
+                }
+            }
+        };
+        let mut discarded = Vec::new();
         for (key, value) in attributes.into().0 {
-            if unguarded || Self::is_fillable(&key) {
+            if only_fillable && !Self::fillable().contains(&key.as_str()) {
+                discarded.push(key);
+            } else if unguarded || Self::is_fillable(&key) {
                 self.set_attribute(&key, value)?;
-            } else if totally_guarded {
-                return Err(MassAssignmentException::new(key, Self::class_name()).into());
+            } else if totally_guarded || prevent {
+                violation(vec![key])?;
             }
         }
+        if prevent && !discarded.is_empty() {
+            violation(discarded)?;
+        }
         Ok(self)
+    }
+
+    /// Get an attribute, failing with a [`MissingAttributeException`]
+    /// (or calling the registered handler) when it doesn't exist or wasn't
+    /// retrieved and [`prevent_accessing_missing_attributes`] is on.
+    ///
+    /// [`MissingAttributeException`]: super::MissingAttributeException
+    /// [`prevent_accessing_missing_attributes`]: super::prevent_accessing_missing_attributes
+    fn try_get_attribute(&self, key: &str) -> Result<Value> {
+        let value = self.get_attribute(key);
+        let missing = self
+            .original_state()
+            .is_some_and(|original| original.missing.iter().any(|m| m == key))
+            || (value.is_null()
+                && !Self::columns().contains(&key)
+                && !Self::appends().contains(&key)
+                && !Self::relation_names().contains(&key));
+        if missing
+            && self.exists()
+            && !self.was_recently_created()
+            && state::prevents_accessing_missing_attributes()
+        {
+            return match state::missing_attribute_handler() {
+                Some(handler) => {
+                    handler(Self::class_name(), &[key.to_string()]);
+                    Ok(Value::Null)
+                }
+                None => Err(super::MissingAttributeException::new(Self::class_name(), key).into()),
+            };
+        }
+        Ok(value)
+    }
+
+    // ------------------------------------------------------------------
+    // Serialization visibility
+    // ------------------------------------------------------------------
+
+    /// The attributes hidden from serialization (the instance's list, after
+    /// `make_hidden` / `make_visible`).
+    fn get_hidden(&self) -> Vec<String> {
+        self.original_state()
+            .and_then(|original| original.hidden.clone())
+            .unwrap_or_else(|| Self::hidden().iter().map(|h| h.to_string()).collect())
+    }
+
+    /// The attributes visible in serialization (empty means "all").
+    fn get_visible(&self) -> Vec<String> {
+        self.original_state()
+            .and_then(|original| original.visible.clone())
+            .unwrap_or_else(|| Self::visible().iter().map(|v| v.to_string()).collect())
+    }
+
+    /// Replace the instance's hidden attributes. Instance visibility lives
+    /// in the model's [`Original`] field; without one this does nothing.
+    fn set_hidden(&mut self, hidden: impl IntoAttributeNames) -> &mut Self {
+        let hidden = hidden.into_attribute_names();
+        if let Some(original) = self.original_state_mut() {
+            original.hidden = Some(hidden);
+        }
+        self
+    }
+
+    /// Replace the instance's visible attributes (requires an [`Original`]
+    /// field).
+    fn set_visible(&mut self, visible: impl IntoAttributeNames) -> &mut Self {
+        let visible = visible.into_attribute_names();
+        if let Some(original) = self.original_state_mut() {
+            original.visible = Some(visible);
+        }
+        self
+    }
+
+    /// Hide the given attributes on this instance (requires an [`Original`]
+    /// field, where instance visibility is kept).
+    ///
+    /// ```ignore
+    /// let array = user.make_hidden("email").to_array();
+    /// ```
+    fn make_hidden(&mut self, attributes: impl IntoAttributeNames) -> &mut Self {
+        let mut hidden = self.get_hidden();
+        for attribute in attributes.into_attribute_names() {
+            if !hidden.contains(&attribute) {
+                hidden.push(attribute);
+            }
+        }
+        self.set_hidden(hidden)
+    }
+
+    /// Hide the given attributes when the condition holds.
+    fn make_hidden_if(
+        &mut self,
+        condition: bool,
+        attributes: impl IntoAttributeNames,
+    ) -> &mut Self {
+        if condition {
+            self.make_hidden(attributes);
+        }
+        self
+    }
+
+    /// Make the given (normally hidden) attributes visible on this instance
+    /// (requires an [`Original`] field).
+    fn make_visible(&mut self, attributes: impl IntoAttributeNames) -> &mut Self {
+        let attributes = attributes.into_attribute_names();
+        let hidden: Vec<String> = self
+            .get_hidden()
+            .into_iter()
+            .filter(|h| !attributes.contains(h))
+            .collect();
+        let mut visible = self.get_visible();
+        if !visible.is_empty() {
+            for attribute in &attributes {
+                if !visible.contains(attribute) {
+                    visible.push(attribute.clone());
+                }
+            }
+        }
+        self.set_hidden(hidden).set_visible(visible)
+    }
+
+    /// Make the given attributes visible when the condition holds.
+    fn make_visible_if(
+        &mut self,
+        condition: bool,
+        attributes: impl IntoAttributeNames,
+    ) -> &mut Self {
+        if condition {
+            self.make_visible(attributes);
+        }
+        self
     }
 
     /// Fill the model with attributes, ignoring mass assignment protection.
@@ -714,6 +999,46 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
     /// The model as JSON (its [`to_array`](Model::to_array) form).
     fn to_json(&self) -> String {
         Value::Object(self.to_array()).to_string()
+    }
+
+    /// The given attributes (and appended accessors) of the model.
+    fn only(&self, attributes: impl IntoAttributeNames) -> Map<String, Value> {
+        attributes
+            .into_attribute_names()
+            .into_iter()
+            .map(|key| {
+                let value = self.get_attribute(&key);
+                (key, value)
+            })
+            .collect()
+    }
+
+    /// The model's attributes except the given ones.
+    fn except(&self, attributes: impl IntoAttributeNames) -> Map<String, Value> {
+        let except = attributes.into_attribute_names();
+        self.to_attributes()
+            .into_iter()
+            .filter(|(key, _)| !except.contains(key))
+            .collect()
+    }
+
+    /// The model's attributes as an array (respecting hidden / visible
+    /// attributes and appends), without its relationships.
+    fn attributes_to_array(&self) -> Map<String, Value> {
+        let relations = Self::relation_names();
+        self.to_array()
+            .into_iter()
+            .filter(|(key, _)| !relations.contains(&key.as_str()))
+            .collect()
+    }
+
+    /// The model's loaded relationships as an array.
+    fn relations_to_array(&self) -> Map<String, Value> {
+        let relations = Self::relation_names();
+        self.to_array()
+            .into_iter()
+            .filter(|(key, _)| relations.contains(&key.as_str()))
+            .collect()
     }
 
     /// Whether two models have the same key, table and connection.
@@ -957,6 +1282,12 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
         self.replicate_except(&[])
     }
 
+    /// Clone the model into a new, unsaved instance without firing the
+    /// `replicating` event.
+    fn replicate_quietly(&self) -> impl Future<Output = Result<Self>> + Send {
+        state::without_events(self.replicate_except(&[]))
+    }
+
     /// Clone the model into a new, unsaved instance, also resetting the
     /// given attributes.
     fn replicate_except(&self, except: &[&str]) -> impl Future<Output = Result<Self>> + Send {
@@ -1002,6 +1333,63 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
         state::without_events(save_model(self))
     }
 
+    /// Save the model inside a database transaction: if anything fails
+    /// (the save, or a listener), the transaction is rolled back.
+    fn save_or_fail(&mut self) -> impl Future<Output = Result<bool>> + Send {
+        async move {
+            let connection = Self::get_connection();
+            connection.transaction(|| save_model(self)).await
+        }
+    }
+
+    /// Insert a new model, ignoring the insert when it conflicts with an
+    /// existing row (SQLite / PostgreSQL `on conflict do nothing`). Returns
+    /// `false` when the row was ignored. `unique_by` limits the ignored
+    /// conflicts to the given unique columns.
+    fn save_or_ignore(
+        &mut self,
+        unique_by: Option<&[&str]>,
+    ) -> impl Future<Output = Result<bool>> + Send {
+        let unique_by: Option<Vec<String>> =
+            unique_by.map(|columns| columns.iter().map(|c| c.to_string()).collect());
+        async move {
+            if self.exists() {
+                anyhow::bail!(illuminate_support::error::LogicException::new(
+                    "Cannot use saveOrIgnore on an existing model."
+                ));
+            }
+            if !fire(ModelEvent::Saving, self).await? {
+                return Ok(false);
+            }
+            let saved = perform_insert_or_ignore(self, unique_by).await?;
+            if saved {
+                fire(ModelEvent::Saved, self).await?;
+                self.sync_original();
+            }
+            Ok(saved)
+        }
+    }
+
+    /// Save the model and every loaded related model, recursively.
+    fn push(&mut self) -> impl Future<Output = Result<bool>> + Send {
+        async move {
+            if !save_model(self).await? {
+                return Ok(false);
+            }
+            self.push_relations().await
+        }
+    }
+
+    /// Save the model and its loaded relationships without firing events.
+    fn push_quietly(&mut self) -> impl Future<Output = Result<bool>> + Send {
+        state::without_events(async move {
+            if !save_model(self).await? {
+                return Ok(false);
+            }
+            self.push_relations().await
+        })
+    }
+
     /// Fill the model with attributes (respecting mass assignment
     /// protection) and save it.
     fn update(
@@ -1017,10 +1405,49 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
         }
     }
 
+    /// Fill and save the model inside a database transaction.
+    fn update_or_fail(
+        &mut self,
+        attributes: impl Into<Attributes> + Send,
+    ) -> impl Future<Output = Result<bool>> + Send {
+        async move {
+            if !self.exists() {
+                return Ok(false);
+            }
+            self.fill(attributes)?;
+            self.save_or_fail().await
+        }
+    }
+
+    /// Fill and save the model without firing any events.
+    fn update_quietly(
+        &mut self,
+        attributes: impl Into<Attributes> + Send,
+    ) -> impl Future<Output = Result<bool>> + Send {
+        async move {
+            if !self.exists() {
+                return Ok(false);
+            }
+            self.fill(attributes)?;
+            self.save_quietly().await
+        }
+    }
+
+    /// Update the model's `updated_at` timestamp without firing events.
+    fn touch_quietly(&mut self) -> impl Future<Output = Result<bool>> + Send {
+        state::without_events(async move {
+            if !Self::uses_timestamps() || !Self::uses_updated_at() {
+                return Ok(false);
+            }
+            self.set_attribute(Self::updated_at_column(), now())?;
+            save_model(self).await
+        })
+    }
+
     /// Update the model's `updated_at` timestamp.
     fn touch(&mut self) -> impl Future<Output = Result<bool>> + Send {
         async move {
-            if !Self::timestamps() || !Self::uses_updated_at() {
+            if !Self::uses_timestamps() || !Self::uses_updated_at() {
                 return Ok(false);
             }
             self.set_attribute(Self::updated_at_column(), now())?;
@@ -1059,6 +1486,33 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
     /// Delete the model without firing any events.
     fn delete_quietly(&mut self) -> impl Future<Output = Result<bool>> + Send {
         state::without_events(delete_model(self, false))
+    }
+
+    /// Delete the model inside a database transaction.
+    fn delete_or_fail(&mut self) -> impl Future<Output = Result<bool>> + Send {
+        async move {
+            if !self.exists() {
+                return Ok(false);
+            }
+            let connection = Self::get_connection();
+            connection.transaction(|| delete_model(self, false)).await
+        }
+    }
+
+    /// Permanently delete the model without firing any events.
+    fn force_delete_quietly(&mut self) -> impl Future<Output = Result<bool>> + Send {
+        state::without_events(delete_model(self, true))
+    }
+
+    /// Restore a soft deleted model without firing any events.
+    fn restore_quietly(&mut self) -> impl Future<Output = Result<bool>> + Send {
+        state::without_events(async move {
+            if !Self::soft_deletes() {
+                return Ok(false);
+            }
+            self.set_attribute(Self::deleted_at_column(), Value::Null)?;
+            save_model(self).await
+        })
     }
 
     /// Permanently delete the model, even when it is soft deletable.
@@ -1126,6 +1580,29 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
         }
     }
 
+    /// Reload the model's attributes from the database, locking its row for
+    /// update (inside a transaction).
+    fn refresh_for_update(&mut self) -> impl Future<Output = Result<()>> + Send {
+        async move {
+            if !self.exists() {
+                return Ok(());
+            }
+            let relations = self.loaded_relations();
+            let fresh = Self::query()
+                .without_global_scopes()
+                .with_trashed()
+                .where_key(self.get_key())
+                .lock_for_update()
+                .first_or_fail()
+                .await?;
+            *self = fresh;
+            if !relations.is_empty() {
+                self.load(relations).await?;
+            }
+            Ok(())
+        }
+    }
+
     /// A fresh instance of the model from the database.
     fn fresh(&self) -> impl Future<Output = Result<Option<Self>>> + Send {
         let key = self.get_key();
@@ -1169,6 +1646,168 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
     ) -> impl Future<Output = Result<()>> + Send {
         let relations = relations.into_relations();
         async move { super::collection::load_counts(std::slice::from_mut(self), relations).await }
+    }
+
+    /// Load `{relation}_{function}_{column}` attributes (`sum`, `avg`,
+    /// `min`, `max`, `count`, `exists`) onto the model.
+    fn load_aggregate(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+        function: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        let relations = relations.into_relations();
+        let (column, function) = (column.to_string(), function.to_string());
+        async move {
+            super::collection::load_aggregates(
+                std::slice::from_mut(self),
+                relations,
+                &column,
+                &function,
+            )
+            .await
+        }
+    }
+
+    /// Load `{relation}_sum_{column}` attributes onto the model.
+    fn load_sum(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, column, "sum")
+    }
+
+    /// Load `{relation}_avg_{column}` attributes onto the model.
+    fn load_avg(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, column, "avg")
+    }
+
+    /// Load `{relation}_min_{column}` attributes onto the model.
+    fn load_min(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, column, "min")
+    }
+
+    /// Load `{relation}_max_{column}` attributes onto the model.
+    fn load_max(
+        &mut self,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, column, "max")
+    }
+
+    /// Load `{relation}_exists` attributes onto the model.
+    fn load_exists(
+        &mut self,
+        relations: impl IntoRelations,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_aggregate(relations, "*", "exists")
+    }
+
+    /// Eager load a polymorphic (`morph_to`) relationship and the given
+    /// relationships of the model it points to.
+    ///
+    /// Rust `morph_to` relations are typed (`imageable_post`), so this loads
+    /// `relation` and `relations` nested under it.
+    fn load_morph(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+    ) -> impl Future<Output = Result<()>> + Send {
+        let tree = EagerSpec::morph_tree(relation, relations.into_relations());
+        async move { load_tree(std::slice::from_mut(self), tree).await }
+    }
+
+    /// Eager load a polymorphic relationship with relationship counts on the
+    /// model it points to.
+    fn load_morph_count(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_morph_aggregate(relation, relations, "*", "count")
+    }
+
+    /// Eager load a polymorphic relationship with relationship aggregates
+    /// on the model it points to.
+    fn load_morph_aggregate(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+        column: &str,
+        function: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        let tree =
+            EagerSpec::morph_aggregate_tree(relation, relations.into_relations(), column, function);
+        async move { load_tree(std::slice::from_mut(self), tree).await }
+    }
+
+    /// Eager load a polymorphic relationship with relationship sums.
+    fn load_morph_sum(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_morph_aggregate(relation, relations, column, "sum")
+    }
+
+    /// Eager load a polymorphic relationship with relationship averages.
+    fn load_morph_avg(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_morph_aggregate(relation, relations, column, "avg")
+    }
+
+    /// Eager load a polymorphic relationship with relationship minimums.
+    fn load_morph_min(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_morph_aggregate(relation, relations, column, "min")
+    }
+
+    /// Eager load a polymorphic relationship with relationship maximums.
+    fn load_morph_max(
+        &mut self,
+        relation: &str,
+        relations: impl IntoRelations,
+        column: &str,
+    ) -> impl Future<Output = Result<()>> + Send {
+        self.load_morph_aggregate(relation, relations, column, "max")
+    }
+
+    /// Determine whether a relationship has been loaded.
+    fn relation_loaded(&self, name: &str) -> bool {
+        self.loaded_relations().contains(&name)
+    }
+
+    /// A clone of the model without its loaded relationships.
+    fn without_relations(&self) -> Self {
+        let mut clone = self.clone();
+        clone.unset_relations();
+        clone
+    }
+
+    /// A clone of the model without the given loaded relationship.
+    fn without_relation(&self, name: &str) -> Self {
+        let mut clone = self.clone();
+        clone.unset_relation(name);
+        clone
     }
 
     // ------------------------------------------------------------------
@@ -1229,6 +1868,20 @@ pub trait Model: Send + Sync + Clone + Sized + 'static {
     /// Define a polymorphic one-to-many relationship.
     fn morph_many<R: Model>(&self, name: &str) -> MorphMany<Self, R> {
         MorphMany::morph(self, name)
+    }
+
+    /// Define a polymorphic many-to-many relationship: a `Post` has many
+    /// `Tag`s through a `taggables` pivot table holding `taggable_id`,
+    /// `taggable_type` and `tag_id` (`self.morph_to_many::<Tag>("taggable")`).
+    fn morph_to_many<R: Model>(&self, name: &str) -> MorphToMany<Self, R> {
+        BelongsToMany::new(self).morph_to_many(name)
+    }
+
+    /// Define the inverse of a polymorphic many-to-many relationship: a
+    /// `Tag` has many `Post`s through `taggables`
+    /// (`self.morphed_by_many::<Post>("taggable")`).
+    fn morphed_by_many<R: Model>(&self, name: &str) -> MorphToMany<Self, R> {
+        BelongsToMany::new(self).morphed_by_many(name)
     }
 
     /// Define the inverse of a polymorphic relationship, for the related
@@ -1348,6 +2001,15 @@ impl<M: Model> Model for Box<M> {
     }
     fn original_state_mut(&mut self) -> Option<&mut Original> {
         (**self).original_state_mut()
+    }
+    fn unset_relation(&mut self, name: &str) {
+        (**self).unset_relation(name)
+    }
+    fn unset_relations(&mut self) {
+        (**self).unset_relations()
+    }
+    fn push_relations<'a>(&'a mut self) -> BoxFuture<'a, Result<bool>> {
+        (**self).push_relations()
     }
     fn created_at_column() -> &'static str {
         M::created_at_column()
@@ -1472,7 +2134,7 @@ async fn perform_insert<M: Model>(model: &mut M) -> Result<bool> {
     if !fire(ModelEvent::Creating, model).await? {
         return Ok(false);
     }
-    if M::timestamps() {
+    if M::uses_timestamps() {
         if M::uses_created_at() && model.get_attribute(M::created_at_column()).is_null() {
             model.set_attribute(M::created_at_column(), now())?;
         }
@@ -1498,6 +2160,64 @@ async fn perform_insert<M: Model>(model: &mut M) -> Result<bool> {
     Ok(true)
 }
 
+/// Insert a model with `insert or ignore ... returning`, returning whether
+/// the row was inserted.
+async fn perform_insert_or_ignore<M: Model>(
+    model: &mut M,
+    unique_by: Option<Vec<String>>,
+) -> Result<bool> {
+    let key = M::primary_key();
+    if !key_is_set(&model.get_key()) {
+        match M::unique_ids() {
+            UniqueIds::Uuid => {
+                model.set_attribute(key, Value::String(Str::uuid7().to_string().to_lowercase()))?
+            }
+            UniqueIds::Ulid => {
+                model.set_attribute(key, Value::String(Str::ulid().to_string().to_lowercase()))?
+            }
+            UniqueIds::None => {}
+        }
+    }
+    if !fire(ModelEvent::Creating, model).await? {
+        return Ok(false);
+    }
+    if M::uses_timestamps() {
+        if M::uses_created_at() && model.get_attribute(M::created_at_column()).is_null() {
+            model.set_attribute(M::created_at_column(), now())?;
+        }
+        if M::uses_updated_at() && model.get_attribute(M::updated_at_column()).is_null() {
+            model.set_attribute(M::updated_at_column(), now())?;
+        }
+    }
+    hash_attributes(model)?;
+    let mut attributes = model.to_attributes();
+    attributes.retain(|_, value| !value.is_null());
+    if M::incrementing() && !key_is_set(attributes.get(key).unwrap_or(&Value::Null)) {
+        attributes.remove(key);
+    }
+    if attributes.is_empty() {
+        return Ok(true);
+    }
+    let unique_by: Option<Vec<&str>> = unique_by
+        .as_ref()
+        .map(|columns| columns.iter().map(String::as_str).collect());
+    let rows = M::get_connection()
+        .table(M::table())
+        .insert_or_ignore_returning(attributes, &["*"], unique_by.as_deref())
+        .await?;
+    let Some(row) = rows.into_iter().next() else {
+        return Ok(false);
+    };
+    if M::incrementing()
+        && let Some(id) = row.get(key)
+    {
+        model.set_attribute(key, id.clone())?;
+    }
+    original::inserted(model);
+    fire(ModelEvent::Created, model).await?;
+    Ok(true)
+}
+
 async fn perform_update<M: Model>(model: &mut M) -> Result<bool> {
     if !fire(ModelEvent::Updating, model).await? {
         return Ok(false);
@@ -1505,7 +2225,7 @@ async fn perform_update<M: Model>(model: &mut M) -> Result<bool> {
     if model.original_state().is_some() {
         return perform_dirty_update(model).await;
     }
-    if M::timestamps() && M::uses_updated_at() {
+    if M::uses_timestamps() && M::uses_updated_at() {
         model.set_attribute(M::updated_at_column(), now())?;
     }
     hash_attributes(model)?;
@@ -1524,7 +2244,7 @@ async fn perform_update<M: Model>(model: &mut M) -> Result<bool> {
 
 /// Update only the dirty columns of a model that tracks its originals.
 async fn perform_dirty_update<M: Model>(model: &mut M) -> Result<bool> {
-    if M::timestamps() && M::uses_updated_at() && !model.is_dirty_any(M::updated_at_column()) {
+    if M::uses_timestamps() && M::uses_updated_at() && !model.is_dirty_any(M::updated_at_column()) {
         model.set_attribute(M::updated_at_column(), now())?;
     }
     hash_attributes(model)?;
@@ -1556,7 +2276,7 @@ async fn delete_model<M: Model>(model: &mut M, force: bool) -> Result<bool> {
         model.set_attribute(M::deleted_at_column(), time.clone())?;
         let mut columns = Map::new();
         columns.insert(M::deleted_at_column().to_string(), time.clone());
-        if M::timestamps() && M::uses_updated_at() {
+        if M::uses_timestamps() && M::uses_updated_at() {
             model.set_attribute(M::updated_at_column(), time.clone())?;
             columns.insert(M::updated_at_column().to_string(), time);
         }
@@ -1586,7 +2306,7 @@ async fn increment_model<M: Model>(
         return Ok(0);
     }
     let mut extra = Map::new();
-    if M::timestamps() && M::uses_updated_at() {
+    if M::uses_timestamps() && M::uses_updated_at() {
         let time = now();
         model.set_attribute(M::updated_at_column(), time.clone())?;
         extra.insert(M::updated_at_column().to_string(), time);
@@ -1619,7 +2339,7 @@ async fn increment_model<M: Model>(
     model.sync_changes();
     fire(ModelEvent::Updated, model).await?;
     let mut synced = vec![column];
-    if M::timestamps() && M::uses_updated_at() {
+    if M::uses_timestamps() && M::uses_updated_at() {
         synced.push(M::updated_at_column().to_string());
     }
     model.sync_original_attributes(synced);

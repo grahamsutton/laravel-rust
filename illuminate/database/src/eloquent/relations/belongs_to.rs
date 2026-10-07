@@ -58,7 +58,23 @@ impl<P: Model, R: Model> BelongsTo<P, R> {
     pub(crate) fn morph(child: &P, name: &str) -> Self {
         let mut relation = Self::new(child, format!("{name}_id"), R::primary_key().to_string());
         relation.morph_type = Some(format!("{name}_type"));
+        if let Err(error) = crate::eloquent::state::checked_morph_class::<R>() {
+            relation.query.query.error = Some(error.to_string());
+        }
         relation
+    }
+
+    /// Eager load relationships on the model the polymorphic relationship
+    /// points to (Laravel's `MorphTo::morphWith`). Rust `morph_to`
+    /// relationships are typed, so this applies to their one related type.
+    pub fn morph_with(self, relations: impl crate::eloquent::IntoRelations) -> Self {
+        self.with(relations)
+    }
+
+    /// Eager load relationship counts on the model the polymorphic
+    /// relationship points to (Laravel's `MorphTo::morphWithCount`).
+    pub fn morph_with_count(self, relations: impl crate::eloquent::IntoRelations) -> Self {
+        self.with_count(relations)
     }
 
     /// Use a different foreign key on the child model (`author_id`).
@@ -96,6 +112,9 @@ impl<P: Model, R: Model> BelongsTo<P, R> {
     /// The relationship query, constrained to the child's foreign key.
     pub fn get_query(&self) -> Builder<R> {
         let mut query = self.query.clone();
+        if super::constraints_disabled() {
+            return query;
+        }
         let owner_key = query.qualify_column(&self.owner_key);
         query.query = query
             .query
@@ -105,7 +124,10 @@ impl<P: Model, R: Model> BelongsTo<P, R> {
 
     async fn fetch(&self, query: Builder<R>) -> Result<Vec<R>> {
         let key = attribute(&self.child, &self.foreign_key);
-        if !key_is_set(&key) || !self.matches_type(|column| attribute(&self.child, column)) {
+        let unconstrained = super::constraints_disabled();
+        if !unconstrained
+            && (!key_is_set(&key) || !self.matches_type(|column| attribute(&self.child, column)))
+        {
             return Ok(Vec::new());
         }
         Ok(query.get().await?.into_vec())
@@ -126,10 +148,11 @@ impl<P: Model, R: Model> BelongsTo<P, R> {
     /// post.save().await?;
     /// ```
     pub fn associate(&self, child: &mut P, parent: &R) -> Result<()> {
-        child.set_attribute(&self.foreign_key, parent.get_attribute(&self.owner_key))?;
         if let Some(column) = &self.morph_type {
-            child.set_attribute(column, Value::String(R::morph_class()))?;
+            let class = crate::eloquent::state::checked_morph_class::<R>()?;
+            child.set_attribute(column, Value::String(class))?;
         }
+        child.set_attribute(&self.foreign_key, parent.get_attribute(&self.owner_key))?;
         Ok(())
     }
 
@@ -140,6 +163,12 @@ impl<P: Model, R: Model> BelongsTo<P, R> {
             child.set_attribute(column, Value::Null)?;
         }
         Ok(())
+    }
+
+    /// Dissociate the child model from its parent (an alias of
+    /// [`dissociate`](BelongsTo::dissociate)).
+    pub fn disassociate(&self, child: &mut P) -> Result<()> {
+        self.dissociate(child)
     }
 
     /// Update the related model (touching `updated_at`).

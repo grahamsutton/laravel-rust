@@ -10,6 +10,7 @@
 use std::str::FromStr;
 
 use futures::future::BoxFuture;
+use futures::stream::{BoxStream, StreamExt};
 use std::time::Duration;
 
 use illuminate_support::{Map, Value, ValueExt};
@@ -79,6 +80,37 @@ impl Pool {
             Pool::MySql(pool) => RawConnection::MySql(pool.acquire().await?),
             Pool::Postgres(pool) => RawConnection::Postgres(pool.acquire().await?),
         })
+    }
+
+    /// The maximum number of connections the pool holds.
+    pub(crate) fn max_connections(&self) -> u32 {
+        match self {
+            Pool::Sqlite(pool) => pool.options().get_max_connections(),
+            Pool::MySql(pool) => pool.options().get_max_connections(),
+            Pool::Postgres(pool) => pool.options().get_max_connections(),
+        }
+    }
+
+    /// Stream the rows of a query, one at a time.
+    pub(crate) fn stream<'a>(
+        &'a self,
+        sql: &'a str,
+        bindings: &'a [Value],
+    ) -> BoxStream<'a, Result<Value, sqlx::Error>> {
+        match self {
+            Pool::Sqlite(pool) => bind_sqlite(sqlx::query(sql), bindings)
+                .fetch(pool)
+                .map(|row| row.map(|row| decode_sqlite_row(&row)))
+                .boxed(),
+            Pool::MySql(pool) => pool
+                .fetch(sqlx::raw_sql(sql))
+                .map(|row| row.map(|row| decode_mysql_row(&row)))
+                .boxed(),
+            Pool::Postgres(pool) => pool
+                .fetch(sqlx::raw_sql(sql))
+                .map(|row| row.map(|row| decode_postgres_row(&row)))
+                .boxed(),
+        }
     }
 
     pub(crate) async fn close(&self) {

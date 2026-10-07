@@ -42,6 +42,7 @@ pub mod expression;
 mod facade;
 pub mod manager;
 pub mod migrations;
+pub mod pagination;
 pub mod query;
 pub mod schema;
 pub mod seeder;
