@@ -66,6 +66,7 @@ pub fn register_framework_commands() {
     Artisan::register(EnvDecryptCommand);
     Artisan::register(EnvEncryptCommand);
     Artisan::register(EventListCommand);
+    Artisan::register(InstallBroadcastingCommand);
     Artisan::register(ModelPruneCommand);
     Artisan::register(ShowModelCommand);
     Artisan::register(OptimizeClearCommand);
