@@ -110,3 +110,36 @@ async fn generators_create_and_register_files() {
     app.artisan("make:view users.index").assert_successful().await;
     assert!(dir.path().join("resources/views/users/index.blade.html").exists());
 }
+
+#[tokio::test]
+async fn models_can_be_generated_with_their_companions() {
+    let (app, dir) = test_app();
+
+    app.artisan("make:model Flight --all")
+        .expects_output_to_contain("Model [app/models/flight.rs] created successfully.")
+        .expects_output_to_contain("Factory [database/factories/flight_factory.rs] created successfully.")
+        .expects_output_to_contain("_create_flights_table.rs] created successfully.")
+        .expects_output_to_contain("Seeder [database/seeders/flight_seeder.rs] created successfully.")
+        .expects_output_to_contain("Controller [app/http/controllers/flight_controller.rs] created successfully.")
+        .expects_output_to_contain("Policy [app/policies/flight_policy.rs] created successfully.")
+        .assert_successful()
+        .await;
+
+    let read = |path: &str| std::fs::read_to_string(dir.path().join(path)).unwrap();
+    assert!(read("app/models/flight.rs").contains("#[use_factory(FlightFactory)]"));
+    assert!(read("app/models/mod.rs").contains("pub use flight::Flight;"));
+    assert!(read("database/factories/flight_factory.rs").contains("type Model = Flight;"));
+    assert!(read("app/policies/flight_policy.rs").contains("impl Policy<Flight> for FlightPolicy"));
+    assert!(read("app/http/controllers/flight_controller.rs").contains("async fn destroy"));
+
+    app.artisan("make:observer FlightObserver")
+        .expects_output_to_contain("Observer [app/observers/flight_observer.rs] created successfully.")
+        .assert_successful()
+        .await;
+    assert!(read("app/observers/flight_observer.rs").contains("impl Observer<Flight> for FlightObserver"));
+
+    app.artisan("make:model Flight")
+        .expects_output_to_contain("Model already exists.")
+        .assert_failed()
+        .await;
+}

@@ -152,7 +152,7 @@ pub mod prelude {
     pub use illuminate_routing::{
         FromRequest, Inject, Input, Path, Query, ResourceController, UrlRoutable,
     };
-    pub use illuminate_auth::{Authenticatable, AuthUser, MustVerifyEmail, Policy, RequestAuthExt};
+    pub use illuminate_auth::{AuthResponse, AuthUser, Authenticatable, MustVerifyEmail, Policy, RequestAuthExt};
     pub use illuminate_console::{Command, Console};
     pub use illuminate_database::{Blueprint, Migration, Seeder};
     pub use illuminate_session::RequestSessionExt;
@@ -214,6 +214,14 @@ macro_rules! discover_commands {
 macro_rules! discover_components {
     () => {
         include!(concat!(env!("OUT_DIR"), "/laravel/components.rs"));
+    };
+}
+
+/// Include the policies discovered in `app/policies`.
+#[macro_export]
+macro_rules! discover_policies {
+    () => {
+        include!(concat!(env!("OUT_DIR"), "/laravel/policies.rs"));
     };
 }
 

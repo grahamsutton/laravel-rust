@@ -13,3 +13,8 @@ pub mod commands {
 pub mod components {
     laravel::discover_components!();
 }
+
+/// The policies in `app/policies`, discovered at build time.
+pub mod policies {
+    laravel::discover_policies!();
+}

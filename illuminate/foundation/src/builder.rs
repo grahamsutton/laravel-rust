@@ -169,6 +169,15 @@ impl ApplicationBuilder {
         })
     }
 
+    /// Register the application's policies (`app/policies`).
+    ///
+    /// ```ignore
+    /// .with_policies(policies::register)
+    /// ```
+    pub fn with_policies(self, register: impl FnOnce() + Send + 'static) -> Self {
+        self.tap(move |app| app.booted(move |_| register()))
+    }
+
     /// Run a callback against the application once it is created (used by
     /// framework extensions such as console commands and migrations).
     pub fn tap(mut self, callback: impl FnOnce(&Arc<Application>) + Send + 'static) -> Self {

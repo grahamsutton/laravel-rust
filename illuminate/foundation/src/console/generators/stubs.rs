@@ -447,3 +447,112 @@ impl Component for {{ class }} {
     }
 }
 "#;
+
+pub const MODEL: &str = r#"use laravel::prelude::*;
+{{ factory_import }}
+#[derive(Debug, Clone, Default, Model)]{{ factory_attribute }}
+pub struct {{ class }} {
+    pub id: u64,
+    pub created_at: Option<Carbon>,
+    pub updated_at: Option<Carbon>,
+}
+"#;
+
+pub const FACTORY: &str = r#"use laravel::prelude::*;
+
+use crate::app::models::{{ model }};
+
+#[derive(Default)]
+pub struct {{ class }};
+
+impl Factory for {{ class }} {
+    type Model = {{ model }};
+
+    /// Define the model's default state.
+    fn definition(&self, faker: &mut Faker) -> Value {
+        let _ = faker;
+
+        json!({
+            //
+        })
+    }
+}
+"#;
+
+pub const OBSERVER: &str = r#"use laravel::prelude::*;
+
+use crate::app::models::{{ model }};
+
+pub struct {{ class }};
+
+#[async_trait]
+impl Observer<{{ model }}> for {{ class }} {
+    /// Handle the {{ model }} "created" event.
+    async fn created(&self, {{ variable }}: &mut {{ model }}) -> Result<()> {
+        let _ = {{ variable }};
+
+        Ok(())
+    }
+
+    /// Handle the {{ model }} "updated" event.
+    async fn updated(&self, {{ variable }}: &mut {{ model }}) -> Result<()> {
+        let _ = {{ variable }};
+
+        Ok(())
+    }
+
+    /// Handle the {{ model }} "deleted" event.
+    async fn deleted(&self, {{ variable }}: &mut {{ model }}) -> Result<()> {
+        let _ = {{ variable }};
+
+        Ok(())
+    }
+}
+"#;
+
+pub const POLICY: &str = r#"use laravel::prelude::*;
+
+use crate::app::models::{{{ imports }}};
+
+#[derive(Default)]
+pub struct {{ class }};
+
+impl Policy<{{ model }}> for {{ class }} {
+    type User = User;
+
+    /// Determine whether the user can view any models.
+    fn view_any(&self, _user: &User) -> Option<AuthResponse> {
+        Some(false.into())
+    }
+
+    /// Determine whether the user can view the model.
+    fn view(&self, _user: &User, _{{ variable }}: &{{ model }}) -> Option<AuthResponse> {
+        Some(false.into())
+    }
+
+    /// Determine whether the user can create models.
+    fn create(&self, _user: &User) -> Option<AuthResponse> {
+        Some(false.into())
+    }
+
+    /// Determine whether the user can update the model.
+    fn update(&self, _user: &User, _{{ variable }}: &{{ model }}) -> Option<AuthResponse> {
+        Some(false.into())
+    }
+
+    /// Determine whether the user can delete the model.
+    fn delete(&self, _user: &User, _{{ variable }}: &{{ model }}) -> Option<AuthResponse> {
+        Some(false.into())
+    }
+
+    /// Determine whether the user can restore the model.
+    fn restore(&self, _user: &User, _{{ variable }}: &{{ model }}) -> Option<AuthResponse> {
+        Some(false.into())
+    }
+
+    /// Determine whether the user can permanently delete the model.
+    fn force_delete(&self, _user: &User, _{{ variable }}: &{{ model }}) -> Option<AuthResponse> {
+        Some(false.into())
+    }
+}
+"#;

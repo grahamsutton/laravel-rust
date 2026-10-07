@@ -9,6 +9,7 @@
 pub mod commands;
 pub mod component;
 pub mod migration;
+pub mod model;
 pub mod stubs;
 
 use std::path::{Path, PathBuf};

@@ -21,6 +21,7 @@ pub fn app() -> ApplicationBuilder {
         })
         .with_commands(super::commands::all())
         .with_components(super::components::register)
+        .with_policies(super::policies::register)
         .with_migrations(database::migrations::all())
         .with_seeders(database::seeders::register)
 }
