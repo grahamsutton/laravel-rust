@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use illuminate_support::{Carbon, Map, Result, Value, ValueExt, json};
 use regex::Regex;
 
-use super::aws::{AwsCredentials, SignatureV4};
+use illuminate_http_client::aws::{AwsCredentials, SignatureV4};
 use super::{Transport, TransportException, api};
 use crate::message::{Message, SentMessage};
 

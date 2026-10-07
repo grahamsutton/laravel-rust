@@ -1,5 +1,5 @@
-//! AWS Signature Version 4: how requests to AWS APIs (like Amazon SES) are
-//! signed.
+//! AWS Signature Version 4: how requests to AWS APIs (Amazon SES, SQS,
+//! DynamoDB, ...) are signed.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -19,7 +19,7 @@ const ALGORITHM: &str = "AWS4-HMAC-SHA256";
 /// — a session token.
 ///
 /// ```
-/// use illuminate_mail::transport::AwsCredentials;
+/// use illuminate_http_client::aws::AwsCredentials;
 ///
 /// let credentials = AwsCredentials::new("AKIDEXAMPLE", "wJalrXUtnFEMI").with_token("session-token");
 ///
@@ -72,7 +72,7 @@ impl fmt::Debug for AwsCredentials {
 /// so it works with any HTTP client:
 ///
 /// ```
-/// use illuminate_mail::transport::{AwsCredentials, SignatureV4};
+/// use illuminate_http_client::aws::{AwsCredentials, SignatureV4};
 /// use illuminate_support::Carbon;
 ///
 /// // The "get-vanilla" request from AWS's Signature Version 4 test suite...
@@ -190,7 +190,7 @@ impl SignatureV4 {
     /// Derive the signing key for the given secret and date (`YYYYMMDD`).
     ///
     /// ```
-    /// use illuminate_mail::transport::SignatureV4;
+    /// use illuminate_http_client::aws::SignatureV4;
     ///
     /// let key = SignatureV4::new("iam", "us-east-1")
     ///     .signing_key("wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY", "20120215");

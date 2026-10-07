@@ -32,6 +32,7 @@ tokio-rustls.workspace = true
 webpki-roots.workspace = true
 md-5.workspace = true
 sha2.workspace = true
+hmac.workspace = true
 hex.workspace = true
 thiserror.workspace = true
 

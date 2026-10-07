@@ -32,9 +32,6 @@ regex.workspace = true
 mime_guess.workspace = true
 url.workspace = true
 percent-encoding.workspace = true
-hmac.workspace = true
-sha2.workspace = true
-hex.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

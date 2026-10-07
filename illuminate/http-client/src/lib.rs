@@ -108,6 +108,7 @@
 //! isolated from each other.
 
 mod batch;
+pub mod aws;
 pub mod cookies;
 mod encoding;
 pub mod events;

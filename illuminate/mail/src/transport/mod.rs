@@ -34,7 +34,6 @@
 //! ```
 
 mod api;
-mod aws;
 mod failover;
 mod mailgun;
 mod postmark;
@@ -51,7 +50,7 @@ use illuminate_support::Result;
 
 use crate::message::{Message, SentMessage};
 
-pub use aws::{AwsCredentials, SignatureV4};
+pub use illuminate_http_client::aws::{AwsCredentials, SignatureV4};
 pub use failover::{FailoverTransport, RoundRobinTransport};
 pub use mailgun::MailgunTransport;
 pub use postmark::PostmarkTransport;
