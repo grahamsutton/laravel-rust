@@ -3,11 +3,13 @@
 use std::collections::HashMap;
 use std::future::Future;
 use std::panic::Location;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use illuminate_container::Container;
-use illuminate_support::Carbon;
+use illuminate_support::{Carbon, Value, ValueExt};
 
+use super::cache::{InMemoryScheduleCache, ScheduleCache};
 use super::event::{CallbackFn, Event, IntoExitCode, Task, current_environment};
 use super::mutex::{EventMutex, InMemoryEventMutex, InMemorySchedulingMutex, SchedulingMutex};
 use crate::input::ArtisanArgs;
@@ -21,7 +23,17 @@ struct Inner {
     scheduling_mutex: RwLock<Arc<dyn SchedulingMutex>>,
     mutex_cache: Mutex<HashMap<String, bool>>,
     maintenance: RwLock<Option<MaintenanceResolver>>,
+    cache: RwLock<Option<Arc<dyn ScheduleCache>>>,
+    fallback_cache: Arc<InMemoryScheduleCache>,
+    pausable: AtomicBool,
+    interruptible: AtomicBool,
 }
+
+/// The cache key of the pause signal.
+const PAUSED: &str = "illuminate:schedule:paused";
+
+/// The cache key of the interrupt signal.
+const INTERRUPT: &str = "illuminate:schedule:interrupt";
 
 /// The application's schedule (`Illuminate\Console\Scheduling\Schedule`).
 ///
@@ -102,6 +114,10 @@ impl Schedule {
                 scheduling_mutex: RwLock::new(scheduling_mutex),
                 mutex_cache: Mutex::new(HashMap::new()),
                 maintenance: RwLock::new(None),
+                cache: RwLock::new(None),
+                fallback_cache: Arc::new(InMemoryScheduleCache::new()),
+                pausable: AtomicBool::new(true),
+                interruptible: AtomicBool::new(true),
             }),
         }
     }
@@ -246,6 +262,79 @@ impl Schedule {
         let result = mutex.create(event, time).await;
         self.inner.mutex_cache.lock().unwrap().insert(name, result);
         result
+    }
+
+    // ------------------------------------------------------------------
+    // Pausing and interrupting
+    // ------------------------------------------------------------------
+
+    /// Keep the schedule's pause and interrupt signals in the given store.
+    /// By default, the `dyn ScheduleCache` bound in the container is used
+    /// (the cache, in an application), falling back to an in-memory one.
+    pub fn use_schedule_cache(&self, cache: Arc<dyn ScheduleCache>) {
+        *self.inner.cache.write().unwrap() = Some(cache);
+    }
+
+    fn cache(&self) -> Arc<dyn ScheduleCache> {
+        if let Some(cache) = self.inner.cache.read().unwrap().clone() {
+            return cache;
+        }
+        match Container::get_instance().try_make::<dyn ScheduleCache>() {
+            Ok(cache) => cache,
+            Err(_) => self.inner.fallback_cache.clone(),
+        }
+    }
+
+    /// Don't poll the cache for pause and interrupt signals.
+    pub fn without_interruption_polling(&self) {
+        self.inner.pausable.store(false, Ordering::SeqCst);
+        self.inner.interruptible.store(false, Ordering::SeqCst);
+    }
+
+    /// Whether the schedule can be paused.
+    pub fn is_pausable(&self) -> bool {
+        self.inner.pausable.load(Ordering::SeqCst)
+    }
+
+    /// Whether the schedule is paused (`schedule:pause`).
+    pub async fn is_paused(&self) -> bool {
+        self.is_pausable() && self.cache().get(PAUSED).await.is_some_and(|value| value.truthy())
+    }
+
+    /// Pause the schedule: due tasks are skipped until it's resumed, unless
+    /// they run [`even_when_paused`](Event::even_when_paused).
+    pub async fn pause(&self) {
+        self.cache().forever(PAUSED, Value::Bool(true)).await;
+    }
+
+    /// Resume the schedule.
+    pub async fn resume(&self) {
+        self.cache().forget(PAUSED).await;
+    }
+
+    /// Signal running `schedule:run` processes to stop repeating sub-minute
+    /// tasks (`schedule:interrupt`).
+    pub async fn interrupt(&self) {
+        self.cache()
+            .forever(INTERRUPT, Value::from(Carbon::now().timestamp_millis()))
+            .await;
+    }
+
+    /// Whether the schedule has been interrupted since the given time.
+    pub async fn has_been_interrupted_since(&self, time: &Carbon) -> bool {
+        if !self.inner.interruptible.load(Ordering::SeqCst) {
+            return false;
+        }
+        self.cache()
+            .get(INTERRUPT)
+            .await
+            .and_then(|value| value.to_i64_lossy())
+            .is_some_and(|interrupted_at| interrupted_at >= time.timestamp_millis())
+    }
+
+    /// Determine if the application is down for maintenance.
+    pub fn down_for_maintenance(&self) -> bool {
+        self.is_down_for_maintenance()
     }
 
     /// Remove every scheduled event.

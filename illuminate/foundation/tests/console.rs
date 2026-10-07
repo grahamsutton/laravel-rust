@@ -321,3 +321,18 @@ async fn the_api_can_be_installed() {
     assert_eq!(migrations().len(), 1);
     assert_eq!(read("bootstrap/app.rs").matches("routes::api").count(), 1);
 }
+
+#[tokio::test]
+async fn the_schedule_is_paused_through_the_cache() {
+    let (app, _dir) = test_app();
+
+    app.artisan("schedule:pause").assert_successful().await;
+    assert_eq!(
+        illuminate_cache::Cache::get("illuminate:schedule:paused").await.unwrap(),
+        Some(illuminate_support::json!(true))
+    );
+    assert!(illuminate_console::Schedule::instance().is_paused().await);
+
+    app.artisan("schedule:resume").assert_successful().await;
+    assert!(!illuminate_console::Schedule::instance().is_paused().await);
+}

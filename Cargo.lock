@@ -1166,6 +1166,8 @@ dependencies = [
  "hex",
  "illuminate-config",
  "illuminate-container",
+ "illuminate-events",
+ "illuminate-http-client",
  "illuminate-support",
  "indexmap",
  "regex",

@@ -18,17 +18,21 @@
 //! assert_eq!(Schedule::events()[1].expression(), "0 2 * * *");
 //! ```
 
+pub mod cache;
 pub mod commands;
 pub mod cron;
 pub mod event;
+pub mod events;
 pub mod mutex;
 pub mod schedule;
 
+pub use cache::{InMemoryScheduleCache, ScheduleCache};
 pub use commands::{
-    ScheduleListCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleWorkCommand,
+    ScheduleClearCacheCommand, ScheduleInterruptCommand, ScheduleListCommand, SchedulePauseCommand,
+    ScheduleResumeCommand, ScheduleRunCommand, ScheduleTestCommand, ScheduleWorkCommand,
     register_commands,
 };
 pub use cron::CronExpression;
-pub use event::{Event, IntoExitCode};
+pub use event::{Event, IntoExitCode, ScheduleOutputMailer};
 pub use mutex::{EventMutex, InMemoryEventMutex, InMemorySchedulingMutex, SchedulingMutex};
 pub use schedule::Schedule;

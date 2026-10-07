@@ -3,9 +3,11 @@
 
 use async_trait::async_trait;
 use illuminate_cache::Cache;
-use illuminate_console::scheduling::{Event, EventMutex, SchedulingMutex};
+use illuminate_console::scheduling::{
+    Event, EventMutex, ScheduleCache, ScheduleOutputMailer, SchedulingMutex,
+};
 use illuminate_queue::{Dispatchable, ShouldQueue};
-use illuminate_support::Carbon;
+use illuminate_support::{Carbon, Result, Value};
 
 /// Prevents events from overlapping with a lock in the default cache store,
 /// so it holds across `schedule:run` processes (Laravel's `CacheEventMutex`).
@@ -64,6 +66,47 @@ impl SchedulingMutex for CacheSchedulingMutex {
     }
 }
 
+/// Keeps the scheduler's pause and interrupt signals in the default cache
+/// store, so `schedule:pause` and `schedule:interrupt` reach every
+/// `schedule:run` process.
+pub struct CacheScheduleCache;
+
+#[async_trait]
+impl ScheduleCache for CacheScheduleCache {
+    async fn get(&self, key: &str) -> Option<Value> {
+        Cache::default_store().ok()?.get(key).await.ok().flatten()
+    }
+
+    async fn forever(&self, key: &str, value: Value) {
+        if let Ok(store) = Cache::default_store() {
+            let _ = store.forever(key, value).await;
+        }
+    }
+
+    async fn forget(&self, key: &str) {
+        if let Ok(store) = Cache::default_store() {
+            let _ = store.forget(key).await;
+        }
+    }
+}
+
+/// Emails scheduled tasks' output with the default mailer
+/// (`email_output_to`).
+pub struct MailScheduleOutput;
+
+#[async_trait]
+impl ScheduleOutputMailer for MailScheduleOutput {
+    async fn send(&self, addresses: &[String], subject: &str, output: &str) -> Result<()> {
+        let addresses = addresses.to_vec();
+        let subject = subject.to_string();
+        illuminate_mail::Mail::raw(output, move |message| {
+            message.to(addresses).subject(subject);
+        })
+        .await?;
+        Ok(())
+    }
+}
+
 /// Schedule queued jobs: `Schedule::job(Heartbeat)`.
 ///
 /// ```ignore
@@ -87,9 +130,12 @@ impl ScheduleJobs for illuminate_console::Schedule {
     }
 }
 
-/// Use the cache-backed mutexes for the application's schedule.
+/// Use the cache-backed mutexes and signals, and the mailer, for the
+/// application's schedule.
 pub(crate) fn boot() {
     let container = illuminate_container::Container::get_instance();
     container.singleton_if::<dyn EventMutex>(|_| std::sync::Arc::new(CacheEventMutex));
     container.singleton_if::<dyn SchedulingMutex>(|_| std::sync::Arc::new(CacheSchedulingMutex));
+    container.singleton_if::<dyn ScheduleCache>(|_| std::sync::Arc::new(CacheScheduleCache));
+    container.singleton_if::<dyn ScheduleOutputMailer>(|_| std::sync::Arc::new(MailScheduleOutput));
 }

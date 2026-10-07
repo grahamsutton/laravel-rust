@@ -16,6 +16,8 @@ use crate::output::Output;
 
 pub(crate) type CallbackFn = Arc<dyn Fn() -> BoxFuture<'static, Result<i32>> + Send + Sync>;
 type HookFn = Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>;
+/// An "after" hook: receives the task's output.
+type AfterFn = Arc<dyn Fn(Arc<str>) -> BoxFuture<'static, ()> + Send + Sync>;
 type FilterFn = Arc<dyn Fn() -> bool + Send + Sync>;
 
 /// Values a scheduled closure may return: `()`, a `bool` (`false` fails
@@ -59,6 +61,19 @@ pub(crate) enum Task {
     },
 }
 
+/// Report an error through the console application's exception reporter.
+fn report(error: &Error) {
+    crate::facades::Artisan::application().report(error);
+}
+
+/// Sends a scheduled task's output by email (`email_output_to`). The
+/// foundation binds one that uses the application's mailer.
+#[async_trait::async_trait]
+pub trait ScheduleOutputMailer: Send + Sync + 'static {
+    /// Send the output to the addresses with the given subject.
+    async fn send(&self, addresses: &[String], subject: &str, output: &str) -> Result<()>;
+}
+
 #[derive(Clone)]
 enum Filter {
     When(FilterFn),
@@ -90,7 +105,11 @@ struct State {
     filters: Vec<Filter>,
     description: Option<String>,
     before: Vec<HookFn>,
-    after: Vec<(Condition, HookFn)>,
+    after: Vec<(Condition, AfterFn)>,
+    repeat_seconds: Option<u32>,
+    last_checked: Option<Carbon>,
+    even_when_paused: bool,
+    last_output: Arc<str>,
     exit_code: Option<i32>,
     skipped_because_overlapping: bool,
     output_path: Option<(PathBuf, bool)>,
@@ -168,6 +187,10 @@ impl Event {
                 description: None,
                 before: Vec::new(),
                 after: Vec::new(),
+                repeat_seconds: None,
+                last_checked: None,
+                even_when_paused: false,
+                last_output: Arc::from(""),
                 exit_code: None,
                 skipped_because_overlapping: false,
                 output_path: None,
@@ -225,6 +248,51 @@ impl Event {
     fn hour_based_schedule(self, minutes: impl ToString, hours: impl ToString) -> Self {
         self.splice_into_position(1, minutes)
             .splice_into_position(2, hours)
+    }
+
+    fn repeat_every(self, seconds: u32) -> Self {
+        assert!(
+            seconds > 0 && 60 % seconds == 0,
+            "The seconds [{seconds}] are not evenly divisible by 60."
+        );
+        self.update(|state| state.repeat_seconds = Some(seconds))
+            .every_minute()
+    }
+
+    /// Run the event every second (`schedule:run` keeps running it until
+    /// the end of the minute).
+    pub fn every_second(self) -> Self {
+        self.repeat_every(1)
+    }
+
+    /// Run the event every two seconds.
+    pub fn every_two_seconds(self) -> Self {
+        self.repeat_every(2)
+    }
+
+    /// Run the event every five seconds.
+    pub fn every_five_seconds(self) -> Self {
+        self.repeat_every(5)
+    }
+
+    /// Run the event every ten seconds.
+    pub fn every_ten_seconds(self) -> Self {
+        self.repeat_every(10)
+    }
+
+    /// Run the event every fifteen seconds.
+    pub fn every_fifteen_seconds(self) -> Self {
+        self.repeat_every(15)
+    }
+
+    /// Run the event every twenty seconds.
+    pub fn every_twenty_seconds(self) -> Self {
+        self.repeat_every(20)
+    }
+
+    /// Run the event every thirty seconds.
+    pub fn every_thirty_seconds(self) -> Self {
+        self.repeat_every(30)
     }
 
     /// Schedule the event to run every minute.
@@ -538,6 +606,12 @@ impl Event {
         self.update(|state| state.even_in_maintenance_mode = true)
     }
 
+    /// Run the event even while the schedule is paused
+    /// (`schedule:pause`).
+    pub fn even_when_paused(self) -> Self {
+        self.update(|state| state.even_when_paused = true)
+    }
+
     /// Do not allow the event to overlap each other (the lock expires
     /// after 24 hours).
     pub fn without_overlapping(self) -> Self {
@@ -619,6 +693,26 @@ impl Event {
         self.update(|state| state.before.push(hook))
     }
 
+    fn after_hook<F, Fut>(callback: F) -> AfterFn
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        Arc::new(move |_| Box::pin(callback()))
+    }
+
+    fn output_hook<F, Fut>(callback: F) -> AfterFn
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        Arc::new(move |output| Box::pin(callback(output.to_string())))
+    }
+
+    fn push_after(self, condition: Condition, hook: AfterFn) -> Self {
+        self.update(|state| state.after.push((condition, hook)))
+    }
+
     /// Register a callback to be called after the operation.
     pub fn after<F, Fut>(self, callback: F) -> Self
     where
@@ -634,8 +728,27 @@ impl Event {
         F: Fn() -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        let hook = Self::hook(callback);
-        self.update(|state| state.after.push((Condition::Always, hook)))
+        self.push_after(Condition::Always, Self::after_hook(callback))
+    }
+
+    /// Register a callback that receives the task's output after it runs.
+    ///
+    /// ```
+    /// use illuminate_console::scheduling::Schedule;
+    ///
+    /// Schedule::new()
+    ///     .command("emails:send")
+    ///     .daily()
+    ///     .then_with_output(|output| async move {
+    ///         println!("{output}");
+    ///     });
+    /// ```
+    pub fn then_with_output<F, Fut>(self, callback: F) -> Self
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.push_after(Condition::Always, Self::output_hook(callback))
     }
 
     /// Register a callback to be called if the operation succeeds.
@@ -644,8 +757,16 @@ impl Event {
         F: Fn() -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        let hook = Self::hook(callback);
-        self.update(|state| state.after.push((Condition::Success, hook)))
+        self.push_after(Condition::Success, Self::after_hook(callback))
+    }
+
+    /// Register a callback that receives the task's output if it succeeds.
+    pub fn on_success_with_output<F, Fut>(self, callback: F) -> Self
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.push_after(Condition::Success, Self::output_hook(callback))
     }
 
     /// Register a callback to be called if the operation fails.
@@ -654,8 +775,136 @@ impl Event {
         F: Fn() -> Fut + Send + Sync + 'static,
         Fut: Future<Output = ()> + Send + 'static,
     {
-        let hook = Self::hook(callback);
-        self.update(|state| state.after.push((Condition::Failure, hook)))
+        self.push_after(Condition::Failure, Self::after_hook(callback))
+    }
+
+    /// Register a callback that receives the task's output if it fails.
+    pub fn on_failure_with_output<F, Fut>(self, callback: F) -> Self
+    where
+        F: Fn(String) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = ()> + Send + 'static,
+    {
+        self.push_after(Condition::Failure, Self::output_hook(callback))
+    }
+
+    // ------------------------------------------------------------------
+    // Pinging URLs
+    // ------------------------------------------------------------------
+
+    fn ping(url: String) -> impl Fn() -> BoxFuture<'static, ()> + Send + Sync + 'static {
+        move || {
+            let url = url.clone();
+            Box::pin(async move {
+                let response = illuminate_http_client::Http::new_request()
+                    .connect_timeout(10)
+                    .timeout(30)
+                    .get(&url)
+                    .await;
+                if let Err(error) = response {
+                    report(&error);
+                }
+            })
+        }
+    }
+
+    /// Ping the URL before the task runs (a GET request), for monitoring
+    /// services like Envoyer or Healthchecks.
+    pub fn ping_before(self, url: impl Into<String>) -> Self {
+        let ping = Self::ping(url.into());
+        self.update(|state| state.before.push(Arc::new(ping)))
+    }
+
+    /// Ping the URL before the task runs, if the condition is true.
+    pub fn ping_before_if(self, condition: bool, url: impl Into<String>) -> Self {
+        if condition { self.ping_before(url) } else { self }
+    }
+
+    /// Ping the URL after the task runs.
+    pub fn then_ping(self, url: impl Into<String>) -> Self {
+        let ping = Self::ping(url.into());
+        self.push_after(Condition::Always, Arc::new(move |_| ping()))
+    }
+
+    /// Ping the URL after the task runs, if the condition is true.
+    pub fn then_ping_if(self, condition: bool, url: impl Into<String>) -> Self {
+        if condition { self.then_ping(url) } else { self }
+    }
+
+    /// Ping the URL if the task succeeds.
+    pub fn ping_on_success(self, url: impl Into<String>) -> Self {
+        let ping = Self::ping(url.into());
+        self.push_after(Condition::Success, Arc::new(move |_| ping()))
+    }
+
+    /// Ping the URL if the task succeeds and the condition is true.
+    pub fn ping_on_success_if(self, condition: bool, url: impl Into<String>) -> Self {
+        if condition { self.ping_on_success(url) } else { self }
+    }
+
+    /// Ping the URL if the task fails.
+    pub fn ping_on_failure(self, url: impl Into<String>) -> Self {
+        let ping = Self::ping(url.into());
+        self.push_after(Condition::Failure, Arc::new(move |_| ping()))
+    }
+
+    /// Ping the URL if the task fails and the condition is true.
+    pub fn ping_on_failure_if(self, condition: bool, url: impl Into<String>) -> Self {
+        if condition { self.ping_on_failure(url) } else { self }
+    }
+
+    // ------------------------------------------------------------------
+    // Emailing output
+    // ------------------------------------------------------------------
+
+    fn email_output(&self, addresses: Vec<String>, only_if_output_exists: bool) -> AfterFn {
+        let event = self.clone();
+        Arc::new(move |output: Arc<str>| {
+            let addresses = addresses.clone();
+            let event = event.clone();
+            Box::pin(async move {
+                if only_if_output_exists && output.trim().is_empty() {
+                    return;
+                }
+                let Ok(mailer) = illuminate_container::Container::get_instance().try_make::<dyn ScheduleOutputMailer>()
+                else {
+                    report(&illuminate_support::error::error!(
+                        "Unable to email the output of [{}]: no mailer is configured.",
+                        event.summary_for_display()
+                    ));
+                    return;
+                };
+                if let Err(error) = mailer.send(&addresses, &event.email_subject(), &output).await {
+                    report(&error);
+                }
+            })
+        })
+    }
+
+    fn email_subject(&self) -> String {
+        match self.get_description() {
+            Some(description) => description,
+            None => format!(
+                "Scheduled Job Output For [{}]",
+                self.get_command().unwrap_or_default()
+            ),
+        }
+    }
+
+    /// Email the task's output to the given addresses, when it wrote any.
+    pub fn email_output_to<S: Into<String>>(self, addresses: impl IntoIterator<Item = S>) -> Self {
+        let hook = self.email_output(addresses.into_iter().map(Into::into).collect(), true);
+        self.push_after(Condition::Always, hook)
+    }
+
+    /// Email the task's output to the given addresses, when it wrote any.
+    pub fn email_written_output_to<S: Into<String>>(self, addresses: impl IntoIterator<Item = S>) -> Self {
+        self.email_output_to(addresses)
+    }
+
+    /// Email the task's output to the given addresses if it fails.
+    pub fn email_output_on_failure<S: Into<String>>(self, addresses: impl IntoIterator<Item = S>) -> Self {
+        let hook = self.email_output(addresses.into_iter().map(Into::into).collect(), false);
+        self.push_after(Condition::Failure, hook)
     }
 
     // ------------------------------------------------------------------
@@ -744,6 +993,33 @@ impl Event {
     /// Determine if the event runs in maintenance mode.
     pub fn runs_in_maintenance_mode(&self) -> bool {
         self.state().even_in_maintenance_mode
+    }
+
+    /// Whether the event runs while the schedule is paused.
+    pub fn runs_when_paused(&self) -> bool {
+        self.state().even_when_paused
+    }
+
+    /// Whether the event repeats within the minute (`every_second`, ...).
+    pub fn is_repeatable(&self) -> bool {
+        self.state().repeat_seconds.is_some()
+    }
+
+    /// The number of seconds between repetitions of a sub-minute event.
+    pub fn repeat_seconds(&self) -> Option<u32> {
+        self.state().repeat_seconds
+    }
+
+    /// Whether a sub-minute event is due to repeat: its interval has
+    /// passed since it was last checked.
+    pub fn should_repeat_now(&self) -> bool {
+        let state = self.state();
+        match (state.repeat_seconds, &state.last_checked) {
+            (Some(seconds), Some(last_checked)) => {
+                Carbon::now().timestamp_millis() - last_checked.timestamp_millis() >= i64::from(seconds) * 1000
+            }
+            _ => false,
+        }
     }
 
     /// The number of minutes the overlapping lock is held for.
@@ -853,7 +1129,8 @@ impl Event {
     /// Determine if the filters pass for the event.
     pub async fn filters_pass(&self, now: &Carbon) -> bool {
         let (filters, timezone, without_overlapping) = {
-            let state = self.state();
+            let mut state = self.state();
+            state.last_checked = Some(Carbon::now());
             (
                 state.filters.clone(),
                 state.timezone.clone(),
@@ -920,6 +1197,7 @@ impl Event {
                 if let Some(error) = error {
                     application.report(&error);
                 }
+                super::events::dispatch(super::events::ScheduledBackgroundTaskFinished { task: event.clone() }).await;
             });
             return Ok(());
         }
@@ -957,6 +1235,7 @@ impl Event {
         };
 
         self.write_output(&captured);
+        self.state().last_output = Arc::from(captured.as_str());
 
         match result {
             Ok(code) => (code, None),
@@ -985,10 +1264,10 @@ impl Event {
     }
 
     async fn finish(&self, code: i32) {
-        let (after, without_overlapping) = {
+        let (after, without_overlapping, output) = {
             let mut state = self.state();
             state.exit_code = Some(code);
-            (state.after.clone(), state.without_overlapping)
+            (state.after.clone(), state.without_overlapping, state.last_output.clone())
         };
 
         for (condition, hook) in after {
@@ -998,7 +1277,7 @@ impl Event {
                 Condition::Failure => code != 0,
             };
             if run {
-                hook().await;
+                hook(output.clone()).await;
             }
         }
 

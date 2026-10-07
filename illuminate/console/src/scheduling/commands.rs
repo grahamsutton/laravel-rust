@@ -1,14 +1,19 @@
 //! The scheduler's Artisan commands: `schedule:run`, `schedule:list`,
-//! `schedule:work` and `schedule:test`.
+//! `schedule:work`, `schedule:test`, `schedule:interrupt`,
+//! `schedule:pause`, `schedule:resume`, and `schedule:clear-cache`.
 
 use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use illuminate_support::{Carbon, Result, error::error, json};
+use illuminate_support::{Carbon, Result, Sleep, error::error, json};
 use regex::Regex;
 
 use super::event::Event;
+use super::events::{
+    self as schedule_events, SchedulePaused, ScheduleResumed, ScheduledTaskFailed,
+    ScheduledTaskFinished, ScheduledTaskSkipped, ScheduledTaskStarting,
+};
 use crate::application::Application;
 use crate::command::Command;
 use crate::console::Console;
@@ -23,6 +28,10 @@ pub fn register_commands(application: &Application) {
     application.add(ScheduleListCommand);
     application.add(ScheduleWorkCommand);
     application.add(ScheduleTestCommand);
+    application.add(ScheduleInterruptCommand);
+    application.add(SchedulePauseCommand);
+    application.add(ScheduleResumeCommand);
+    application.add(ScheduleClearCacheCommand);
 }
 
 async fn run_event(cmd: &Console, event: &Event, foreground: bool) -> Result<()> {
@@ -47,20 +56,40 @@ async fn run_event(cmd: &Console, event: &Event, foreground: bool) -> Result<()>
 
     cmd.components()
         .task(description, || async move {
-            match task_event.run_with(&task_application, foreground).await {
+            schedule_events::dispatch(ScheduledTaskStarting { task: task_event.clone() }).await;
+            let start = std::time::Instant::now();
+
+            let failure = match task_event.run_with(&task_application, foreground).await {
                 Ok(()) => {
+                    schedule_events::dispatch(ScheduledTaskFinished {
+                        task: task_event.clone(),
+                        runtime: (start.elapsed().as_secs_f64() * 100.0).round() / 100.0,
+                    })
+                    .await;
                     let code = task_event.exit_code();
                     if !background && code.is_some_and(|code| code != 0) {
-                        task_application.report(&error!(
+                        Some(error!(
                             "Scheduled command [{}] failed with exit code [{}].",
                             task_event
                                 .get_command()
                                 .unwrap_or_else(|| task_event.summary_for_display()),
                             code.unwrap_or_default()
-                        ));
+                        ))
+                    } else {
+                        None
                     }
                 }
-                Err(error) => task_application.report(&error),
+                Err(error) => Some(error),
+            };
+
+            if let Some(error) = failure {
+                let error = Arc::new(error);
+                schedule_events::dispatch(ScheduledTaskFailed {
+                    task: task_event.clone(),
+                    exception: error.clone(),
+                })
+                .await;
+                task_application.report(&error);
             }
 
             Ok(background || task_event.exit_code().is_none_or(|code| code == 0))
@@ -93,8 +122,17 @@ impl Command for ScheduleRunCommand {
         let started_at = Carbon::now();
         let mut events_ran = false;
 
-        for event in schedule.due_events(&started_at) {
+        let events = schedule.due_events(&started_at);
+        let paused = schedule.is_paused().await;
+
+        for event in &events {
+            if paused && !event.runs_when_paused() {
+                schedule_events::dispatch(ScheduledTaskSkipped { task: event.clone() }).await;
+                continue;
+            }
+
             if !event.filters_pass(&started_at).await {
+                schedule_events::dispatch(ScheduledTaskSkipped { task: event.clone() }).await;
                 continue;
             }
 
@@ -102,20 +140,13 @@ impl Command for ScheduleRunCommand {
                 cmd.new_line(1);
             }
 
-            if event.runs_on_one_server() {
-                if schedule.server_should_run(&event, &started_at).await {
-                    run_event(&cmd, &event, false).await?;
-                } else {
-                    cmd.components().info(format!(
-                        "Skipping [{}] because the command already ran on another server.",
-                        event.summary_for_display()
-                    ));
-                }
-            } else {
-                run_event(&cmd, &event, false).await?;
-            }
-
+            run_due_event(&cmd, &schedule, event, &started_at).await?;
             events_ran = true;
+        }
+
+        let repeatable: Vec<Event> = events.into_iter().filter(Event::is_repeatable).collect();
+        if !repeatable.is_empty() {
+            events_ran |= repeat_events(&cmd, &schedule, &repeatable, &started_at, events_ran).await?;
         }
 
         if !events_ran {
@@ -129,6 +160,86 @@ impl Command for ScheduleRunCommand {
 
         Ok(())
     }
+}
+
+/// Run a due event, on this server only if it must run on one server.
+async fn run_due_event(
+    cmd: &Console,
+    schedule: &super::schedule::Schedule,
+    event: &Event,
+    started_at: &Carbon,
+) -> Result<()> {
+    if event.runs_on_one_server() {
+        if schedule.server_should_run(event, started_at).await {
+            run_event(cmd, event, false).await?;
+        } else {
+            cmd.components().info(format!(
+                "Skipping [{}] because the command already ran on another server.",
+                event.summary_for_display()
+            ));
+        }
+        return Ok(());
+    }
+    run_event(cmd, event, false).await
+}
+
+/// Keep running sub-minute events until the end of the minute (or until
+/// `schedule:interrupt`), returning whether any ran.
+async fn repeat_events(
+    cmd: &Console,
+    schedule: &super::schedule::Schedule,
+    events: &[Event],
+    started_at: &Carbon,
+    mut events_ran: bool,
+) -> Result<bool> {
+    let mut entered_maintenance_mode = false;
+    let end_of_minute = (*started_at).end_of_minute();
+    let mut ran = false;
+
+    while Carbon::now() <= end_of_minute {
+        let paused = schedule.is_paused().await;
+
+        for event in events {
+            if schedule.has_been_interrupted_since(started_at).await {
+                return Ok(ran);
+            }
+
+            if !event.should_repeat_now() {
+                continue;
+            }
+
+            if Carbon::now() > end_of_minute {
+                return Ok(ran);
+            }
+
+            entered_maintenance_mode = entered_maintenance_mode || schedule.down_for_maintenance();
+            if entered_maintenance_mode && !event.runs_in_maintenance_mode() {
+                continue;
+            }
+
+            if paused && !event.runs_when_paused() {
+                schedule_events::dispatch(ScheduledTaskSkipped { task: event.clone() }).await;
+                continue;
+            }
+
+            if !event.filters_pass(&Carbon::now()).await {
+                schedule_events::dispatch(ScheduledTaskSkipped { task: event.clone() }).await;
+                continue;
+            }
+
+            if !events_ran {
+                cmd.new_line(1);
+                events_ran = true;
+            }
+
+            run_due_event(cmd, schedule, event, started_at).await?;
+            ran = true;
+        }
+
+        Sleep::usleep(100_000).await;
+    }
+
+    Ok(ran)
 }
 
 /// `schedule:list`: list all scheduled tasks.
@@ -215,7 +326,7 @@ impl Command for ScheduleListCommand {
                     "next_due_date_human": next.map(|date| date.diff_for_humans()),
                     "timezone": timezone,
                     "has_mutex": event.has_mutex().await,
-                    "repeat_seconds": null,
+                    "repeat_seconds": event.repeat_seconds(),
                     "environments": event.get_environments(),
                     "on_one_server": event.runs_on_one_server(),
                 }));
@@ -250,6 +361,10 @@ impl Command for ScheduleListCommand {
         let mut lines = vec![String::new()];
 
         for (event, fields) in events.iter().zip(&expressions) {
+            let repeat = event
+                .repeat_seconds()
+                .map(|seconds| format!("{seconds}s "))
+                .unwrap_or_default();
             let expression = spacing
                 .iter()
                 .enumerate()
@@ -261,6 +376,7 @@ impl Command for ScheduleListCommand {
                 })
                 .collect::<Vec<_>>()
                 .join(" ");
+            let expression = format!("{repeat}{expression}");
 
             let command = display_command(event);
             let command = if command.chars().count() > 1 {
@@ -519,6 +635,112 @@ impl Command for ScheduleTestCommand {
 
         cmd.new_line(1);
 
+        Ok(())
+    }
+}
+
+/// `schedule:interrupt`: stop running `schedule:run` processes from
+/// repeating sub-minute tasks.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScheduleInterruptCommand;
+
+#[async_trait]
+impl Command for ScheduleInterruptCommand {
+    fn signature(&self) -> &str {
+        "schedule:interrupt"
+    }
+
+    fn description(&self) -> &str {
+        "Interrupt the current schedule run"
+    }
+
+    async fn handle(&self, cmd: Console) -> Result<()> {
+        Schedule::instance().interrupt().await;
+        cmd.components().info("Broadcasting schedule interrupt signal.");
+        Ok(())
+    }
+}
+
+/// `schedule:pause`: skip scheduled tasks until the schedule is resumed.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SchedulePauseCommand;
+
+#[async_trait]
+impl Command for SchedulePauseCommand {
+    fn signature(&self) -> &str {
+        "schedule:pause"
+    }
+
+    fn description(&self) -> &str {
+        "Pause the scheduler"
+    }
+
+    async fn handle(&self, cmd: Console) -> Result<()> {
+        let schedule = Schedule::instance();
+        if !schedule.is_pausable() {
+            cmd.components().error("Schedule pausing is currently disabled.");
+            return cmd.exit(1);
+        }
+        schedule.pause().await;
+        schedule_events::dispatch(SchedulePaused).await;
+        cmd.components().info("Scheduled task processing has been paused.");
+        Ok(())
+    }
+}
+
+/// `schedule:resume`: resume a paused schedule.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScheduleResumeCommand;
+
+#[async_trait]
+impl Command for ScheduleResumeCommand {
+    fn signature(&self) -> &str {
+        "schedule:resume"
+    }
+
+    fn description(&self) -> &str {
+        "Resume the schedule"
+    }
+
+    fn aliases(&self) -> Vec<&str> {
+        vec!["schedule:continue"]
+    }
+
+    async fn handle(&self, cmd: Console) -> Result<()> {
+        Schedule::instance().resume().await;
+        schedule_events::dispatch(ScheduleResumed).await;
+        cmd.components().info("Scheduled task processing has resumed.");
+        Ok(())
+    }
+}
+
+/// `schedule:clear-cache`: delete the scheduler's overlap mutexes.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ScheduleClearCacheCommand;
+
+#[async_trait]
+impl Command for ScheduleClearCacheCommand {
+    fn signature(&self) -> &str {
+        "schedule:clear-cache"
+    }
+
+    fn description(&self) -> &str {
+        "Delete the cached mutex files created by scheduler"
+    }
+
+    async fn handle(&self, cmd: Console) -> Result<()> {
+        let mut cleared = false;
+        for event in Schedule::instance().events() {
+            if event.mutex().exists(&event).await {
+                cmd.components()
+                    .info(format!("Deleting mutex for [{}]", event.command_for_display()));
+                event.mutex().forget(&event).await;
+                cleared = true;
+            }
+        }
+        if !cleared {
+            cmd.components().info("No mutex files were found.");
+        }
         Ok(())
     }
 }
