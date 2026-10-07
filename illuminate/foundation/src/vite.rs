@@ -46,6 +46,9 @@ impl fmt::Display for ViteException {
 
 impl std::error::Error for ViteException {}
 
+/// The CSP nonce used while rendering a request.
+struct RequestNonce(String);
+
 /// The assets preloaded while rendering a request.
 #[derive(Default)]
 struct RequestPreloads(std::sync::Mutex<IndexMap<String, Vec<String>>>);
@@ -271,12 +274,20 @@ impl Vite {
     /// Generate (or use) a Content Security Policy nonce for the tags.
     pub fn use_csp_nonce(nonce: Option<&str>) -> String {
         let nonce = nonce.map(str::to_string).unwrap_or_else(|| Str::random(40));
-        write(|s| s.nonce = Some(nonce.clone()));
+        // A nonce must be unique to each response: inside a request it
+        // belongs to that request, so concurrent requests never share one.
+        match illuminate_http::current_request() {
+            Some(request) => request.set_extension(Arc::new(RequestNonce(nonce.clone()))),
+            None => write(|s| s.nonce = Some(nonce.clone())),
+        }
         nonce
     }
 
     /// The Content Security Policy nonce, if any.
     pub fn csp_nonce() -> Option<String> {
+        if let Some(nonce) = illuminate_http::current_request().and_then(|request| request.extension::<RequestNonce>()) {
+            return Some(nonce.0.clone());
+        }
         read(|s| s.nonce.clone())
     }
 

@@ -48,3 +48,41 @@ async fn only_trusted_hosts_are_answered() {
     app.with_header("Host", "laravel.test").get("/trusted").await.assert_ok().assert_see("Trusted");
     app.with_header("Host", "evil.example").get("/trusted").await.assert_status(400);
 }
+
+#[tokio::test]
+async fn each_request_gets_its_own_csp_nonce() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("public/build")).unwrap();
+    std::fs::write(
+        dir.path().join("public/build/manifest.json"),
+        r#"{"resources/js/app.js": {"file": "assets/app.js", "src": "resources/js/app.js", "isEntry": true}}"#,
+    )
+    .unwrap();
+    let builder = Application::configure_detached(dir.path()).with_routing(|routing| {
+        routing.web(|| {
+            Route::get("/", || async {
+                let nonce = illuminate_foundation::Vite::use_csp_nonce(None);
+                // Let other requests run before rendering.
+                tokio::task::yield_now().await;
+                let tags = illuminate_foundation::Vite::render(&["resources/js/app.js"]).unwrap();
+                assert!(tags.to_string().contains(&format!("nonce=\"{nonce}\"")));
+                nonce
+            });
+        });
+    });
+    let app = TestApp::new(builder);
+
+    let requests = (0..8).map(|_| {
+        let request = illuminate_http::Request::create("/", "GET");
+        app.app().handle_request(request)
+    });
+    let nonces: std::collections::HashSet<String> = futures::future::join_all(requests)
+        .await
+        .into_iter()
+        .map(|response| {
+            assert_eq!(response.status().as_u16(), 200);
+            response.content_string()
+        })
+        .collect();
+    assert_eq!(nonces.len(), 8);
+}
