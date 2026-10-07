@@ -32,6 +32,8 @@ laravel-rust/
 ├── src/lib.rs                  # the `laravel` crate: prelude, facades, re-exports
 ├── illuminate/<component>/     # one crate per Illuminate component
 │   └── illuminate-<component>
+├── packages/<package>/         # first-party packages (laravel/sanctum, ...)
+│   └── laravel-<package>
 └── skeleton/                   # the application skeleton (laravel/laravel)
 ```
 
@@ -51,17 +53,35 @@ laravel-rust/
 | `illuminate-encryption` / `-hashing` | Encryption / Hashing |
 | `illuminate-cookie` / `-session` | Cookie / Session |
 | `illuminate-cache` | Cache (+ RateLimiter) |
+| `illuminate-redis` | Redis |
 | `illuminate-events` / `-log` / `-filesystem` / `-translation` | Events / Log / Filesystem / Translation |
 | `illuminate-console` | Console (Artisan commands, scheduling) |
 | `illuminate-auth` | Auth (guards, gates, policies) |
 | `illuminate-queue` / `-mail` / `-notifications` | Queue + Bus / Mail / Notifications |
 | `illuminate-process` / `-concurrency` | Process / Concurrency |
-| `illuminate-http-client` | Http Client (the `Http` facade) |
+| `illuminate-http-client` | Http Client (the `Http` facade, AWS request signing) |
+| `illuminate-http-resources` | Eloquent API resources |
+| `illuminate-broadcasting` | Broadcasting |
+| `illuminate-image` | Image |
+| `illuminate-json-schema` | JsonSchema |
 | `illuminate-foundation` | Foundation (Application, kernels, exception handler, Artisan commands, testing) |
 | `laravel-build` (`illuminate/build`) | Build-time discovery of migrations, seeders, commands, components, and policies |
 
 Dependencies always point "down" this list: a component may depend on
 `support`, `container`, `config` and `http`, but never on `foundation`.
+When a component needs something from a crate above it (the scheduler
+emailing output, say), it defines a small trait the foundation implements
+and binds in the container (`ScheduleOutputMailer`, `EventMutex`, ...).
+
+### Packages
+
+First-party packages live in `packages/` and depend on the components, never
+the other way around. A package registers its service provider for
+discovery — the Rust analog of Composer's `extra.laravel.providers` — with
+`illuminate_container::discover_provider!("laravel-sanctum",
+SanctumServiceProvider);`. The `laravel` crate re-exports each package behind
+a cargo feature (`features = ["sanctum"]`), and installers like
+`install:api` turn the feature on.
 
 ## Core conventions
 
