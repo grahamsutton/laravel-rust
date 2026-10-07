@@ -3,6 +3,7 @@
 mod app;
 mod basic;
 mod database;
+mod environment;
 mod events;
 mod inspection;
 mod queue;
@@ -15,6 +16,7 @@ pub use database::{
     MigrateCommand, MigrateFreshCommand, MigrateInstallCommand, MigrateRefreshCommand, MigrateResetCommand,
     MigrateRollbackCommand, MigrateStatusCommand, SeedCommand, WipeCommand,
 };
+pub use environment::{DecryptCommand as EnvDecryptCommand, EncryptCommand as EnvEncryptCommand};
 pub use events::{CacheForgetCommand, EventListCommand};
 pub use inspection::{ShowCommand as DbShowCommand, TableCommand as DbTableCommand};
 pub use queue::{

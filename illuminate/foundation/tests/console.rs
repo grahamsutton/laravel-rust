@@ -172,3 +172,56 @@ async fn cache_items_can_be_forgotten() {
 
     assert!(!illuminate_cache::Cache::has("podcast").await.unwrap());
 }
+
+#[tokio::test]
+async fn environment_files_can_be_encrypted_and_decrypted() {
+    use base64::Engine;
+    let (app, dir) = test_app();
+    let env = dir.path().join(".env");
+    let contents = "APP_NAME=Laravel\n# Mail\nMAIL_PASSWORD=secret\n";
+    std::fs::write(&env, contents).unwrap();
+    let key = format!("base64:{}", base64::engine::general_purpose::STANDARD.encode([7u8; 32]));
+
+    app.artisan(&format!("env:encrypt --key={key}"))
+        .expects_output_to_contain("Environment successfully encrypted.")
+        .assert_successful()
+        .await;
+    let encrypted = std::fs::read_to_string(dir.path().join(".env.encrypted")).unwrap();
+    assert!(!encrypted.contains("secret"));
+
+    app.artisan(&format!("env:encrypt --key={key}"))
+        .expects_output_to_contain("Encrypted environment file already exists.")
+        .assert_failed()
+        .await;
+
+    std::fs::remove_file(&env).unwrap();
+    app.artisan(&format!("env:decrypt --key={key}"))
+        .expects_output_to_contain("Environment successfully decrypted.")
+        .assert_successful()
+        .await;
+    assert_eq!(std::fs::read_to_string(&env).unwrap(), contents);
+
+    app.artisan("env:decrypt --key=base64:d3Jvbmcta2V5LXdyb25nLWtleS13cm9uZy1rZXktMTI= --force")
+        .assert_failed()
+        .await;
+
+    // Readable files encrypt each value, keeping the ciphertext of unchanged ones.
+    app.artisan(&format!("env:encrypt --key={key} --readable --force"))
+        .assert_successful()
+        .await;
+    let readable = std::fs::read_to_string(dir.path().join(".env.encrypted")).unwrap();
+    assert!(readable.starts_with("APP_NAME="));
+    let app_name = readable.lines().next().unwrap().to_string();
+
+    std::fs::write(&env, "APP_NAME=Laravel\nMAIL_PASSWORD=changed\n").unwrap();
+    app.artisan(&format!("env:encrypt --key={key} --readable"))
+        .assert_successful()
+        .await;
+    let updated = std::fs::read_to_string(dir.path().join(".env.encrypted")).unwrap();
+    assert_eq!(updated.lines().next().unwrap(), app_name);
+    assert_ne!(updated.lines().nth(1).unwrap(), readable.lines().nth(1).unwrap());
+
+    std::fs::remove_file(&env).unwrap();
+    app.artisan(&format!("env:decrypt --key={key}")).assert_successful().await;
+    assert_eq!(std::fs::read_to_string(&env).unwrap(), "APP_NAME=Laravel\nMAIL_PASSWORD=changed\n");
+}

@@ -63,6 +63,8 @@ pub fn register_framework_commands() {
     Artisan::register(CacheForgetCommand);
     Artisan::register(DbShowCommand);
     Artisan::register(DbTableCommand);
+    Artisan::register(EnvDecryptCommand);
+    Artisan::register(EnvEncryptCommand);
     Artisan::register(EventListCommand);
     Artisan::register(QueueListenCommand);
     Artisan::register(QueuePruneBatchesCommand);
