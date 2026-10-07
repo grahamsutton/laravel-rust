@@ -84,6 +84,9 @@ pub fn register_framework_commands() {
     Artisan::register(generators::component::MakeComponentCommand);
     Artisan::register(generators::migration::MakeMigrationCommand);
     Artisan::register(generators::model::MakeModelCommand);
+    for generator in generators::tables::MakeTableCommand::all() {
+        Artisan::register(generator);
+    }
     for generator in generators::model::commands() {
         Artisan::register(generator);
     }

@@ -251,3 +251,35 @@ async fn databases_and_tables_can_be_inspected() {
     assert_eq!(data["table"]["columns"], 5);
     assert_eq!(data["columns"][1]["column"], "name");
 }
+
+#[tokio::test]
+async fn framework_table_migrations_can_be_generated() {
+    let (app, dir) = test_app();
+
+    for command in ["make:cache-table", "make:session-table", "make:queue-table", "make:queue-failed-table", "make:queue-batches-table"] {
+        app.artisan(command)
+            .expects_output_to_contain("Migration created successfully.")
+            .assert_successful()
+            .await;
+    }
+
+    app.artisan("make:queue-table")
+        .expects_output_to_contain("Migration already exists.")
+        .assert_failed()
+        .await;
+
+    let migrations: Vec<String> = std::fs::read_dir(dir.path().join("database/migrations"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    for table in ["cache", "sessions", "jobs", "failed_jobs", "job_batches"] {
+        assert!(
+            migrations.iter().any(|name| name.ends_with(&format!("_create_{table}_table.rs"))),
+            "missing the {table} migration in {migrations:?}"
+        );
+    }
+    let cache = migrations.iter().find(|name| name.ends_with("_create_cache_table.rs")).unwrap();
+    let contents = std::fs::read_to_string(dir.path().join("database/migrations").join(cache)).unwrap();
+    assert!(contents.contains("pub struct CreateCacheTable;"));
+    assert!(contents.contains(r#"Schema::create("cache_locks""#));
+}
