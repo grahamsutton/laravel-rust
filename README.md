@@ -102,6 +102,39 @@ let users = User::with("posts")
     .await?;
 ```
 
+### API resources
+
+Resources transform models into JSON, with conditional attributes and
+paginated responses shaped exactly like Laravel's:
+
+```rust
+pub struct UserResource(pub User);
+
+impl JsonResource for UserResource {
+    type Model = User;
+
+    fn from_model(user: User) -> Self {
+        Self(user)
+    }
+
+    fn model(&self) -> &User {
+        &self.0
+    }
+
+    fn to_array(&self, request: &Request) -> Value {
+        json!({
+            "id": self.0.id,
+            "name": self.0.name,
+            "posts": PostResource::collection(self.when_loaded(&self.0.posts)),
+        })
+    }
+}
+
+Route::get("/api/users", || async {
+    Ok::<_, Error>(UserResource::collection(User::query().paginate(15).await?))
+});
+```
+
 ### Queues
 
 Jobs are serializable structs. Dispatch them, chain them, batch them, and
@@ -188,6 +221,7 @@ requests, processes, and more, along with Laravel's assertions: `Queue::fake()`,
 | Query builder, schema builder, migrations, seeders | `illuminate-database` |
 | Eloquent, relationships, factories | `illuminate-database` (`eloquent`), `illuminate-macros` |
 | Pagination | `illuminate-pagination` |
+| Eloquent API resources | `illuminate-http-resources` |
 | Authentication, gates, and policies | `illuminate-auth` |
 | Sessions, cookies, encryption, hashing | `illuminate-session`, `-cookie`, `-encryption`, `-hashing` |
 | Cache and rate limiting | `illuminate-cache` |
