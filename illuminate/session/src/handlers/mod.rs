@@ -2,6 +2,7 @@
 
 mod array;
 mod cookie;
+mod database;
 mod file;
 mod null;
 
@@ -12,6 +13,7 @@ use illuminate_support::Result;
 
 pub use array::ArraySessionHandler;
 pub use cookie::CookieSessionHandler;
+pub use database::DatabaseSessionHandler;
 pub use file::FileSessionHandler;
 pub use null::NullSessionHandler;
 
@@ -23,11 +25,11 @@ pub use null::NullSessionHandler;
 /// [`write`](SessionHandler::write), so a handler never needs to.
 ///
 /// Register your own with
-/// [`SessionManager::extend`](crate::SessionManager::extend). A database
-/// handler, for example, implements [`set_exists`](SessionHandler::set_exists)
-/// (to choose between `INSERT` and `UPDATE`) and
-/// [`set_request`](SessionHandler::set_request) (to record the IP address and
-/// user agent) — the hooks Laravel's `DatabaseSessionHandler` relies on.
+/// [`SessionManager::extend`](crate::SessionManager::extend). The
+/// [`DatabaseSessionHandler`], for example, implements
+/// [`set_exists`](SessionHandler::set_exists) (to choose between `INSERT` and
+/// `UPDATE`) and [`set_request`](SessionHandler::set_request) (to record the
+/// IP address, user agent and user).
 ///
 /// ```
 /// use illuminate_http::async_trait;

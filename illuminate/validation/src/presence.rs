@@ -13,8 +13,10 @@ use crate::rules::Condition;
 /// Counts matching rows for the `unique` and `exists` rules — Laravel's
 /// `PresenceVerifierInterface`.
 ///
-/// The database component binds an implementation as `dyn PresenceVerifier`
-/// in the container. `table` is exactly as written in the rule and may be
+/// The [`ValidationServiceProvider`](crate::ValidationServiceProvider) binds
+/// the [`DatabasePresenceVerifier`](crate::DatabasePresenceVerifier) as
+/// `dyn PresenceVerifier` when the application has a database; bind your own
+/// to replace it. `table` is exactly as written in the rule and may be
 /// prefixed with a connection name (`mysql.users`); use [`split_table`] to
 /// separate the two.
 #[async_trait]

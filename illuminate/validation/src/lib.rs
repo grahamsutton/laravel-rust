@@ -49,6 +49,7 @@
 //! ```
 
 mod data;
+mod database_presence;
 mod date;
 mod exception;
 mod factory;
@@ -65,6 +66,7 @@ mod validated_input;
 mod validates;
 mod validator;
 
+pub use database_presence::DatabasePresenceVerifier;
 pub use exception::{ErrorMessages, ValidationException};
 pub use factory::{ExtensionFn, Factory, PendingExtension, ReplacerFn, ValidationServiceProvider};
 pub use formats::InvalidPatternException;

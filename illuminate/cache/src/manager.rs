@@ -9,7 +9,10 @@ use illuminate_container::Container;
 use illuminate_support::error::InvalidArgumentException;
 use illuminate_support::{Result, Str, Value, ValueExt, json};
 
+use illuminate_database::{Connection, DatabaseManager};
+
 use crate::array_store::ArrayStore;
+use crate::database_store::{DEFAULT_LOCK_LOTTERY, DEFAULT_LOCK_TIMEOUT, DatabaseStore};
 use crate::file_store::FileStore;
 use crate::null_store::NullStore;
 use crate::repository::Repository;
@@ -130,6 +133,7 @@ impl CacheManager {
             "array" => Arc::new(ArrayStore::with_serialization(
                 config.get("serialize").is_some_and(ValueExt::truthy),
             )),
+            "database" => Arc::new(self.create_database_store(&config)),
             "file" => Arc::new(self.create_file_store(&config)?),
             "null" => Arc::new(NullStore),
             other => {
@@ -158,6 +162,54 @@ impl CacheManager {
             store = store.with_file_permission(permission as u32);
         }
         Ok(store)
+    }
+
+    /// Create the `database` store: items in `table` (default `cache`) and
+    /// locks in `lock_table` (default `cache_locks`) of the configured
+    /// `connection` / `lock_connection` (the default connection when unset).
+    fn create_database_store(&self, config: &Value) -> DatabaseStore {
+        let option = |key: &str| {
+            config
+                .get(key)
+                .filter(|value| !value.is_null())
+                .map(|value| value.to_string_lossy())
+                .filter(|value| !value.is_empty())
+        };
+        let db = DatabaseManager::resolve();
+        let connection_named = |name: Option<&String>| -> Connection {
+            match name {
+                Some(name) => db.connection(name),
+                None => db.default_connection(),
+            }
+        };
+
+        let connection_name = option("connection");
+        let lock_connection_name = option("lock_connection").or_else(|| connection_name.clone());
+        let lottery = match config.get("lock_lottery") {
+            Some(Value::Array(odds)) if odds.len() == 2 => {
+                let odd = |value: &Value| {
+                    value.to_i64_lossy().unwrap_or(0).clamp(0, u32::MAX as i64) as u32
+                };
+                Some([odd(&odds[0]), odd(&odds[1])])
+            }
+            Some(Value::Array(_)) => None,
+            _ => Some(DEFAULT_LOCK_LOTTERY),
+        };
+        let lock_timeout = config
+            .get("lock_timeout")
+            .and_then(ValueExt::to_i64_lossy)
+            .map(|seconds| seconds.max(0) as u64)
+            .unwrap_or(DEFAULT_LOCK_TIMEOUT);
+
+        DatabaseStore::new(
+            connection_named(connection_name.as_ref()),
+            option("table").unwrap_or_else(|| "cache".to_string()),
+        )
+        .with_prefix(self.get_prefix(config))
+        .with_lock_table(option("lock_table").unwrap_or_else(|| "cache_locks".to_string()))
+        .with_lock_connection(connection_named(lock_connection_name.as_ref()))
+        .with_lock_lottery(lottery)
+        .with_default_lock_timeout(lock_timeout)
     }
 
     /// The store the rate limiter uses: `cache.limiter`, or the default store.

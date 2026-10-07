@@ -12,9 +12,11 @@ use illuminate_http::SameSite;
 use illuminate_support::error::InvalidArgumentException;
 use illuminate_support::{Result, Str, Value, ValueExt};
 
+use illuminate_database::DatabaseManager;
+
 use crate::handlers::{
-    ArraySessionHandler, CookieSessionHandler, FileSessionHandler, NullSessionHandler,
-    SessionHandler,
+    ArraySessionHandler, CookieSessionHandler, DatabaseSessionHandler, FileSessionHandler,
+    NullSessionHandler, SessionHandler,
 };
 use crate::store::Store;
 
@@ -227,13 +229,27 @@ impl SessionManager {
                 let jar = try_app::<CookieJar>().unwrap_or_else(|| Arc::new(CookieJar::from_config(&self.config)));
                 Ok(Arc::new(CookieSessionHandler::new(jar, config.lifetime, config.expire_on_close)))
             }
+            "database" => Ok(Arc::new(self.create_database_handler(&config))),
             "null" => Ok(Arc::new(NullSessionHandler)),
-            "database" | "redis" | "memcached" | "dynamodb" | "apc" => Err(InvalidArgumentException::new(format!(
+            "redis" | "memcached" | "dynamodb" | "apc" => Err(InvalidArgumentException::new(format!(
                 "Session driver [{name}] is not available. Register it with `SessionManager::extend(\"{name}\", ...)`."
             ))
             .into()),
             _ => Err(InvalidArgumentException::new(format!("Driver [{name}] not supported.")).into()),
         }
+    }
+
+    /// Create a handler for the `database` driver: sessions live in
+    /// `session.table` on the `session.connection` connection (the default
+    /// connection when unset). Each session gets its own handler, since the
+    /// handler tracks whether its row exists.
+    fn create_database_handler(&self, config: &SessionConfig) -> DatabaseSessionHandler {
+        let db = DatabaseManager::resolve();
+        let connection = match &config.connection {
+            Some(name) => db.connection(name),
+            None => db.default_connection(),
+        };
+        DatabaseSessionHandler::new(connection, config.table.clone(), config.lifetime)
     }
 
     fn shared_handler(
@@ -367,11 +383,11 @@ mod tests {
                 .handler_needs_request()
         );
 
-        let error = manager.driver_named("database").unwrap_err();
+        let error = manager.driver_named("redis").unwrap_err();
         assert!(
             error
                 .to_string()
-                .contains("Session driver [database] is not available")
+                .contains("Session driver [redis] is not available")
         );
         assert_eq!(
             manager.driver_named("nope").unwrap_err().to_string(),

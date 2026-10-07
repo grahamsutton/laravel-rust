@@ -10,6 +10,9 @@ use indexmap::IndexMap;
 use illuminate_container::{Container, ServiceProvider, try_app};
 use illuminate_support::{Str, Value};
 
+use illuminate_database::DatabaseManager;
+
+use crate::database_presence::DatabasePresenceVerifier;
 use crate::messages::MessageResolver;
 use crate::presence::PresenceVerifier;
 use crate::rule::ValidationContext;
@@ -159,14 +162,20 @@ impl Factory {
         *self.verifier.write().unwrap() = Some(verifier);
     }
 
-    /// The presence verifier: the factory's own, or `dyn PresenceVerifier`
-    /// from the container.
+    /// The presence verifier: the factory's own, `dyn PresenceVerifier`
+    /// from the container, or — when the container has a
+    /// [`DatabaseManager`] — a [`DatabasePresenceVerifier`].
     pub fn presence_verifier(&self) -> Option<Arc<dyn PresenceVerifier>> {
         self.verifier
             .read()
             .unwrap()
             .clone()
             .or_else(try_app::<dyn PresenceVerifier>)
+            .or_else(|| {
+                try_app::<DatabaseManager>().map(|db| {
+                    Arc::new(DatabasePresenceVerifier::new(db)) as Arc<dyn PresenceVerifier>
+                })
+            })
     }
 
     /// Set the message resolver (the translator hook).
@@ -216,15 +225,39 @@ impl PendingExtension {
     }
 }
 
-/// Registers the validation [`Factory`] with the container.
+/// Registers the validation [`Factory`] with the container, and — when the
+/// application has a database ([`DatabaseManager`]) — binds the
+/// [`DatabasePresenceVerifier`] as the default `dyn PresenceVerifier` used
+/// by the `unique` and `exists` rules.
 ///
-/// The presence verifier (`dyn PresenceVerifier`) is provided by the
-/// database component and the message resolver (`dyn MessageResolver`) by
-/// the translation component; both are picked up from the container.
+/// A `dyn PresenceVerifier` you bind yourself is never replaced. The message
+/// resolver (`dyn MessageResolver`) is provided by the translation component
+/// and picked up from the container.
 pub struct ValidationServiceProvider;
+
+impl ValidationServiceProvider {
+    /// Bind the database presence verifier, if there is a database and no
+    /// verifier has been bound yet.
+    fn register_presence_verifier(app: &Container) {
+        if app.bound::<DatabaseManager>() && !app.bound::<dyn PresenceVerifier>() {
+            app.singleton::<dyn PresenceVerifier>(|container| {
+                Arc::new(DatabasePresenceVerifier::new(
+                    container.make::<DatabaseManager>(),
+                ))
+            });
+        }
+    }
+}
 
 impl ServiceProvider for ValidationServiceProvider {
     fn register(&self, app: &Container) {
         app.singleton::<Factory>(|_| Arc::new(Factory::new()));
+        Self::register_presence_verifier(app);
+    }
+
+    /// The database may be registered after validation, so look again
+    /// once every provider has been registered.
+    fn boot(&self, app: &Container) {
+        Self::register_presence_verifier(app);
     }
 }

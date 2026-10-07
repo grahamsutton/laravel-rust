@@ -1,9 +1,9 @@
 //! # Illuminate Cache
 //!
 //! An expressive, unified API for caching: the [`Cache`] facade in front of
-//! array, file, and null stores (and any store you [`extend`](CacheManager::extend)
-//! it with), atomic [`Lock`]s, and the [`RateLimiter`] with its `throttle`
-//! middleware.
+//! array, database, file, and null stores (and any store you
+//! [`extend`](CacheManager::extend) it with), atomic [`Lock`]s, and the
+//! [`RateLimiter`] with its `throttle` middleware.
 //!
 //! ```
 //! use std::sync::Arc;
@@ -35,11 +35,12 @@
 //! # });
 //! ```
 //!
-//! A `DatabaseStore` lives with the database component: implement [`Store`]
-//! (and [`LockProvider`]) over the `cache` / `cache_locks` tables, then
-//! register it with `Cache::extend("database", ...)`.
+//! The `database` driver ([`DatabaseStore`]) keeps items in the `cache`
+//! table and locks in the `cache_locks` table of a database connection;
+//! set `cache.default` to `"database"` and it is ready to go.
 
 pub mod array_store;
+pub mod database_store;
 pub mod facade;
 pub mod facades;
 pub mod file_store;
@@ -58,6 +59,7 @@ pub mod ttl;
 mod util;
 
 pub use array_store::ArrayStore;
+pub use database_store::{DatabaseLock, DatabaseStore};
 pub use facade::{Cache, cache};
 pub use file_store::{FileLock, FileStore};
 pub use limit::{AfterCallback, Limit, LimiterResponse, ResponseCallback};
