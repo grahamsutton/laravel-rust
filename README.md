@@ -235,10 +235,25 @@ async fn users_can_log_in() {
 }
 ```
 
-Fakes are available for mail, notifications, the queue, events, HTTP
-requests, processes, and more, along with Laravel's assertions: `Queue::fake()`,
-`Bus::assert_dispatched::<T>()`, `Http::fake()`, `Process::fake()`,
-`Event::fake()`.
+Responses have Laravel's assertions, including fluent JSON assertions:
+
+```rust
+app.get_json("/api/users/1")
+    .await
+    .assert_ok()
+    .assert_json_fluent(|json| {
+        json.where_("id", 1)
+            .where_type("email", "string")
+            .missing("password")
+            .etc()
+    });
+```
+
+Views and components can be rendered and tested on their own
+(`app.view("welcome", data).assert_see("Laravel")`), and fakes are
+available for mail, notifications, the queue, events, HTTP requests,
+processes, and more: `Queue::fake()`, `Bus::assert_dispatched::<T>()`,
+`Http::fake()`, `Process::fake()`, `Event::fake()`.
 
 ## What's included
 
