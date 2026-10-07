@@ -38,18 +38,23 @@ fn migrator(cmd: &Console) -> Migrator {
         })
 }
 
+/// Color a task line the way Laravel's task component does: gray dots and
+/// run time, then the status.
 fn colorize(line: &str) -> String {
-    if let Some(stripped) = line.strip_suffix(" DONE") {
-        return format!("{stripped} <fg=green;options=bold>DONE</>");
-    }
-    if let Some(stripped) = line.strip_suffix(" FAIL") {
-        return format!("{stripped} <fg=red;options=bold>FAIL</>");
-    }
-    if let Some(stripped) = line.strip_suffix(" SKIPPED") {
-        return format!("{stripped} <fg=yellow;options=bold>SKIPPED</>");
-    }
-    if let Some(stripped) = line.strip_suffix(" RUNNING") {
-        return format!("{stripped} <fg=yellow;options=bold>RUNNING</>");
+    let statuses = [
+        (" DONE", "<fg=green;options=bold>DONE</>"),
+        (" FAIL", "<fg=red;options=bold>FAIL</>"),
+        (" SKIPPED", "<fg=yellow;options=bold>SKIPPED</>"),
+        (" RUNNING", "<fg=yellow;options=bold>RUNNING</>"),
+    ];
+    for (suffix, status) in statuses {
+        if let Some(stripped) = line.strip_suffix(suffix) {
+            // "  name ....... 9.80ms" → gray from the dots on.
+            return match stripped.find(" .") {
+                Some(at) => format!("{} <fg=gray>{}</> {status}", &stripped[..at], stripped[at + 1..].trim_end()),
+                None => format!("{stripped} {status}"),
+            };
+        }
     }
     line.to_string()
 }
