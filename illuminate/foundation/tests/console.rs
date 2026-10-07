@@ -225,3 +225,34 @@ async fn environment_files_can_be_encrypted_and_decrypted() {
     app.artisan(&format!("env:decrypt --key={key}")).assert_successful().await;
     assert_eq!(std::fs::read_to_string(&env).unwrap(), "APP_NAME=Laravel\nMAIL_PASSWORD=changed\n");
 }
+
+#[tokio::test]
+async fn mailables_and_notifications_can_be_generated() {
+    let (app, dir) = test_app();
+    let read = |path: &str| std::fs::read_to_string(dir.path().join(path)).unwrap();
+
+    app.artisan("make:mail OrderShipped --markdown=mail.orders.shipped")
+        .expects_output_to_contain("Mailable [app/mail/order_shipped.rs] created successfully.")
+        .expects_output_to_contain("View [resources/views/mail/orders/shipped.blade.html] created successfully.")
+        .assert_successful()
+        .await;
+    assert!(read("app/mail/order_shipped.rs").contains(r#"Content::markdown("mail.orders.shipped")"#));
+    assert!(read("app/mail/order_shipped.rs").contains(r#"Envelope::new().subject("Order Shipped")"#));
+    assert!(read("resources/views/mail/orders/shipped.blade.html").contains("<x-mail::message>"));
+
+    app.artisan("make:notification InvoicePaid")
+        .expects_output_to_contain("Notification [app/notifications/invoice_paid.rs] created successfully.")
+        .assert_successful()
+        .await;
+    assert!(read("app/notifications/invoice_paid.rs").contains("impl Notification for InvoicePaid"));
+
+    app.artisan("make:notification InvoicePaid")
+        .expects_output_to_contain("Notification already exists.")
+        .assert_failed()
+        .await;
+
+    app.artisan("make:notifications-table")
+        .expects_output_to_contain("Migration created successfully.")
+        .assert_successful()
+        .await;
+}

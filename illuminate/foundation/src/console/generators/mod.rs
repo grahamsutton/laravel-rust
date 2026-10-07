@@ -8,6 +8,7 @@
 
 pub mod commands;
 pub mod component;
+pub mod messaging;
 pub mod migration;
 pub mod model;
 pub mod tables;

@@ -46,6 +46,12 @@ impl MakeTableCommand {
                 stub: FAILED_JOBS,
             },
             MakeTableCommand {
+                name: "make:notifications-table",
+                description: "Create a migration for the notifications table",
+                table: ("", "notifications"),
+                stub: NOTIFICATIONS,
+            },
+            MakeTableCommand {
                 name: "make:queue-batches-table",
                 description: "Create a migration for the batches database table",
                 table: ("queue.batching.table", "job_batches"),
@@ -67,7 +73,10 @@ impl Command for MakeTableCommand {
 
     async fn handle(&self, cmd: Console) -> Result<()> {
         let app = Application::current();
-        let table = app.config_repository().string_or(self.table.0, self.table.1);
+        let table = match self.table.0 {
+            "" => self.table.1.to_string(),
+            key => app.config_repository().string_or(key, self.table.1),
+        };
         let dir = std::path::PathBuf::from(app.database_path("migrations"));
         let suffix = format!("_create_{table}_table.rs");
 
@@ -225,6 +234,32 @@ impl Migration for {{ class }} {
             table.integer("cancelled_at").nullable();
             table.integer("created_at");
             table.integer("finished_at").nullable();
+        })
+        .await
+    }
+
+    /// Reverse the migrations.
+    async fn down(&self) -> Result<()> {
+        Schema::drop_if_exists("{{ table }}").await
+    }
+}
+"#;
+
+const NOTIFICATIONS: &str = r#"use laravel::prelude::*;
+
+pub struct {{ class }};
+
+#[async_trait]
+impl Migration for {{ class }} {
+    /// Run the migrations.
+    async fn up(&self) -> Result<()> {
+        Schema::create("{{ table }}", |table| {
+            table.uuid("id").primary();
+            table.string("type");
+            table.morphs("notifiable");
+            table.text("data");
+            table.timestamp("read_at").nullable();
+            table.timestamps();
         })
         .await
     }

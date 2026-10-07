@@ -42,6 +42,8 @@ pub use illuminate_hashing as hashing;
 pub use illuminate_http as http;
 pub use illuminate_http_client as http_client;
 pub use illuminate_log as log;
+pub use illuminate_mail as mail;
+pub use illuminate_notifications as notifications;
 pub use illuminate_pagination as pagination;
 pub use illuminate_pipeline as pipeline;
 pub use illuminate_process as process;
@@ -84,6 +86,8 @@ pub mod facades {
     pub use illuminate_foundation::{App, Vite};
     pub use illuminate_hashing::Hash;
     pub use illuminate_log::Log;
+    pub use illuminate_mail::Mail;
+    pub use illuminate_notifications::facades::Notification;
     pub use illuminate_concurrency::Concurrency;
     pub use illuminate_http_client::Http;
     pub use illuminate_process::Process;
@@ -144,6 +148,8 @@ pub mod prelude {
         HasOneThrough, Model, ModelNotFoundException, MorphMany, MorphOne, MorphTo, Observer,
     };
     pub use illuminate_macros::{Authenticatable, Injectable};
+    pub use illuminate_mail::{Address, Attachment, Content, Envelope, Mailable};
+    pub use illuminate_notifications::{MailMessage, Notifiable, Notification};
     pub use serde::{Deserialize, Serialize};
 
     pub use illuminate_container::{Container, Injectable as InjectableContract, ServiceProvider};

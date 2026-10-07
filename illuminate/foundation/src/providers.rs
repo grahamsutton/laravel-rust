@@ -48,6 +48,8 @@ pub fn default_providers() -> Vec<Box<dyn ServiceProvider>> {
         Box::new(illuminate_translation::TranslationServiceProvider),
         Box::new(illuminate_validation::ValidationServiceProvider),
         Box::new(illuminate_view::ViewServiceProvider),
+        Box::new(illuminate_mail::MailServiceProvider),
+        Box::new(illuminate_notifications::NotificationServiceProvider),
         Box::new(illuminate_auth::AuthServiceProvider),
         Box::new(illuminate_console::ConsoleServiceProvider),
         Box::new(FoundationServiceProvider),
