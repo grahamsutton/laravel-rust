@@ -1,0 +1,2 @@
+[alias]
+artisan = "run --quiet --bin artisan --"

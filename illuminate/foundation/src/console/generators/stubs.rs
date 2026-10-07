@@ -277,9 +277,7 @@ impl fmt::Display for {{ class }} {
 impl std::error::Error for {{ class }} {}
 "#;
 
-pub const TEST_FEATURE: &str = r#"use laravel::prelude::*;
-
-/// A basic feature test example.
+pub const TEST_FEATURE: &str = r#"/// A basic feature test example.
 #[tokio::test]
 async fn test_example() {
     let mut app = crate::app();

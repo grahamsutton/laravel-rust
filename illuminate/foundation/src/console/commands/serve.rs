@@ -24,7 +24,7 @@ impl Command for ServeCommand {
     }
 
     fn description(&self) -> &str {
-        "Serve the application on the PHP development server"
+        "Serve the application on the development server"
     }
 
     async fn handle(&self, cmd: Console) -> Result<()> {

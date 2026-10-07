@@ -154,6 +154,17 @@ fn register_functions(factory: &Factory) {
         blade.function(name, move |args| Ok(helper(&arg_string(args, 0).unwrap_or_default()).into()));
     }
 
+    // The filesystem.
+    blade.function("file_exists", |args| {
+        Ok(std::path::Path::new(&arg_string(args, 0).unwrap_or_default()).exists().into())
+    });
+    blade.function("is_file", |args| {
+        Ok(std::path::Path::new(&arg_string(args, 0).unwrap_or_default()).is_file().into())
+    });
+    blade.function("is_dir", |args| {
+        Ok(std::path::Path::new(&arg_string(args, 0).unwrap_or_default()).is_dir().into())
+    });
+
     // Vite.
     blade.function("vite", |args| {
         let entries = strings(arg_json(args, 0));

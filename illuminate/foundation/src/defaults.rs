@@ -394,7 +394,7 @@ pub fn session() -> Value {
         "table": env("SESSION_TABLE", "sessions"),
         "store": env("SESSION_STORE", Value::Null),
         "lottery": [2, 100],
-        "cookie": env("SESSION_COOKIE", format!("{}_session", Str::snake(&env("APP_NAME", "laravel").to_string_lossy()))),
+        "cookie": env("SESSION_COOKIE", format!("{}-session", app_name_slug("-"))),
         "path": env("SESSION_PATH", "/"),
         "domain": env("SESSION_DOMAIN", Value::Null),
         "secure": env("SESSION_SECURE_COOKIE", Value::Null),

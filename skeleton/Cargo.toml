@@ -1,0 +1,31 @@
+[package]
+name = "example-app"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+description = "The skeleton application for the Laravel framework."
+license = "MIT"
+publish = false
+default-run = "artisan"
+
+[lib]
+path = "lib.rs"
+
+[[bin]]
+name = "artisan"
+path = "artisan.rs"
+
+[[test]]
+name = "feature"
+path = "tests/feature/main.rs"
+
+[[test]]
+name = "unit"
+path = "tests/unit/main.rs"
+
+[dependencies]
+laravel.workspace = true
+tokio.workspace = true
+
+[build-dependencies]
+laravel-build.workspace = true
