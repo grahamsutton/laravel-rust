@@ -64,6 +64,7 @@
 //! | `vite` | `@vite([...])` | entry points, build directory | empty |
 //! | `vite_react_refresh` | `@viteReactRefresh` | none | empty |
 //! | `app_locale` | `app()->getLocale()`, `App::getLocale()` | none → locale | `config('app.locale')`, else `"en"` |
+//! | `app_version` | `app()->version()` | none → version | this crate's version |
 //! | `app` | `@inject('name', 'service')`, `app()` | service name (none → the application) | no arguments: an [`AppObject`]; with a service: error |
 //! | `config` | `config()` | key, default | the container's config repository |
 //! | `request` | `request()` | key, default | the current request ([`RequestObject`]) |

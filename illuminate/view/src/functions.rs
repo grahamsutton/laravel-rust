@@ -272,6 +272,7 @@ builtins!(
     "request",
     "app",
     "app_locale",
+    "app_version",
 );
 
 /// Determine if a built-in function exists.
@@ -1145,6 +1146,7 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
                 None => s("en"),
             }
         }
+        "app_version" => s(env!("CARGO_PKG_VERSION")),
         "app" => {
             if !args.is_empty() {
                 return Err(crate::exception::BadMethodCallException::new(format!(
@@ -1157,9 +1159,12 @@ fn builtin(name: &str, args: &[ViewValue], registry: &Arc<Registry>) -> Result<V
                 crate::expr::eval::call_function("app_locale", &[], registry)?.to_string_lossy();
             let environment = crate::expr::eval::call_function("app_environment", &[], registry)?
                 .to_string_lossy();
+            let version =
+                crate::expr::eval::call_function("app_version", &[], registry)?.to_string_lossy();
             ViewValue::object(crate::objects::AppObject {
                 locale,
                 environment,
+                version,
             })
         }
         "vite" | "vite_react_refresh" | "fonts" => ViewValue::html(""),

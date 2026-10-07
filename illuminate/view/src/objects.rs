@@ -594,13 +594,15 @@ impl ViewObject for ViewErrorBag {
 // ----------------------------------------------------------------------
 
 /// What `app()` returns inside templates (unless the framework registers
-/// its own `app` function): the locale and environment.
+/// its own `app` function): the locale, environment and framework version.
 #[derive(Clone, Debug)]
 pub struct AppObject {
     /// The current locale (`app()->getLocale()`).
     pub locale: String,
     /// The current environment (`app()->environment()`).
     pub environment: String,
+    /// The framework version (`app()->version()`).
+    pub version: String,
 }
 
 impl ViewObject for AppObject {
@@ -626,12 +628,13 @@ impl ViewObject for AppObject {
             "isProduction" => ViewValue::Bool(self.environment == "production"),
             "runningUnitTests" => ViewValue::Bool(self.environment == "testing"),
             "isDownForMaintenance" => ViewValue::Bool(false),
+            "version" => ViewValue::from(self.version.as_str()),
             _ => return None,
         }))
     }
 
     fn to_json(&self) -> Value {
-        serde_json::json!({"locale": self.locale, "environment": self.environment})
+        serde_json::json!({"locale": self.locale, "environment": self.environment, "version": self.version})
     }
 }
 

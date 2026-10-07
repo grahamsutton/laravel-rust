@@ -105,6 +105,7 @@ fn register_functions(factory: &Factory) {
     });
     blade.function("app_locale", |_| Ok(illuminate_translation::Lang::get_locale().into()));
     blade.function("app_environment", |_| Ok(helpers::app_environment().into()));
+    blade.function("app_version", |_| Ok(crate::VERSION.into()));
 
     // URLs and routes.
     blade.function("route", |args| {

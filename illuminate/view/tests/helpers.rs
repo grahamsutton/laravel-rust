@@ -145,6 +145,10 @@ fn the_app_helper() {
         ),
         "<html lang=\"pt-BR\">local local pt_BR"
     );
+    assert_eq!(
+        blade("v{{ app()->version() }}", ()),
+        format!("v{}", env!("CARGO_PKG_VERSION"))
+    );
     let error = Views::new().inline_err("@inject('metrics', 'Metrics')", ());
     assert!(
         error
