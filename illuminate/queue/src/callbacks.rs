@@ -24,6 +24,7 @@ use crate::envelope::SerializedJob;
 /// A reference to a callback, as stored in payloads and batch options.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
+#[allow(clippy::large_enum_variant)]
 pub enum CallbackRef {
     /// A closure registered in the dispatching process.
     Closure {
@@ -85,6 +86,7 @@ pub(crate) fn get<T: Any + Clone>(id: &str) -> Option<T> {
 }
 
 /// Determine if a closure with the given id is stored in this process.
+#[cfg(test)]
 pub(crate) fn exists(id: &str) -> bool {
     CLOSURES.read().unwrap().contains_key(id)
 }

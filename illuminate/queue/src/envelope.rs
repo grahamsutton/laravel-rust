@@ -94,7 +94,7 @@ impl Chained {
 
     pub(crate) fn serialize(&self) -> Result<SerializedJob> {
         match self {
-            Chained::Live(envelope) => envelope.serialize(),
+            Chained::Live(envelope) => envelope.to_serialized(),
             Chained::Serialized(job) => Ok((**job).clone()),
         }
     }
@@ -327,15 +327,15 @@ impl Envelope {
     // ------------------------------------------------------------------
 
     /// Serialize the envelope into the payload's `data` object.
-    pub fn serialize(&self) -> Result<SerializedJob> {
+    pub fn to_serialized(&self) -> Result<SerializedJob> {
         let mut command = self.job.serialize_command()?;
         let mut encrypted = false;
 
-        if self.job.should_be_encrypted() {
-            if let Some(encrypter) = try_app::<dyn JobEncrypter>() {
-                command = Value::String(encrypter.encrypt(&command.to_string())?);
-                encrypted = true;
-            }
+        if self.job.should_be_encrypted()
+            && let Some(encrypter) = try_app::<dyn JobEncrypter>()
+        {
+            command = Value::String(encrypter.encrypt(&command.to_string())?);
+            encrypted = true;
         }
 
         Ok(SerializedJob {
@@ -442,7 +442,7 @@ impl From<Arc<dyn ShouldQueue>> for Envelope {
 
 impl Serialize for Envelope {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        Envelope::serialize(self)
+        self.to_serialized()
             .map_err(serde::ser::Error::custom)?
             .serialize(serializer)
     }

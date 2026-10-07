@@ -106,7 +106,10 @@ mod tests {
         assert_eq!(0.5f64.into_delay(), Duration::from_millis(500));
         assert_eq!(Some(3).into_delay(), Duration::from_secs(3));
         assert_eq!(None::<u64>.into_delay(), Duration::ZERO);
-        assert_eq!(CarbonInterval::minutes(2).into_delay(), Duration::from_secs(120));
+        assert_eq!(
+            CarbonInterval::minutes(2).into_delay(),
+            Duration::from_secs(120)
+        );
         let soon = Carbon::now().add_seconds(60).into_delay();
         assert!(soon > Duration::from_secs(58) && soon <= Duration::from_secs(60));
         assert_eq!(Carbon::now().sub_seconds(60).into_delay(), Duration::ZERO);
