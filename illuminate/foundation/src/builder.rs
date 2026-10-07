@@ -158,6 +158,17 @@ impl ApplicationBuilder {
         })
     }
 
+    /// Register the application's Blade class components (`app/view/components`).
+    ///
+    /// ```ignore
+    /// .with_components(components::register)
+    /// ```
+    pub fn with_components(self, register: impl FnOnce(&illuminate_view::BladeCompiler) + Send + 'static) -> Self {
+        self.tap(move |app| {
+            app.booted(move |_| register(illuminate_view::Factory::resolve().blade()));
+        })
+    }
+
     /// Run a callback against the application once it is created (used by
     /// framework extensions such as console commands and migrations).
     pub fn tap(mut self, callback: impl FnOnce(&Arc<Application>) + Send + 'static) -> Self {

@@ -201,6 +201,14 @@ macro_rules! discover_commands {
     };
 }
 
+/// Include the Blade components discovered in `app/view/components`.
+#[macro_export]
+macro_rules! discover_components {
+    () => {
+        include!(concat!(env!("OUT_DIR"), "/laravel/components.rs"));
+    };
+}
+
 /// List the application's configuration files: `config_files![app, database]`
 /// expects modules exposing `pub fn config() -> Value`.
 #[macro_export]

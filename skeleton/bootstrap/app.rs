@@ -20,6 +20,7 @@ pub fn app() -> ApplicationBuilder {
             exceptions.should_render_json_when(|request, _| request.is("api/*") || request.expects_json());
         })
         .with_commands(super::commands::all())
+        .with_components(super::components::register)
         .with_migrations(database::migrations::all())
         .with_seeders(database::seeders::register)
 }

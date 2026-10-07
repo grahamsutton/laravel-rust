@@ -8,3 +8,8 @@ pub use providers::providers;
 pub mod commands {
     laravel::discover_commands!();
 }
+
+/// The Blade components in `app/view/components`, discovered at build time.
+pub mod components {
+    laravel::discover_components!();
+}

@@ -72,6 +72,7 @@ pub fn register_framework_commands() {
     Artisan::register(QueueRetryCommand);
     Artisan::register(QueueWorkCommand);
 
+    Artisan::register(generators::component::MakeComponentCommand);
     Artisan::register(generators::migration::MakeMigrationCommand);
     for generator in generators::commands::all() {
         Artisan::register(generator);

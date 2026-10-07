@@ -132,3 +132,22 @@ async fn guests_are_redirected_to_the_login_route() {
     app.get("/dashboard").await.assert_ok().assert_see("Dashboard for Taylor");
     app.get("/").await.assert_see("Signed in as Taylor");
 }
+
+#[tokio::test]
+async fn components_can_be_generated() {
+    let (app, dir) = test_app();
+
+    app.artisan("make:component AlertBanner")
+        .expects_output_to_contain("Component [app/view/components/alert_banner.rs] created successfully.")
+        .expects_output_to_contain("View [resources/views/components/alert-banner.blade.html] created successfully.")
+        .assert_successful()
+        .await;
+    app.artisan("make:component Forms/Input --view")
+        .expects_output_to_contain("View [resources/views/components/forms/input.blade.html] created successfully.")
+        .assert_successful()
+        .await;
+
+    let class = std::fs::read_to_string(dir.path().join("app/view/components/alert_banner.rs")).unwrap();
+    assert!(class.contains("impl Component for AlertBanner"));
+    assert!(class.contains(r#"ComponentView::view("components.alert-banner")"#));
+}

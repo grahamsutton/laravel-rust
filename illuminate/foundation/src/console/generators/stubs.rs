@@ -425,3 +425,25 @@ impl ShouldQueue for {{ class }} {
     }
 }
 "#;
+
+pub const COMPONENT: &str = r#"use laravel::prelude::*;
+use laravel::view::{ComponentArgs, ComponentView};
+
+pub struct {{ class }};
+
+impl {{ class }} {
+    /// Create a new component instance.
+    pub fn new(args: &mut ComponentArgs) -> Result<Self> {
+        let _ = args;
+
+        Ok(Self)
+    }
+}
+
+impl Component for {{ class }} {
+    /// Get the view / contents that represent the component.
+    fn render(&self) -> ComponentView {
+        {{ view }}
+    }
+}
+"#;
