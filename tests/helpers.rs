@@ -102,3 +102,33 @@ async fn http_requests_can_be_faked() {
         request.url() == "https://api.github.com/user/repos" && request.has_header_value("Authorization", "Bearer secret")
     });
 }
+
+#[tokio::test]
+async fn critical_log_entries_are_sent_to_slack() {
+    let app = app();
+    app.app().override_config("logging.channels.slack.url", "https://hooks.slack.com/services/T000/B000/XXXX");
+    Http::fake();
+
+    let slack = Log::channel("slack");
+    slack.info("Somebody signed in.");
+    slack.critical("The database is down.");
+
+    // Entries are posted in the background.
+    for _ in 0..50 {
+        if !Http::recorded().is_empty() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    Http::assert_sent_count(1);
+    Http::assert_sent(|request| {
+        let body = request.data();
+        request.url() == "https://hooks.slack.com/services/T000/B000/XXXX"
+            && body["username"] == "Laravel Log"
+            && body["icon_emoji"] == ":boom:"
+            && body["attachments"][0]["text"] == "The database is down."
+            && body["attachments"][0]["color"] == "danger"
+            && body["attachments"][0]["fields"][0]["value"] == "CRITICAL"
+    });
+}

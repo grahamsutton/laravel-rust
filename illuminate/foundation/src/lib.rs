@@ -16,6 +16,7 @@ pub mod helpers;
 pub mod http;
 pub mod inspiring;
 pub mod integration;
+pub mod logging;
 pub mod providers;
 pub mod scheduling;
 pub mod testing;

@@ -41,6 +41,7 @@ pub fn boot() {
     wire_transactions();
     wire_context();
     crate::scheduling::boot();
+    crate::logging::boot();
 }
 
 /// The `Context` travels with the jobs a request dispatches, and is

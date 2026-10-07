@@ -40,7 +40,8 @@ pub fn config() -> Value {
         | ships with a variety of channel drivers, giving you a variety of
         | powerful log handlers / formatters to utilize.
         |
-        | Available drivers: "single", "daily", "stderr", "errorlog", "custom", "stack"
+        | Available drivers: "single", "daily", "slack", "syslog",
+        |                    "errorlog", "monolog", "custom", "stack"
         |
         */
 
@@ -74,6 +75,31 @@ pub fn config() -> Value {
             "stderr": {
                 "driver": "stderr",
                 "level": env("LOG_LEVEL", "debug"),
+            },
+
+            "slack": {
+                "driver": "slack",
+                "url": env("LOG_SLACK_WEBHOOK_URL", Value::Null),
+                "username": env("LOG_SLACK_USERNAME", "Laravel Log"),
+                "emoji": env("LOG_SLACK_EMOJI", ":boom:"),
+                "level": env("LOG_LEVEL", "critical"),
+                "replace_placeholders": true,
+            },
+
+            "papertrail": {
+                "driver": "monolog",
+                "level": env("LOG_LEVEL", "debug"),
+                "handler": env("LOG_PAPERTRAIL_HANDLER", "SyslogUdpHandler"),
+                "handler_with": {
+                    "host": env("PAPERTRAIL_URL", Value::Null),
+                    "port": env("PAPERTRAIL_PORT", Value::Null),
+                    "connectionString": format!(
+                        "tls://{}:{}",
+                        env("PAPERTRAIL_URL", "").to_string_lossy(),
+                        env("PAPERTRAIL_PORT", "").to_string_lossy()
+                    ),
+                },
+                "processors": ["PsrLogMessageProcessor"],
             },
 
             "errorlog": {

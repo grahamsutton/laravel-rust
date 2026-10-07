@@ -327,6 +327,25 @@ pub fn logging() -> Value {
                 "driver": "stderr",
                 "level": env("LOG_LEVEL", "debug"),
             },
+            "slack": {
+                "driver": "slack",
+                "url": env("LOG_SLACK_WEBHOOK_URL", Value::Null),
+                "username": env("LOG_SLACK_USERNAME", "Laravel Log"),
+                "emoji": env("LOG_SLACK_EMOJI", ":boom:"),
+                "level": env("LOG_LEVEL", "critical"),
+                "replace_placeholders": true,
+            },
+            "papertrail": {
+                "driver": "monolog",
+                "level": env("LOG_LEVEL", "debug"),
+                "handler": env("LOG_PAPERTRAIL_HANDLER", "SyslogUdpHandler"),
+                "handler_with": {
+                    "host": env("PAPERTRAIL_URL", Value::Null),
+                    "port": env("PAPERTRAIL_PORT", Value::Null),
+                    "connectionString": format!("tls://{}:{}", env("PAPERTRAIL_URL", "").to_string_lossy(), env("PAPERTRAIL_PORT", "").to_string_lossy()),
+                },
+                "processors": ["PsrLogMessageProcessor"],
+            },
             "errorlog": {
                 "driver": "errorlog",
                 "level": env("LOG_LEVEL", "debug"),
