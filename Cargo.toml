@@ -64,6 +64,7 @@ illuminate-redis = { path = "illuminate/redis", version = "0.1.0" }
 illuminate-http-resources = { path = "illuminate/http-resources", version = "0.1.0" }
 illuminate-broadcasting = { path = "illuminate/broadcasting", version = "0.1.0" }
 laravel-sanctum = { path = "packages/sanctum", version = "0.1.0" }
+laravel-socialite = { path = "packages/socialite", version = "0.1.0" }
 illuminate-foundation = { path = "illuminate/foundation", version = "0.1.0" }
 laravel = { path = ".", version = "0.1.0" }
 laravel-build = { path = "illuminate/build", version = "0.1.0" }
@@ -124,6 +125,8 @@ lettre = { version = "0.11", default-features = false, features = ["builder", "s
 default = []
 # Laravel Sanctum: API tokens and SPA authentication (`install:api` turns it on).
 sanctum = ["dep:laravel-sanctum"]
+# Laravel Socialite: OAuth authentication with GitHub, Google, Facebook, and more.
+socialite = ["dep:laravel-socialite"]
 
 [dependencies]
 illuminate-support.workspace = true
@@ -153,6 +156,7 @@ illuminate-queue.workspace = true
 illuminate-redis.workspace = true
 illuminate-broadcasting.workspace = true
 laravel-sanctum = { workspace = true, optional = true }
+laravel-socialite = { workspace = true, optional = true }
 illuminate-process.workspace = true
 illuminate-concurrency.workspace = true
 illuminate-http-client.workspace = true

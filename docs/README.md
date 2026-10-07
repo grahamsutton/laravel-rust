@@ -158,6 +158,32 @@ Route::get("/orders", || async { "Orders" })
     .middleware(["auth:sanctum", "abilities:orders:read"]);
 ```
 
+### Socialite
+
+Turn on the `laravel` crate's `socialite` feature, put the provider's
+credentials in `config/services.rs`, and let users sign in with GitHub,
+Google, Facebook, X, LinkedIn, GitLab, Bitbucket, or Slack:
+
+```rust
+use laravel::socialite::Socialite;
+
+Route::get("/auth/redirect", || async { Socialite::driver("github").redirect() });
+
+Route::get("/auth/callback", || async {
+    let github_user = Socialite::driver("github").user().await?;
+
+    let user = User::update_or_create(
+        json!({"github_id": github_user.id}),
+        json!({"name": github_user.name, "github_token": github_user.token}),
+    )
+    .await?;
+
+    Auth::login(&user, false).await?;
+
+    Ok::<_, Error>(redirect("/dashboard"))
+});
+```
+
 ### Images
 
 Resize, crop, encode, and store images fluently, in pure Rust:
@@ -283,6 +309,7 @@ processes, and more: `Queue::fake()`, `Bus::assert_dispatched::<T>()`,
 | Eloquent API resources | `illuminate-http-resources` |
 | Authentication, gates, and policies | `illuminate-auth` |
 | Sanctum: API tokens and SPA authentication | `laravel-sanctum` (the `sanctum` feature) |
+| Socialite: OAuth authentication with GitHub, Google, Facebook, and more | `laravel-socialite` (the `socialite` feature) |
 | Sessions, cookies, encryption, hashing | `illuminate-session`, `-cookie`, `-encryption`, `-hashing` |
 | Cache (array, file, database, Redis, Memcached, DynamoDB, storage, session, failover) and rate limiting | `illuminate-cache` |
 | Redis (with cache, queue, and session drivers) | `illuminate-redis` |
@@ -308,7 +335,7 @@ Still to come:
   yet, and AWS credentials come only from configuration (there's no
   instance-profile or `~/.aws` credential chain).
 - **Packages**: the rest of Laravel's first-party packages (Horizon, Reverb's
-  WebSocket server, Scout, Socialite, and others) and the starter kits.
+  WebSocket server, Scout, and others) and the starter kits.
 
 ## Contributing
 

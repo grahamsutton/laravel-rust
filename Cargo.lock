@@ -1934,6 +1934,7 @@ dependencies = [
  "illuminate-view",
  "inventory",
  "laravel-sanctum",
+ "laravel-socialite",
  "serde",
  "serde_json",
  "sha2",
@@ -1967,6 +1968,25 @@ dependencies = [
  "serde_json",
  "sha2",
  "subtle",
+ "tokio",
+]
+
+[[package]]
+name = "laravel-socialite"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "illuminate-config",
+ "illuminate-container",
+ "illuminate-http",
+ "illuminate-http-client",
+ "illuminate-routing",
+ "illuminate-session",
+ "illuminate-support",
+ "serde",
+ "serde_json",
+ "sha2",
  "tokio",
 ]
 

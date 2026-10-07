@@ -64,6 +64,11 @@ pub use illuminate_view as view;
 #[cfg(feature = "sanctum")]
 pub use laravel_sanctum as sanctum;
 
+/// Laravel Socialite: OAuth authentication with GitHub, Google, Facebook,
+/// and more (the `socialite` feature).
+#[cfg(feature = "socialite")]
+pub use laravel_socialite as socialite;
+
 /// Testing helpers: `TestApp`, `TestResponse`, and friends.
 pub mod testing {
     pub use illuminate_foundation::testing::*;
