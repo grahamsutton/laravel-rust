@@ -9,41 +9,41 @@
         <!-- Styles / Scripts -->
         @if (file_exists(public_path('build/manifest.json')) || file_exists(public_path('hot')))
             @vite(['resources/css/app.css', 'resources/js/app.js'])
-        @else
-            <style>
-                *, *::before, *::after { box-sizing: border-box; }
-                body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; background: #fdfdfc; color: #1b1b18; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5; }
-                header { width: 100%; max-width: 56rem; margin-bottom: 1.5rem; }
-                nav { display: flex; justify-content: flex-end; gap: 1rem; }
-                nav a { padding: 0.375rem 1.25rem; border: 1px solid transparent; border-radius: 0.25rem; color: #1b1b18; text-decoration: none; }
-                nav a:hover, nav a.outlined { border-color: #19140035; }
-                main { display: flex; width: 100%; max-width: 56rem; overflow: hidden; border-radius: 0.5rem; box-shadow: inset 0 0 0 1px #1a1a0016; background: white; }
-                .content { flex: 1; padding: 3rem; }
-                h1 { margin: 0 0 0.25rem; font-size: 1rem; font-weight: 500; }
-                p { margin: 0 0 1rem; color: #706f6c; }
-                ul.steps { list-style: none; margin: 0 0 1.5rem; padding: 0; }
-                ul.steps li { display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0; }
-                ul.steps li span.dot { width: 0.875rem; height: 0.875rem; border-radius: 9999px; border: 1px solid #e3e3e0; background: #fdfdfc; box-shadow: 0 1px 2px #0000000d; }
-                a.link { color: #f53003; font-weight: 500; text-underline-offset: 4px; }
-                a.button { display: inline-block; padding: 0.375rem 1.25rem; border-radius: 0.25rem; background: #1b1b18; color: white; text-decoration: none; }
-                a.button:hover { background: black; }
-                .brand { display: flex; align-items: center; justify-content: center; width: 24rem; background: #fff2f2; color: #f53003; font-size: 4.5rem; font-weight: 600; letter-spacing: -0.05em; }
-                footer { margin-top: 1.5rem; color: #706f6c; font-size: 0.8125rem; }
-                @media (max-width: 64rem) { main { flex-direction: column-reverse; } .brand { width: 100%; padding: 3rem 0; } }
-                @media (prefers-color-scheme: dark) {
-                    body { background: #0a0a0a; color: #ededec; }
-                    nav a { color: #ededec; }
-                    nav a:hover, nav a.outlined { border-color: #3e3e3a; }
-                    main { background: #161615; box-shadow: inset 0 0 0 1px #fffaed2d; }
-                    p { color: #a1a09a; }
-                    ul.steps li span.dot { border-color: #3e3e3a; background: #161615; }
-                    a.link { color: #ff4433; }
-                    a.button { background: #eeeeec; color: #1c1c1a; }
-                    a.button:hover { background: white; }
-                    .brand { background: #1d0002; color: #f61500; }
-                }
-            </style>
         @endif
+
+        <style>
+            *, *::before, *::after { box-sizing: border-box; }
+            body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.5rem; background: #fdfdfc; color: #1b1b18; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5; }
+            header { width: 100%; max-width: 56rem; margin-bottom: 1.5rem; }
+            nav { display: flex; justify-content: flex-end; gap: 1rem; }
+            nav a { padding: 0.375rem 1.25rem; border: 1px solid transparent; border-radius: 0.25rem; color: #1b1b18; text-decoration: none; }
+            nav a:hover, nav a.outlined { border-color: #19140035; }
+            main { display: flex; width: 100%; max-width: 56rem; overflow: hidden; border-radius: 0.5rem; box-shadow: inset 0 0 0 1px #1a1a0016; background: white; }
+            .content { flex: 1; padding: 3rem; }
+            h1 { margin: 0 0 0.25rem; font-size: 1rem; font-weight: 500; }
+            p { margin: 0 0 1rem; color: #706f6c; }
+            ul.steps { list-style: none; margin: 0 0 1.5rem; padding: 0; }
+            ul.steps li { display: flex; align-items: center; gap: 1rem; padding: 0.5rem 0; }
+            ul.steps li span.dot { width: 0.875rem; height: 0.875rem; border-radius: 9999px; border: 1px solid #e3e3e0; background: #fdfdfc; box-shadow: 0 1px 2px #0000000d; }
+            a.link { color: #f53003; font-weight: 500; text-underline-offset: 4px; }
+            a.button { display: inline-block; padding: 0.375rem 1.25rem; border-radius: 0.25rem; background: #1b1b18; color: white; text-decoration: none; }
+            a.button:hover { background: black; }
+            .brand { display: flex; align-items: center; justify-content: center; width: 24rem; background: #fff2f2; color: #f53003; font-size: 4.5rem; font-weight: 600; letter-spacing: -0.05em; }
+            footer { margin-top: 1.5rem; color: #706f6c; font-size: 0.8125rem; }
+            @media (max-width: 64rem) { main { flex-direction: column-reverse; } .brand { width: 100%; padding: 3rem 0; } }
+            @media (prefers-color-scheme: dark) {
+                body { background: #0a0a0a; color: #ededec; }
+                nav a { color: #ededec; }
+                nav a:hover, nav a.outlined { border-color: #3e3e3a; }
+                main { background: #161615; box-shadow: inset 0 0 0 1px #fffaed2d; }
+                p { color: #a1a09a; }
+                ul.steps li span.dot { border-color: #3e3e3a; background: #161615; }
+                a.link { color: #ff4433; }
+                a.button { background: #eeeeec; color: #1c1c1a; }
+                a.button:hover { background: white; }
+                .brand { background: #1d0002; color: #f61500; }
+            }
+        </style>
     </head>
     <body>
         <header>
