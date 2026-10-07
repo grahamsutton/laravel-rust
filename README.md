@@ -1,9 +1,28 @@
-# Laravel, in Rust
+<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
 
-This is a port of the [Laravel](https://laravel.com) framework to Rust. It
-keeps what makes Laravel a joy: expressive routing, Eloquent, Blade,
-validation, queues, Artisan, and testing that reads like a story. Your
-application compiles to a single fast binary.
+<p align="center">
+<a href="https://laravel.com/docs/13.x"><img src="https://img.shields.io/badge/laravel-13.x-FF2D20" alt="Laravel Version"></a>
+<a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/rust-1.89%2B-B7410E" alt="Rust Version"></a>
+<a href="illuminate"><img src="https://img.shields.io/badge/components-35-blue" alt="Components"></a>
+<a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-brightgreen" alt="License"></a>
+</p>
+
+## About Laravel
+
+> **Note:** This repository contains the core code of the Laravel framework, ported to Rust. It's an unofficial port, not affiliated with Laravel. If you want to build an application using Laravel in Rust, start from the [application skeleton](skeleton).
+
+Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable, creative experience to be truly fulfilling. Laravel attempts to take the pain out of development by easing common tasks used in the majority of web projects, such as:
+
+- [Simple, fast routing engine](https://laravel.com/docs/routing).
+- [Powerful dependency injection container](https://laravel.com/docs/container).
+- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
+- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
+- [Robust background job processing](https://laravel.com/docs/queues).
+- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+
+Laravel is accessible, yet powerful, providing tools needed for large, robust applications. A superb combination of simplicity, elegance, and innovation gives you a complete toolset required to build any application with which you are tasked.
+
+This port brings that toolset to Rust: Eloquent, Blade, validation, queues, Artisan, and testing that reads like a story, with your application compiled to a single fast binary.
 
 ```rust
 use laravel::prelude::*;
@@ -31,293 +50,26 @@ pub fn web() {
 }
 ```
 
-If you know Laravel, you already know this framework. Method names are the
-same in snake case (`whereIn` is `where_in`, `firstOrFail` is
-`first_or_fail`), facades are still facades, and helpers are still helpers.
-The differences are the ones Rust asks for: handlers are `async`, models are
-structs, and the compiler checks your work.
+## Learning Laravel
 
-## Getting started
+Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. Nearly all of it applies here: method names are the same in snake case (`whereIn` is `where_in`, `firstOrFail` is `first_or_fail`), facades are still facades, and helpers are still helpers. The [guide to Laravel in Rust](docs/README.md) tours the differences, and [ARCHITECTURE.md](ARCHITECTURE.md) explains how the framework is put together.
 
-The `skeleton` directory is the application skeleton, the equivalent of
-`laravel/laravel`:
+If you're not in the mood to read, [Laracasts](https://laracasts.com) contains thousands of video tutorials covering a range of topics including Laravel, modern PHP, unit testing, JavaScript, and more. Boost the skill level of yourself and your entire team by digging into our comprehensive video library.
 
-```shell
-cd skeleton
-cp .env.example .env
-cargo artisan key:generate
-cargo artisan migrate
-cargo artisan serve
-```
-
-`cargo artisan` is a Cargo alias for the application's `artisan` binary, so
-every Artisan command works the way you expect: `cargo artisan make:model
-Post --all`, `cargo artisan route:list`, `cargo artisan queue:work`, and so
-on. Run the test suite with `cargo test`.
-
-Laravel discovers your application's classes at runtime; Rust needs to know
-about them when it compiles. The skeleton's build script handles this:
-migrations, seeders, Artisan commands, Blade components, and policies placed
-in their usual directories are found at build time, with nothing to register
-by hand.
-
-## A tour
-
-### Eloquent
-
-Models are plain structs. The derive gives them everything Eloquent has:
-conventions for tables and keys, mass assignment, serialization, casts
-through field types, soft deletes, scopes, events, relationships, and
-factories.
-
-```rust
-#[derive(Debug, Clone, Default, Model, Authenticatable)]
-#[use_factory(UserFactory)]
-#[fillable(name, email, password)]
-#[hidden(password, remember_token)]
-pub struct User {
-    pub id: u64,
-    pub name: String,
-    pub email: String,
-    #[hashed]
-    pub password: String,
-    pub remember_token: Option<String>,
-    #[relation]
-    pub posts: Option<Vec<Post>>,
-    pub created_at: Option<Carbon>,
-    pub updated_at: Option<Carbon>,
-}
-
-impl User {
-    /// Get the posts written by the user.
-    pub fn posts(&self) -> HasMany<Self, Post> {
-        self.has_many()
-    }
-}
-
-let users = User::with("posts")
-    .where_("active", true)
-    .latest()
-    .paginate(15)
-    .await?;
-```
-
-### API resources
-
-Resources transform models into JSON, with conditional attributes and
-paginated responses shaped exactly like Laravel's:
-
-```rust
-pub struct UserResource(pub User);
-
-impl JsonResource for UserResource {
-    type Model = User;
-
-    fn from_model(user: User) -> Self {
-        Self(user)
-    }
-
-    fn model(&self) -> &User {
-        &self.0
-    }
-
-    fn to_array(&self, request: &Request) -> Value {
-        json!({
-            "id": self.0.id,
-            "name": self.0.name,
-            "posts": PostResource::collection(self.when_loaded(&self.0.posts)),
-        })
-    }
-}
-
-Route::get("/api/users", || async {
-    Ok::<_, Error>(UserResource::collection(User::query().paginate(15).await?))
-});
-```
-
-### API authentication
-
-`cargo artisan install:api` installs Laravel Sanctum: it turns on the
-`laravel` crate's `sanctum` feature, publishes `routes/api.rs` and the
-personal access tokens migration, and loads the API routes. Packages are
-discovered the way Composer's `extra.laravel.providers` works, so there's
-no provider to register:
-
-```rust
-use laravel::sanctum::HasApiTokens;
-
-Route::post("/tokens/create", |request: Request| async move {
-    let user: User = request.user().unwrap();
-    let token = user.create_token(&request.string("token_name"), &["orders:read"]).await?;
-
-    Ok::<_, Error>(Json(json!({"token": token.plain_text_token})))
-})
-.middleware("auth");
-
-Route::get("/orders", || async { "Orders" })
-    .middleware(["auth:sanctum", "abilities:orders:read"]);
-```
-
-### Images
-
-Resize, crop, encode, and store images fluently, in pure Rust:
-
-```rust
-let path = request
-    .image("avatar")
-    .unwrap()
-    .orient()
-    .cover(400, 400)
-    .to_webp()
-    .store_publicly_on("avatars", "public")
-    .await?;
-```
-
-### Queues
-
-Jobs are serializable structs. Dispatch them, chain them, batch them, and
-run them with `cargo artisan queue:work`. The `sync`, `database`, `redis`,
-`sqs`, `beanstalkd`, `array`, `deferred`, `background`, `failover`, and
-`null` drivers are included.
-
-```rust
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct ProcessPodcast {
-    pub id: u64,
-}
-
-laravel::register_job!(ProcessPodcast);
-
-#[async_trait]
-impl ShouldQueue for ProcessPodcast {
-    async fn handle(&self) -> Result<()> {
-        // Process the uploaded podcast...
-        Ok(())
-    }
-}
-
-ProcessPodcast { id: 1 }.dispatch().on_queue("podcasts").delay(60).await?;
-```
-
-What Laravel declares with interfaces and attributes, jobs declare with
-trait methods. A job that returns an id from `unique_id` is unique; one that
-returns `Some(DebounceFor::new(30))` from `debounce_for` is debounced, so
-when it's dispatched again and again, only the latest dispatch runs.
-
-### Mail and notifications
-
-Mailables are structs too, and Markdown mail is rendered with Laravel's own
-components and theme:
-
-```rust
-#[derive(Serialize)]
-pub struct OrderShipped {
-    pub order_id: u64,
-}
-
-impl Mailable for OrderShipped {
-    fn envelope(&self) -> Envelope {
-        Envelope::new().subject("Order Shipped")
-    }
-
-    fn content(&self) -> Content {
-        Content::markdown("mail.orders.shipped")
-    }
-}
-
-Mail::to(&user.email).send(OrderShipped { order_id: order.id }).await?;
-
-user.notify(InvoicePaid { invoice_id: invoice.id }).await?;
-```
-
-### Testing
-
-Tests make requests against your application, without a server, and read
-the way Laravel's feature tests do:
-
-```rust
-#[tokio::test]
-async fn users_can_log_in() {
-    let mut app = crate::app();
-    app.refresh_database().await;
-    let user = User::factory().create_one().await.unwrap();
-
-    app.post("/login", json!({"email": user.email, "password": "password"}))
-        .await
-        .assert_redirect("/dashboard");
-
-    app.assert_authenticated_as(&user).await;
-}
-```
-
-Responses have Laravel's assertions, including fluent JSON assertions:
-
-```rust
-app.get_json("/api/users/1")
-    .await
-    .assert_ok()
-    .assert_json_fluent(|json| {
-        json.where_("id", 1)
-            .where_type("email", "string")
-            .missing("password")
-            .etc()
-    });
-```
-
-Views and components can be rendered and tested on their own
-(`app.view("welcome", data).assert_see("Laravel")`), and fakes are
-available for mail, notifications, the queue, events, HTTP requests,
-processes, and more: `Queue::fake()`, `Bus::assert_dispatched::<T>()`,
-`Http::fake()`, `Process::fake()`, `Event::fake()`.
-
-## What's included
-
-| Laravel | Crate |
-| --- | --- |
-| Routing, controllers, middleware, URL generation | `illuminate-routing`, `illuminate-http` |
-| Blade templates and components | `illuminate-view` |
-| Validation | `illuminate-validation` |
-| Query builder, schema builder, migrations, seeders | `illuminate-database` |
-| Eloquent, relationships, factories | `illuminate-database` (`eloquent`), `illuminate-macros` |
-| Pagination | `illuminate-pagination` |
-| Eloquent API resources | `illuminate-http-resources` |
-| Authentication, gates, and policies | `illuminate-auth` |
-| Sanctum: API tokens and SPA authentication | `laravel-sanctum` (the `sanctum` feature) |
-| Sessions, cookies, encryption, hashing | `illuminate-session`, `-cookie`, `-encryption`, `-hashing` |
-| Cache (array, file, database, Redis, Memcached, DynamoDB, storage, session, failover) and rate limiting | `illuminate-cache` |
-| Redis (with cache, queue, and session drivers) | `illuminate-redis` |
-| Queues (database, Redis, SQS, Beanstalkd), jobs, chains, and batches | `illuminate-queue` |
-| Broadcasting (Pusher, Reverb, Ably) | `illuminate-broadcasting` |
-| Events, logging and `Context`, filesystem, localization | `illuminate-events`, `-log`, `-filesystem`, `-translation` |
-| Artisan and task scheduling | `illuminate-console` |
-| Processes and concurrency | `illuminate-process`, `illuminate-concurrency` |
-| The HTTP client | `illuminate-http-client` |
-| Mail (SMTP, sendmail, Postmark, Resend, Mailgun, SES) and Markdown mail | `illuminate-mail` |
-| Notifications (mail, database, Slack, custom channels) | `illuminate-notifications` |
-| Image manipulation | `illuminate-image` |
-| JSON Schema builders | `illuminate-json-schema` |
-| Collections, strings, dates, and helpers | `illuminate-support` |
-| The application, kernels, exception handling, testing | `illuminate-foundation` |
-
-Applications depend only on the `laravel` crate, which re-exports every
-component and provides the prelude.
-
-Still to come:
-
-- **Drivers**: Redis Cluster and TLS connections to Redis aren't supported
-  yet, and AWS credentials come only from configuration (there's no
-  instance-profile or `~/.aws` credential chain).
-- **Packages**: the rest of Laravel's first-party packages (Horizon, Reverb's
-  WebSocket server, Scout, Socialite, and others) and the starter kits.
+You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch.
 
 ## Contributing
 
-Every component follows the conventions in
-[ARCHITECTURE.md](ARCHITECTURE.md). Read it before you start: it describes
-how Laravel's API is spelled in Rust, how facades and the container work,
-and what each crate may depend on.
+Thank you for considering contributing to Laravel in Rust! The contribution guide can be found in [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+
+## Code of Conduct
+
+In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+
+## Security Vulnerabilities
+
+Please review [our security policy](https://github.com/grahamsutton/laravel-rust/security/policy) on how to report security vulnerabilities.
 
 ## License
 
-This port is open-source software licensed under the
-[MIT license](https://opensource.org/licenses/MIT), like Laravel itself.
+The Laravel framework is open-sourced software licensed under the [MIT license](LICENSE.md).
