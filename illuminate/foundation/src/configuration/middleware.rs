@@ -16,6 +16,8 @@ use indexmap::IndexMap;
 use illuminate_http::Middleware as HttpMiddleware;
 use illuminate_routing::{IntoMiddleware, MiddlewareFactory, RouteMiddleware};
 
+use crate::http::middleware::HandlePrecognitiveRequests;
+
 /// The application's middleware configuration.
 #[derive(Clone)]
 pub struct Middleware {
@@ -49,6 +51,14 @@ impl Default for Middleware {
     }
 }
 
+/// The framework's own middleware aliases, registered before the
+/// application's (which may replace them).
+fn default_aliases() -> Vec<(String, MiddlewareFactory)> {
+    let precognitive: MiddlewareFactory =
+        Arc::new(|_: &[String]| Arc::new(HandlePrecognitiveRequests::new()) as Arc<dyn HttpMiddleware>);
+    vec![("precognitive".to_string(), precognitive)]
+}
+
 impl Middleware {
     /// The framework's default middleware configuration.
     pub fn new() -> Self {
@@ -61,7 +71,7 @@ impl Middleware {
             group_prepend: IndexMap::new(),
             group_append: IndexMap::new(),
             group_remove: IndexMap::new(),
-            aliases: Vec::new(),
+            aliases: default_aliases(),
             priority: None,
             csrf_except: Vec::new(),
             encrypt_cookies_except: Vec::new(),

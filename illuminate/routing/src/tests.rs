@@ -1726,3 +1726,169 @@ async fn requests_validate_their_own_signatures() {
         "false true invite"
     );
 }
+
+// ----------------------------------------------------------------------
+// Precognition
+// ----------------------------------------------------------------------
+
+/// What the foundation's `precognitive` middleware does to the request.
+fn mark_precognitive() -> Arc<dyn Middleware> {
+    middleware_fn(|request: Request, next: Next| async move {
+        if request.is_attempting_precognition() {
+            request.set_attribute("precognitive", true);
+        }
+        Ok(next.run(request).await)
+    })
+}
+
+fn precognitive_request(uri: &str, method: &str) -> Request {
+    request_with_headers(uri, method, &[("precognition", "true")])
+}
+
+#[tokio::test]
+async fn precognitive_requests_resolve_arguments_but_skip_the_handler() {
+    let _app = app();
+    let ran = Arc::new(AtomicUsize::new(0));
+    let extracted = Arc::new(Mutex::new(Vec::new()));
+
+    let (ran_in_handler, seen) = (ran.clone(), extracted.clone());
+    Route::post("/users/{id}", move |Path(id): Path<u64>, _request: Request| {
+        seen.lock().unwrap().push(id);
+        let ran = ran_in_handler.clone();
+        async move {
+            ran.fetch_add(1, Ordering::SeqCst);
+            "Created"
+        }
+    })
+    .middleware(mark_precognitive());
+
+    let response = Route::router()
+        .dispatch(precognitive_request("/users/7", "POST"))
+        .await;
+    assert_eq!(response.status_code(), 204);
+    assert_eq!(response.header("precognition-success").as_deref(), Some("true"));
+    assert!(response.content().is_empty());
+    assert_eq!(ran.load(Ordering::SeqCst), 0);
+    // The handler wasn't even called: its body never ran.
+    assert!(extracted.lock().unwrap().is_empty());
+
+    // Without the header, the handler runs as usual.
+    let response = send("/users/7", "POST").await;
+    assert_eq!(response.content_string(), "Created");
+    assert_eq!(ran.load(Ordering::SeqCst), 1);
+    assert_eq!(*extracted.lock().unwrap(), vec![7]);
+}
+
+#[tokio::test]
+async fn precognitive_requests_report_extraction_failures() {
+    let _app = app();
+    Route::get("/users/{id}", |Path(id): Path<u64>| async move { id.to_string() })
+        .middleware(mark_precognitive());
+    Route::post("/fail", |_request: Request| async {
+        Err::<&str, _>(HttpException::new(500))
+    })
+    .middleware(middleware_fn(|request: Request, next: Next| async move {
+        request.set_attribute("precognitive", true);
+        Ok(next.run(request).await)
+    }));
+    Route::post("/forbidden", |_: Forbidden| async { "never" }).middleware(mark_precognitive());
+
+    struct Forbidden;
+
+    #[async_trait]
+    impl FromRequest for Forbidden {
+        async fn from_request(_request: &Request) -> Result<Self> {
+            Err(HttpException::new(403).into())
+        }
+    }
+
+    let response = Route::router()
+        .dispatch(precognitive_request("/users/abc", "GET"))
+        .await;
+    assert_eq!(response.status_code(), 404);
+    assert!(response.header("precognition-success").is_none());
+
+    let response = Route::router()
+        .dispatch(precognitive_request("/forbidden", "POST"))
+        .await;
+    assert_eq!(response.status_code(), 403);
+
+    // The handler itself never runs, so its errors can't happen.
+    assert_eq!(send("/fail", "POST").await.status_code(), 204);
+}
+
+#[tokio::test]
+async fn controller_methods_are_precognitive_too() {
+    let _app = app();
+    Route::get("/users/{id}", UserController::show).middleware(mark_precognitive());
+
+    let response = Route::router()
+        .dispatch(precognitive_request("/users/3", "GET"))
+        .await;
+    assert_eq!(response.status_code(), 204);
+    assert_eq!(get("/users/3").await.content_string(), "User 3");
+}
+
+#[tokio::test]
+async fn the_header_alone_does_not_make_a_request_precognitive() {
+    let _app = app();
+    Route::post("/users", |request: Request| async move {
+        format!("precognitive: {}", request.is_precognitive())
+    });
+
+    let response = Route::router()
+        .dispatch(precognitive_request("/users", "POST"))
+        .await;
+    assert_eq!(response.content_string(), "precognitive: false");
+}
+
+#[tokio::test]
+async fn missing_handlers_still_respond_to_precognitive_requests() {
+    let _app = app();
+    struct Location;
+
+    #[async_trait]
+    impl FromRequest for Location {
+        async fn from_request(request: &Request) -> Result<Self> {
+            match route_parameter_for(request, "location") {
+                Some((value, _)) if value == "home" => Ok(Location),
+                _ => Err(HttpException::new(404).into()),
+            }
+        }
+    }
+
+    Route::put("/locations/{location}", |_location: Location| async { "updated" })
+        .middleware(mark_precognitive())
+        .missing(|| async { Redirect::to("/locations") });
+
+    let response = Route::router()
+        .dispatch(precognitive_request("/locations/home", "PUT"))
+        .await;
+    assert_eq!(response.status_code(), 204);
+
+    let response = Route::router()
+        .dispatch(precognitive_request("/locations/mars", "PUT"))
+        .await;
+    assert!(response.is_redirect());
+    assert_eq!(response.target_url().unwrap(), "http://localhost/locations");
+}
+
+#[tokio::test]
+async fn redirect_view_and_resource_routes_are_precognitive() {
+    let _app = app();
+    let precognitive = |route: RouteDefinition| route.middleware(mark_precognitive());
+    precognitive(Route::redirect("/here", "/there"));
+    precognitive(Route::view("/welcome", "welcome", json!({})));
+    Route::middleware(mark_precognitive()).group(|| {
+        Route::resource("photos", PhotoController).only(&["show"]);
+    });
+
+    for uri in ["/here", "/welcome", "/photos/1"] {
+        let response = Route::router().dispatch(precognitive_request(uri, "GET")).await;
+        assert_eq!(response.status_code(), 204, "{uri}");
+        assert_eq!(response.header("precognition-success").as_deref(), Some("true"));
+    }
+
+    assert_eq!(get("/here").await.status_code(), 302);
+    assert_eq!(get("/photos/1").await.content_string(), "show 1");
+}

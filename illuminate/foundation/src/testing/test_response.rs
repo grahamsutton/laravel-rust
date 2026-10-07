@@ -177,6 +177,20 @@ impl TestResponse {
         self
     }
 
+    /// Assert a precognitive request passed validation: a `204 No Content`
+    /// response with `Precognition-Success: true`.
+    pub fn assert_successful_precognition(&self) -> &Self {
+        self.assert_no_content();
+        match self.header("Precognition-Success") {
+            None => self.fail("Header [Precognition-Success] not present on response.".into()),
+            Some(value) if value != "true" => {
+                self.fail("The Precognition-Success header was found, but the value is not `true`.".into())
+            }
+            Some(_) => {}
+        }
+        self
+    }
+
     /// Assert the response has a `301 Moved Permanently` status code.
     pub fn assert_moved_permanently(&self) -> &Self {
         self.assert_status(301)

@@ -24,6 +24,7 @@ pub mod exceptions;
 pub mod input;
 pub mod into_response;
 pub mod middleware;
+pub mod precognition;
 pub mod request;
 pub mod response;
 pub mod server;
@@ -37,6 +38,7 @@ pub use exceptions::{
 };
 pub use into_response::{IntoResponse, Json};
 pub use middleware::{Destination, Middleware, Next, build_pipeline, middleware_fn, run_middleware};
+pub use precognition::Precognition;
 pub use request::Request;
 pub use response::{Body, BodyStream, Response, ResponseFactory, SyncStream, response};
 pub use uploaded_file::UploadedFile;

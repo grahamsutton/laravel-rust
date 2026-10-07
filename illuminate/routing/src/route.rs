@@ -339,8 +339,8 @@ impl RouteDefinition {
         H: crate::handler::Handler<T>,
         T: 'static,
     {
-        let action = handler.into_action();
-        self.update(|state| state.missing = Some(action.handler));
+        let handler = handler.into_missing_handler();
+        self.update(|state| state.missing = Some(handler));
         self
     }
 

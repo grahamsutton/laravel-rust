@@ -34,7 +34,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use illuminate_http::{HttpException, Request, Response, async_trait};
+use illuminate_http::{HttpException, Precognition, Request, Response, async_trait};
 use illuminate_support::{Result, Str};
 
 use crate::handler::Handler;
@@ -47,6 +47,12 @@ use crate::router::{GroupAttributes, Router};
 /// Every action defaults to a `404`, so implement only the ones you need.
 /// Errors returned by an action are rendered by the exception handler — or,
 /// for "model not found" errors, by the resource's `missing` handler.
+///
+/// Actions receive the raw request and resolve their own input, so they
+/// are never called for [precognitive](Request::is_precognitive) requests:
+/// those are answered with `204 No Content` once the route's middleware
+/// ran. To predict validation, register a function handler taking a
+/// validated form request instead.
 #[async_trait]
 pub trait ResourceController: Send + Sync + 'static {
     /// Display a listing of the resource.
@@ -331,6 +337,12 @@ impl Pending {
         let handler: RouteHandler = Arc::new(move |request: Request| {
             let controller = controller.clone();
             Box::pin(async move {
+                // Resource actions resolve their own input from the request,
+                // so a precognitive request can only predict the outcome of
+                // the route's middleware.
+                if request.is_precognitive() {
+                    return Ok(Precognition::success_response());
+                }
                 match method {
                     "index" => controller.index(request).await,
                     "create" => controller.create(request).await,
@@ -476,7 +488,7 @@ macro_rules! pending_methods {
 
         /// Handle models that can't be found with the given handler.
         pub fn missing<H: Handler<T>, T: 'static>(mut self, handler: H) -> Self {
-            self.pending.options.missing = Some(handler.into_action().handler);
+            self.pending.options.missing = Some(handler.into_missing_handler());
             self
         }
 

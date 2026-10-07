@@ -146,7 +146,7 @@ impl RouteRegistrar {
 
     /// Handle missing models in the group's routes with the given handler.
     pub fn missing<H: Handler<T>, T: 'static>(mut self, handler: H) -> Self {
-        self.attributes.missing = Some(handler.into_action().handler);
+        self.attributes.missing = Some(handler.into_missing_handler());
         self
     }
 

@@ -23,11 +23,16 @@
 //!
 //! assert_eq!(hello.name, "Closure");
 //! ```
+//!
+//! When the request is [precognitive](Request::is_precognitive) (Laravel
+//! Precognition), the arguments are still extracted — so form requests are
+//! validated and models are bound — but the handler is not called: the
+//! route answers with `204 No Content` and `Precognition-Success: true`.
 
 use std::future::Future;
 use std::sync::Arc;
 
-use illuminate_http::{IntoResponse, Request};
+use illuminate_http::{IntoResponse, Precognition, Request};
 
 use crate::extract::FromRequest;
 use crate::route::{RouteAction, RouteHandler};
@@ -38,7 +43,20 @@ use crate::route::{RouteAction, RouteHandler};
 /// you never name it yourself.
 pub trait Handler<Args>: Send + Sync + Sized + 'static {
     /// Type-erase the handler into a [`RouteAction`].
+    ///
+    /// For a [precognitive](Request::is_precognitive) request, the action
+    /// still extracts every argument — validating form requests and
+    /// binding models — but answers with
+    /// [`Precognition::success_response`] instead of running the handler.
     fn into_action(self) -> RouteAction;
+
+    /// Type-erase the handler into a callback that always runs, even for
+    /// precognitive requests. Routes use it for their `missing` handlers,
+    /// whose response replaces the "not found" error.
+    #[doc(hidden)]
+    fn into_missing_handler(self) -> RouteHandler {
+        self.into_action().handler
+    }
 }
 
 impl Handler<RouteAction> for RouteAction {
@@ -76,6 +94,30 @@ pub fn action_name_from_type(type_name: &str) -> String {
     type_name.to_string()
 }
 
+/// Erase a handler: extract each argument from the request, then call it.
+///
+/// When `$predict` is true, precognitive requests stop once the arguments
+/// were extracted — Laravel's `PrecognitionCallableDispatcher`.
+macro_rules! erase_handler {
+    ($handler:expr, $predict:expr; $($arg:ident),*) => {{
+        let handler = Arc::new($handler);
+        let predict: bool = $predict;
+        let erased: RouteHandler = Arc::new(move |request: Request| {
+            let handler = handler.clone();
+            Box::pin(async move {
+                $(
+                    let $arg = <$arg as FromRequest>::from_request(&request).await?;
+                )*
+                if predict && request.is_precognitive() {
+                    return Ok(Precognition::success_response());
+                }
+                Ok(handler($($arg),*).await.into_response())
+            })
+        });
+        erased
+    }};
+}
+
 macro_rules! impl_handler {
     ($($arg:ident),*) => {
         #[allow(non_snake_case, unused_variables, unused_mut)]
@@ -88,17 +130,11 @@ macro_rules! impl_handler {
         {
             fn into_action(self) -> RouteAction {
                 let name = action_name_from_type(std::any::type_name::<F>());
-                let handler = Arc::new(self);
-                let erased: RouteHandler = Arc::new(move |request: Request| {
-                    let handler = handler.clone();
-                    Box::pin(async move {
-                        $(
-                            let $arg = <$arg as FromRequest>::from_request(&request).await?;
-                        )*
-                        Ok(handler($($arg),*).await.into_response())
-                    })
-                });
-                RouteAction::new(name, erased)
+                RouteAction::new(name, erase_handler!(self, true; $($arg),*))
+            }
+
+            fn into_missing_handler(self) -> RouteHandler {
+                erase_handler!(self, false; $($arg),*)
             }
         }
     };

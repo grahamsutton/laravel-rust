@@ -9,6 +9,7 @@ use illuminate_http::{HttpException, Request, UploadedFile};
 use illuminate_support::{Result, Value};
 
 use crate::exception::ValidationException;
+use crate::precognition;
 use crate::rules::Rules;
 use crate::validated_input::ValidatedInput;
 use crate::validator::{CustomAttributes, CustomMessages, Validator};
@@ -46,6 +47,11 @@ pub trait ValidatesRequests {
 
     /// Validate the request, returning the validated data. Failures return
     /// a [`ValidationException`] (as an `Error`) for the exception handler.
+    ///
+    /// For a [precognitive](Request::is_precognitive) request, only the
+    /// attributes listed in its `Precognition-Validate-Only` header are
+    /// validated, and once they pass the request ends with a successful
+    /// `204 No Content`.
     async fn validate<R: Into<Rules> + Send>(&self, rules: R) -> Result<Value>;
 
     /// Validate the request, flashing errors into a named error bag.
@@ -66,9 +72,11 @@ pub trait ValidatesRequests {
     fn safe(&self) -> ValidatedInput;
 }
 
-async fn run(request: &Request, mut validator: Validator, bag: Option<&str>) -> Result<Value> {
+async fn run(request: &Request, validator: Validator, bag: Option<&str>) -> Result<Value> {
+    let mut validator = precognition::prepare(validator, request);
     match validator.try_validate().await {
         Ok(data) => {
+            precognition::passed(request)?;
             let files = validator.validated_files();
             request.set_extension(Arc::new(ValidatedRequestData {
                 data: data.clone(),
@@ -161,6 +169,34 @@ impl ValidatesRequests for Request {
 #[async_trait]
 pub trait FormRequest: Send + Sync + 'static {
     /// The validation rules that apply to the request.
+    ///
+    /// Rules may differ for [precognitive](Request::is_precognitive)
+    /// requests — say, skipping a slow `uncompromised` check, or not
+    /// requiring files that aren't uploaded until the final submission:
+    ///
+    /// ```
+    /// use illuminate_http::Request;
+    /// use illuminate_validation::{FormRequest, Rules, rules};
+    ///
+    /// struct StoreUserRequest;
+    ///
+    /// impl FormRequest for StoreUserRequest {
+    ///     fn rules(&self, request: &Request) -> Rules {
+    ///         rules! {
+    ///             "password" => if request.is_precognitive() {
+    ///                 "required|min:8"
+    ///             } else {
+    ///                 "required|min:8|uncompromised"
+    ///             },
+    ///             "avatar" => if request.is_precognitive() {
+    ///                 "image|mimes:jpg,png"
+    ///             } else {
+    ///                 "required|image|mimes:jpg,png"
+    ///             },
+    ///         }
+    ///     }
+    /// }
+    /// ```
     fn rules(&self, request: &Request) -> Rules;
 
     /// Determine if the user is authorized to make this request. A `false`
@@ -282,6 +318,11 @@ impl<T> std::ops::Deref for Validated<T> {
 /// Fails with an `HttpException` (403) when unauthorized, or a
 /// [`ValidationException`] (carrying the form request's error bag and
 /// redirect) when the data is invalid.
+///
+/// For a [precognitive](Request::is_precognitive) request, only the
+/// attributes listed in its `Precognition-Validate-Only` header are
+/// validated, and once they pass the request ends with a successful
+/// `204 No Content` (an [`HttpResponseException`](illuminate_http::exceptions::HttpResponseException)).
 pub async fn validate_form_request<T: FormRequest + Default>(
     request: &Request,
 ) -> Result<Validated<T>> {
@@ -306,6 +347,7 @@ pub async fn validate_form_request_with<T: FormRequest>(
     if form.stop_on_first_failure() {
         validator = validator.stop_on_first_failure();
     }
+    let validator = precognition::prepare(validator, request);
     let mut validator = form.with_validator(validator, request);
 
     validator.try_passes().await?;
@@ -318,6 +360,8 @@ pub async fn validate_form_request_with<T: FormRequest>(
         }
         return Err(exception.into());
     }
+
+    precognition::passed(request)?;
 
     let data = validator.validated()?;
     let files = validator.validated_files();

@@ -855,3 +855,13 @@ fn fluent_json_count_between_fails_for_large_collections() {
     AssertableJson::from_array(json!({"users": [1, 2]}))
         .has_scoped("users", |users| users.count_between(0, 1).etc());
 }
+
+#[test]
+#[should_panic(expected = "Header [Precognition-Success] not present on response.")]
+fn successful_precognition_requires_the_success_header() {
+    let response = illuminate_foundation::testing::TestResponse::new(
+        illuminate_http::Response::no_content(),
+        illuminate_http::Request::create("/", "POST"),
+    );
+    response.assert_successful_precognition();
+}

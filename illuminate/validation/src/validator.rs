@@ -131,6 +131,8 @@ type SometimesCallback = Arc<dyn Fn(&Value, &Value) -> bool + Send + Sync>;
 
 type AttributeFormatter = Arc<dyn Fn(&str) -> String + Send + Sync>;
 
+type RuleFilter = Arc<dyn Fn(&str) -> bool + Send + Sync>;
+
 #[derive(Clone)]
 struct Sometimes {
     attributes: Vec<String>,
@@ -286,6 +288,7 @@ pub struct Validator {
     pub(crate) custom_values: IndexMap<String, IndexMap<String, String>>,
     after: Vec<AfterHook>,
     sometimes: Vec<Sometimes>,
+    rule_filters: Vec<RuleFilter>,
     stop_on_first_failure: bool,
     exclude_unvalidated_array_keys: bool,
     pub(crate) implicit_attributes_formatter: Option<AttributeFormatter>,
@@ -330,6 +333,7 @@ impl Validator {
             custom_values: IndexMap::new(),
             after: Vec::new(),
             sometimes: Vec::new(),
+            rule_filters: Vec::new(),
             stop_on_first_failure: false,
             exclude_unvalidated_array_keys: factory.excludes_unvalidated_array_keys(),
             implicit_attributes_formatter: None,
@@ -359,6 +363,7 @@ impl Validator {
             custom_values: self.custom_values.clone(),
             after: Vec::new(),
             sometimes: Vec::new(),
+            rule_filters: Vec::new(),
             stop_on_first_failure: false,
             exclude_unvalidated_array_keys: self.exclude_unvalidated_array_keys,
             implicit_attributes_formatter: self.implicit_attributes_formatter.clone(),
@@ -559,6 +564,35 @@ impl Validator {
             rules: rules.into(),
             callback: Arc::new(callback),
         });
+        self
+    }
+
+    /// Only validate the attributes the filter accepts.
+    ///
+    /// The filter sees concrete attributes: wildcard rules are expanded
+    /// against the data first, so `users.*.email` is offered as
+    /// `users.0.email`, `users.1.email`, ... Rules added with
+    /// [`Validator::sometimes`] are filtered too. Precognitive requests use
+    /// it to validate only the fields listed in their
+    /// `Precognition-Validate-Only` header.
+    ///
+    /// ```
+    /// use illuminate_validation::Validator;
+    /// use illuminate_support::json;
+    ///
+    /// # tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(async {
+    /// let mut validator = Validator::make(
+    ///     json!({"users": [{"email": "nope"}, {"email": "taylor@laravel.com"}]}),
+    ///     [("name", "required"), ("users.*.email", "email")],
+    /// )
+    /// .filter_rules(|attribute| attribute.starts_with("users."));
+    ///
+    /// assert!(validator.fails().await);
+    /// assert_eq!(validator.errors().keys(), vec!["users.0.email"]);
+    /// # });
+    /// ```
+    pub fn filter_rules(mut self, filter: impl Fn(&str) -> bool + Send + Sync + 'static) -> Self {
+        self.rule_filters.push(Arc::new(filter));
         self
     }
 
@@ -973,6 +1007,12 @@ impl Validator {
                     }
                 }
             }
+        }
+
+        if !self.rule_filters.is_empty() {
+            let filters = self.rule_filters.clone();
+            self.rules
+                .retain(|attribute, _| filters.iter().all(|filter| filter(attribute)));
         }
 
         self.messages = MessageBag::new();

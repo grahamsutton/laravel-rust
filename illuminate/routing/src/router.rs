@@ -9,7 +9,8 @@ use regex::Regex;
 
 use illuminate_container::{Container, try_app};
 use illuminate_http::{
-    Destination, HttpException, Middleware, Request, Response, render_exception, with_request,
+    Destination, HttpException, Middleware, Precognition, Request, Response, render_exception,
+    with_request,
 };
 use illuminate_support::error::RuntimeException;
 use illuminate_support::{Error, Result, Value};
@@ -383,6 +384,9 @@ impl Router {
         let handler: RouteHandler = Arc::new(move |request: Request| {
             let destination = destination.clone();
             Box::pin(async move {
+                if request.is_precognitive() {
+                    return Ok(Precognition::success_response());
+                }
                 let url = fill_destination(&destination, &request)?;
                 Ok(Response::redirect_with_status(url, status))
             })
@@ -419,6 +423,9 @@ impl Router {
                 _ => illuminate_support::Map::new(),
             };
             Box::pin(async move {
+                if request.is_precognitive() {
+                    return Ok(Precognition::success_response());
+                }
                 let renderer = renderer.ok_or_else(|| {
                     RuntimeException::new(
                         "No view renderer has been registered with the router. Did you register the ViewServiceProvider?",

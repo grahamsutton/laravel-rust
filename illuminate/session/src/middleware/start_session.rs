@@ -6,7 +6,7 @@ use illuminate_cookie::CookieQueue;
 use illuminate_http::{
     Cookie, Middleware, Next, Request, Response, async_trait, current_request, with_request,
 };
-use illuminate_support::{Map, Result, Value, ValueExt, to_value};
+use illuminate_support::{Map, Result, Value, to_value};
 
 use crate::manager::{SessionConfig, SessionManager};
 use crate::request::RequestSessionExt;
@@ -191,12 +191,10 @@ fn config_hits_lottery((wins, out_of): (u32, u32)) -> bool {
     rand::random_range(1..=out_of.max(1)) <= wins
 }
 
-/// Precognitive requests (Laravel Precognition) never touch the session.
+/// Precognitive requests (Laravel Precognition) never touch the session:
+/// the `precognitive` middleware marks them while they're handled.
 fn is_precognitive(request: &Request) -> bool {
-    request.attribute("precognitive").truthy()
-        || request
-            .header("precognition")
-            .is_some_and(|value| value.eq_ignore_ascii_case("true"))
+    request.is_precognitive()
 }
 
 #[cfg(test)]
@@ -263,8 +261,11 @@ mod tests {
     #[test]
     fn precognitive_requests_are_detected() {
         let request = Request::create("/", "POST");
-        assert!(!is_precognitive(&request));
         request.set_header("precognition", "true");
+        // The header alone doesn't make the request precognitive: the
+        // route's `precognitive` middleware does.
+        assert!(!is_precognitive(&request));
+        request.set_attribute("precognitive", true);
         assert!(is_precognitive(&request));
     }
 }

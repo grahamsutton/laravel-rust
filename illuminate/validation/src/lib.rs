@@ -59,6 +59,7 @@ mod http;
 mod messages;
 mod parser;
 mod php;
+mod precognition;
 mod presence;
 mod rule;
 mod rules;

@@ -121,6 +121,13 @@ impl TestApp {
         self
     }
 
+    /// Make subsequent requests precognitive (Laravel Precognition): routes
+    /// with the `precognitive` middleware validate the request but don't
+    /// run their handlers.
+    pub fn with_precognition(&mut self) -> &mut Self {
+        self.with_header("Precognition", "true")
+    }
+
     /// Send a bearer token with subsequent requests.
     pub fn with_token(&mut self, token: &str) -> &mut Self {
         self.with_header("Authorization", &format!("Bearer {token}"))
