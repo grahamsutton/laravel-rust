@@ -127,6 +127,32 @@ impl ShouldQueue for ProcessPodcast {
 ProcessPodcast { id: 1 }.dispatch().on_queue("podcasts").delay(60).await?;
 ```
 
+### Mail and notifications
+
+Mailables are structs too, and Markdown mail is rendered with Laravel's own
+components and theme:
+
+```rust
+#[derive(Serialize)]
+pub struct OrderShipped {
+    pub order_id: u64,
+}
+
+impl Mailable for OrderShipped {
+    fn envelope(&self) -> Envelope {
+        Envelope::new().subject("Order Shipped")
+    }
+
+    fn content(&self) -> Content {
+        Content::markdown("mail.orders.shipped")
+    }
+}
+
+Mail::to(&user.email).send(OrderShipped { order_id: order.id }).await?;
+
+user.notify(InvoicePaid { invoice_id: invoice.id }).await?;
+```
+
 ### Testing
 
 Tests make requests against your application, without a server, and read
@@ -147,8 +173,8 @@ async fn users_can_log_in() {
 }
 ```
 
-Fakes are available for the queue, events, HTTP requests, processes, and
-more, along with Laravel's assertions: `Queue::fake()`,
+Fakes are available for mail, notifications, the queue, events, HTTP
+requests, processes, and more, along with Laravel's assertions: `Queue::fake()`,
 `Bus::assert_dispatched::<T>()`, `Http::fake()`, `Process::fake()`,
 `Event::fake()`.
 
@@ -170,6 +196,8 @@ more, along with Laravel's assertions: `Queue::fake()`,
 | Artisan and task scheduling | `illuminate-console` |
 | Processes and concurrency | `illuminate-process`, `illuminate-concurrency` |
 | The HTTP client | `illuminate-http-client` |
+| Mail (SMTP, sendmail, log) and Markdown mail | `illuminate-mail` |
+| Notifications (mail, database, custom channels) | `illuminate-notifications` |
 | Collections, strings, dates, and helpers | `illuminate-support` |
 | The application, kernels, exception handling, testing | `illuminate-foundation` |
 
@@ -178,8 +206,6 @@ component and provides the prelude.
 
 Still to come:
 
-- **Mail and notifications** are being built in `illuminate-mail` and
-  `illuminate-notifications`.
 - **Redis**, and the queue and cache drivers built on it, aren't ported
   yet; neither are SQS and Beanstalkd.
 - **Broadcasting**, Laravel's first-party packages (Sanctum, Horizon, and
