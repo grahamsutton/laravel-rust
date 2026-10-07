@@ -70,9 +70,7 @@ pub fn get(name: &str) -> String {
     default(name).unwrap_or_default().to_string()
 }
 
-pub const CONTROLLER: &str = r#"use laravel::prelude::*;
-
-pub struct {{ class }};
+pub const CONTROLLER: &str = r#"pub struct {{ class }};
 
 impl {{ class }} {
     //
@@ -196,6 +194,8 @@ impl ResourceController for {{ class }} {
 pub const MIDDLEWARE: &str = r#"use laravel::prelude::*;
 
 pub struct {{ class }};
+
+laravel::register_middleware!({{ class }});
 
 #[async_trait]
 impl Middleware for {{ class }} {

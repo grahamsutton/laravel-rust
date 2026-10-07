@@ -102,7 +102,7 @@ fn has_matching_path(request: &Request, options: &CorsOptions) -> bool {
 fn vary(response: &mut Response, header: &str) {
     match response.header("vary") {
         Some(existing) if !existing.split(',').any(|h| h.trim().eq_ignore_ascii_case(header)) => {
-            response.set_header("Vary", &format!("{existing}, {header}"));
+            response.set_header("Vary", format!("{existing}, {header}"));
         }
         Some(_) => {}
         None => response.set_header("Vary", header),
@@ -157,7 +157,7 @@ impl Middleware for HandleCors {
                 response.set_header("Access-Control-Allow-Headers", &headers);
             }
             if options.max_age > 0 {
-                response.set_header("Access-Control-Max-Age", &options.max_age.to_string());
+                response.set_header("Access-Control-Max-Age", options.max_age.to_string());
             }
             vary(&mut response, "Access-Control-Request-Method");
             return Ok(response);
@@ -169,7 +169,7 @@ impl Middleware for HandleCors {
         }
         add_origin(&mut response, &request, &options);
         if !options.exposed_headers.is_empty() {
-            response.set_header("Access-Control-Expose-Headers", &options.exposed_headers.join(", "));
+            response.set_header("Access-Control-Expose-Headers", options.exposed_headers.join(", "));
         }
         Ok(response)
     }

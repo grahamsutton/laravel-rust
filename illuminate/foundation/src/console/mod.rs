@@ -47,6 +47,7 @@ pub fn register_framework_commands() {
     Artisan::register(KeyGenerateCommand);
     Artisan::register(RouteListCommand);
     Artisan::register(ServeCommand);
+    Artisan::register(TestCommand);
     Artisan::register(StorageLinkCommand);
     Artisan::register(StorageUnlinkCommand);
     Artisan::register(ClearResetsCommand);

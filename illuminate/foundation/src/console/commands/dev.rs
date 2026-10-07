@@ -693,6 +693,15 @@ impl DevProcessRunner {
         }
         let (events, mut receiver) = mpsc::unbounded_channel::<DevEvent>();
         let (stop, stopped) = watch::channel(false);
+        // Processes write into the space left beside the `[name]` prefixes,
+        // so they size their lines (`serve`'s dots, ...) to fit.
+        let prefix_width = self
+            .processes
+            .iter()
+            .map(|process| process.name.chars().count() + 3 + if self.timestamps { 9 } else { 0 })
+            .max()
+            .unwrap_or(0);
+        let columns = output.width().saturating_sub(prefix_width).max(40);
         let mut tasks = tokio::task::JoinSet::new();
         for (index, process) in self.processes.iter().enumerate() {
             tasks.spawn(supervise(
@@ -700,6 +709,7 @@ impl DevProcessRunner {
                 process.command.to_process_command(&self.artisan),
                 self.base_path.clone(),
                 output.is_decorated(),
+                columns,
                 if self.restart { self.restart_tries } else { 0 },
                 self.restart_after,
                 events.clone(),
@@ -770,6 +780,7 @@ async fn supervise(
     command: illuminate_process::Command,
     path: Option<PathBuf>,
     decorated: bool,
+    columns: usize,
     restart_tries: usize,
     restart_after: Duration,
     events: mpsc::UnboundedSender<DevEvent>,
@@ -784,9 +795,11 @@ async fn supervise(
         if let Some(path) = &path {
             pending.path(path);
         }
+        let mut environment = vec![("COLUMNS", columns.to_string())];
         if decorated {
-            pending.env([("FORCE_COLOR", "1")]);
+            environment.push(("FORCE_COLOR", "1".to_string()));
         }
+        pending.env(environment);
         let mut process = match pending.start(command.clone()) {
             Ok(process) => process,
             Err(error) => {

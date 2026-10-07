@@ -209,6 +209,10 @@ pub mod prelude {
 /// Register job types so queue workers can run them: `register_job!(ProcessPodcast);`
 pub use illuminate_queue::register_job;
 
+/// Let middleware types be used on routes and in the global stack:
+/// `register_middleware!(EnsureTokenIsValid);`
+pub use illuminate_routing::register_middleware;
+
 /// Register events broadcast when dispatched: `register_broadcast!(OrderShipped);`
 pub use illuminate_broadcasting::register_broadcast;
 

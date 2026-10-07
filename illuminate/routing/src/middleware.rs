@@ -155,6 +155,43 @@ pub fn parse_parameters(name: &str) -> Vec<String> {
     }
 }
 
+/// Let a middleware type be used wherever middleware is accepted —
+/// `Route::get(...).middleware(EnsureTokenIsValid)`, or the global stack in
+/// `bootstrap/app.rs` with `middleware.append(EnsureTokenIsValid)` — the way
+/// Laravel accepts a middleware's class name. `make:middleware` adds it for
+/// you.
+///
+/// ```
+/// use illuminate_http::{Middleware, Next, Request, Response, async_trait};
+/// use illuminate_routing::{IntoMiddleware, register_middleware};
+/// use illuminate_support::Result;
+///
+/// pub struct EnsureTokenIsValid;
+///
+/// register_middleware!(EnsureTokenIsValid);
+///
+/// #[async_trait]
+/// impl Middleware for EnsureTokenIsValid {
+///     async fn handle(&self, request: Request, next: Next) -> Result<Response> {
+///         Ok(next.run(request).await)
+///     }
+/// }
+///
+/// assert_eq!(EnsureTokenIsValid.into_middleware().len(), 1);
+/// ```
+#[macro_export]
+macro_rules! register_middleware {
+    ($($middleware:ty),+ $(,)?) => {
+        $(
+            impl $crate::IntoMiddleware for $middleware {
+                fn into_middleware(self) -> ::std::vec::Vec<$crate::RouteMiddleware> {
+                    ::std::vec![$crate::RouteMiddleware::of(self)]
+                }
+            }
+        )+
+    };
+}
+
 /// Anything that may be given to `middleware(...)` and `without_middleware(...)`.
 pub trait IntoMiddleware {
     /// Convert into a list of route middleware.

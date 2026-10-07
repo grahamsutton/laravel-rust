@@ -104,7 +104,13 @@ impl Command for WorkCommand {
     }
 }
 
-/// Print a line per job: `  2024-01-01 12:00:00 App\Jobs\ProcessPodcast ..... 15.21ms DONE`.
+/// Print a line when each job starts and another when it finishes, like
+/// Laravel's worker:
+///
+/// ```text
+///   2024-01-01 12:00:00 App\Jobs\ProcessPodcast ............... RUNNING
+///   2024-01-01 12:00:02 App\Jobs\ProcessPodcast ............ 2s DONE
+/// ```
 fn listen_for_events(cmd: &Console) {
     let output = cmd.output().clone();
     let started: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
@@ -114,10 +120,12 @@ fn listen_for_events(cmd: &Console) {
         let started = started.clone();
         move |job: &QueuedJob| {
             *started.lock().unwrap() = Some(Instant::now());
-            output.write(format!(
-                "  <fg=gray>{}</> {}",
+            let name = job.resolve_name();
+            let dots = output.width().min(150).saturating_sub(name.chars().count() + 33);
+            output.writeln(format!(
+                "  <fg=gray>{}</> {name} <fg=gray>{}</> <fg=yellow;options=bold>RUNNING</>",
                 Carbon::now().format("Y-m-d H:i:s"),
-                job.resolve_name()
+                ".".repeat(dots),
             ));
         }
     };
@@ -126,8 +134,16 @@ fn listen_for_events(cmd: &Console) {
         let started = started.clone();
         move |job: &QueuedJob, status: &str| {
             let run_time = started.lock().unwrap().take().map(run_time).unwrap_or_default();
-            let dots = output.width().min(150).saturating_sub(job.resolve_name().chars().count() + run_time.chars().count() + 31);
-            output.writeln(format!(" <fg=gray>{}</> <fg=gray>{run_time}</> {status}", ".".repeat(dots)));
+            let name = job.resolve_name();
+            let dots = output
+                .width()
+                .min(150)
+                .saturating_sub(name.chars().count() + run_time.chars().count() + 31);
+            output.writeln(format!(
+                "  <fg=gray>{}</> {name} <fg=gray>{}</> <fg=gray>{run_time}</> {status}",
+                Carbon::now().format("Y-m-d H:i:s"),
+                ".".repeat(dots),
+            ));
         }
     };
 

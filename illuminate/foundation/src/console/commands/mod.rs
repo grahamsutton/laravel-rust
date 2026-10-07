@@ -18,6 +18,7 @@ mod reload;
 mod routes;
 pub mod schema;
 mod serve;
+mod test;
 
 pub use app::{DownCommand, KeyGenerateCommand, StorageLinkCommand, UpCommand};
 pub use basic::{AboutCommand, CacheClearCommand, ConfigShowCommand, EnvironmentCommand, InspireCommand};
@@ -55,3 +56,4 @@ pub use queue::{
 };
 pub use routes::RouteListCommand;
 pub use serve::ServeCommand;
+pub use test::TestCommand;

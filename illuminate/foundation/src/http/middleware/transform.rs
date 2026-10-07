@@ -174,7 +174,7 @@ impl Middleware for SetCacheHeaders {
             }
         }
         if !directives.is_empty() {
-            response.set_header("Cache-Control", &directives.join(", "));
+            response.set_header("Cache-Control", directives.join(", "));
         }
         Ok(response)
     }

@@ -86,3 +86,41 @@ async fn each_request_gets_its_own_csp_nonce() {
         .collect();
     assert_eq!(nonces.len(), 8);
 }
+
+/// What `make:middleware` generates: a struct registered with
+/// `register_middleware!`, appended to the global stack by type.
+struct AddServerTiming;
+
+illuminate_routing::register_middleware!(AddServerTiming);
+
+#[illuminate_http::async_trait]
+impl illuminate_http::Middleware for AddServerTiming {
+    async fn handle(
+        &self,
+        request: illuminate_http::Request,
+        next: illuminate_http::Next,
+    ) -> illuminate_support::Result<illuminate_http::Response> {
+        let mut response = next.run(request).await;
+        response.set_header("Server-Timing", format!("app;dur={:.2}", 1.5));
+        Ok(response)
+    }
+}
+
+#[tokio::test]
+async fn registered_middleware_types_can_be_appended_by_type() {
+    let dir = tempfile::tempdir().unwrap();
+    let builder = Application::configure_detached(dir.path())
+        .with_routing(|routing| {
+            routing.web(|| {
+                Route::get("/", || async { "Hello" });
+                Route::get("/route", || async { "Route" }).middleware(AddServerTiming);
+            });
+        })
+        .with_middleware(|middleware| {
+            middleware.append(AddServerTiming);
+        });
+    let mut app = TestApp::new(builder);
+
+    app.get("/").await.assert_ok().assert_header("Server-Timing", Some("app;dur=1.50"));
+    app.get("/route").await.assert_ok().assert_header("Server-Timing", Some("app;dur=1.50"));
+}

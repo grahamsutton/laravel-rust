@@ -87,6 +87,7 @@ async fn workers_process_queued_jobs() {
 
     app.artisan("queue:work --once")
         .expects_output_to_contain("ProcessPodcast")
+        .expects_output_to_contain("RUNNING")
         .expects_output_to_contain("DONE")
         .assert_successful()
         .await;

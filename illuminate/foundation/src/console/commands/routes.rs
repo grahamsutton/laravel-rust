@@ -98,7 +98,7 @@ impl Command for RouteListCommand {
             return Ok(());
         }
 
-        let width = terminal_width();
+        let width = cmd.output().width().max(60);
         let max_method = routes
             .iter()
             .map(|r| r.methods.join("|").len())
@@ -182,10 +182,3 @@ fn highlight_parameters(uri: &str) -> String {
     out
 }
 
-fn terminal_width() -> usize {
-    std::env::var("COLUMNS")
-        .ok()
-        .and_then(|c| c.parse().ok())
-        .unwrap_or(120)
-        .clamp(60, 200)
-}

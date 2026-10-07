@@ -183,7 +183,7 @@ impl Response {
             .or_else(|| path.file_name().map(|n| n.to_string_lossy().into_owned()))
             .unwrap_or_else(|| "download".into());
         let response = Self::file(&path).await?;
-        Ok(response.with_header("content-disposition", &make_disposition("attachment", &name)))
+        Ok(response.with_header("content-disposition", make_disposition("attachment", &name)))
     }
 
     /// Create a download response from in-memory content.
@@ -199,7 +199,7 @@ impl Response {
         let mime = mime_guess::from_path(name).first_or_octet_stream();
         Self::new(content)
             .with_header("content-type", mime.essence_str())
-            .with_header("content-disposition", &make_disposition("attachment", name))
+            .with_header("content-disposition", make_disposition("attachment", name))
     }
 
     /// Create a Markdown response (`text/markdown`).
@@ -244,7 +244,7 @@ impl Response {
         if let Some(name) = name {
             let mime = mime_guess::from_path(name).first_or_octet_stream();
             response.set_header("content-type", mime.essence_str());
-            response.set_header("content-disposition", &make_disposition(disposition, name));
+            response.set_header("content-disposition", make_disposition(disposition, name));
         }
         response
     }
@@ -316,13 +316,13 @@ impl Response {
     }
 
     /// Add a header to the response (replacing any existing value).
-    pub fn with_header(mut self, name: &str, value: &str) -> Self {
+    pub fn with_header(mut self, name: &str, value: impl AsRef<str>) -> Self {
         self.set_header(name, value);
         self
     }
 
     /// Alias of `with_header`, matching Laravel's `header()`.
-    pub fn header_with(self, name: &str, value: &str) -> Self {
+    pub fn header_with(self, name: &str, value: impl AsRef<str>) -> Self {
         self.with_header(name, value)
     }
 
@@ -335,15 +335,15 @@ impl Response {
     }
 
     /// Set a header in place.
-    pub fn set_header(&mut self, name: &str, value: &str) {
-        if let (Ok(name), Ok(value)) = (HeaderName::try_from(name), HeaderValue::try_from(value)) {
+    pub fn set_header(&mut self, name: &str, value: impl AsRef<str>) {
+        if let (Ok(name), Ok(value)) = (HeaderName::try_from(name), HeaderValue::try_from(value.as_ref())) {
             self.headers.insert(name, value);
         }
     }
 
     /// Append a header in place without replacing existing values.
-    pub fn append_header(&mut self, name: &str, value: &str) {
-        if let (Ok(name), Ok(value)) = (HeaderName::try_from(name), HeaderValue::try_from(value)) {
+    pub fn append_header(&mut self, name: &str, value: impl AsRef<str>) {
+        if let (Ok(name), Ok(value)) = (HeaderName::try_from(name), HeaderValue::try_from(value.as_ref())) {
             self.headers.append(name, value);
         }
     }
@@ -508,7 +508,7 @@ impl Response {
         let mut response = self.without_fragment();
         if let Some(location) = response.header("location") {
             let fragment = fragment.split_once('#').map_or(fragment, |(_, after)| after);
-            response.set_header("location", &format!("{location}#{fragment}"));
+            response.set_header("location", format!("{location}#{fragment}"));
         }
         response
     }

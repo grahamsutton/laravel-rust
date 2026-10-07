@@ -93,7 +93,7 @@ fn append_vary_header(mut response: Response) -> Response {
     if !listed {
         vary.push(Precognition::HEADER.to_string());
     }
-    response.set_header(header::VARY.as_str(), &vary.join(", "));
+    response.set_header(header::VARY.as_str(), vary.join(", "));
     response
 }
 
@@ -108,7 +108,7 @@ mod tests {
     fn destination(response: fn() -> Response) -> Destination {
         Arc::new(move |request: Request| {
             Box::pin(async move {
-                response().with_header("x-precognitive", &request.is_precognitive().to_string())
+                response().with_header("x-precognitive", request.is_precognitive().to_string())
             })
         })
     }
