@@ -204,3 +204,33 @@ async fn after_commit_jobs_wait_for_the_transaction() {
     ProcessPodcast { id: 3 }.dispatch().after_commit().await.unwrap();
     assert_eq!(Queue::size(None).await.unwrap(), 2);
 }
+
+#[tokio::test]
+async fn batches_can_be_retried_and_pruned() {
+    let (app, _dir) = test_app("array");
+    illuminate_database::Schema::create("job_batches", |table| {
+        table.string("id").primary();
+        table.string("name");
+        table.integer("total_jobs");
+        table.integer("pending_jobs");
+        table.integer("failed_jobs");
+        table.long_text("failed_job_ids");
+        table.medium_text("options").nullable();
+        table.integer("cancelled_at").nullable();
+        table.integer("created_at");
+        table.integer("finished_at").nullable();
+    })
+    .await
+    .unwrap();
+
+    app.artisan("queue:retry-batch missing-batch")
+        .expects_output_to_contain("Unable to find a batch with ID [missing-batch].")
+        .assert_failed()
+        .await;
+
+    app.artisan("queue:prune-batches --unfinished=72")
+        .expects_output_to_contain("0 entries deleted.")
+        .expects_output_to_contain("0 unfinished entries deleted.")
+        .assert_successful()
+        .await;
+}

@@ -3,6 +3,8 @@
 mod app;
 mod basic;
 mod database;
+mod events;
+mod inspection;
 mod queue;
 mod routes;
 mod serve;
@@ -13,7 +15,11 @@ pub use database::{
     MigrateCommand, MigrateFreshCommand, MigrateInstallCommand, MigrateRefreshCommand, MigrateResetCommand,
     MigrateRollbackCommand, MigrateStatusCommand, SeedCommand, WipeCommand,
 };
+pub use events::{CacheForgetCommand, EventListCommand};
+pub use inspection::{ShowCommand as DbShowCommand, TableCommand as DbTableCommand};
 pub use queue::{
+    ListenCommand as QueueListenCommand, PruneBatchesCommand as QueuePruneBatchesCommand,
+    RetryBatchCommand as QueueRetryBatchCommand,
     ClearCommand as QueueClearCommand, FlushFailedCommand as QueueFlushCommand,
     ForgetFailedCommand as QueueForgetCommand, ListFailedCommand as QueueFailedCommand,
     MonitorCommand as QueueMonitorCommand, PauseCommand as QueuePauseCommand,

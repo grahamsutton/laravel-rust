@@ -38,6 +38,7 @@ pub fn default_providers() -> Vec<Box<dyn ServiceProvider>> {
         Box::new(illuminate_queue::BusServiceProvider),
         Box::new(illuminate_process::ProcessServiceProvider),
         Box::new(illuminate_concurrency::ConcurrencyServiceProvider),
+        Box::new(illuminate_http_client::HttpClientServiceProvider),
         Box::new(illuminate_cookie::CookieServiceProvider),
         Box::new(illuminate_encryption::EncryptionServiceProvider),
         Box::new(illuminate_filesystem::FilesystemServiceProvider),

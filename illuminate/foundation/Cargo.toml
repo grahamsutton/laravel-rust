@@ -33,6 +33,7 @@ illuminate-auth.workspace = true
 illuminate-queue.workspace = true
 illuminate-process.workspace = true
 illuminate-concurrency.workspace = true
+illuminate-http-client.workspace = true
 indexmap.workspace = true
 tokio.workspace = true
 serde.workspace = true

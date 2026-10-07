@@ -212,3 +212,42 @@ async fn migrations_and_seeders_can_be_generated() {
     let seeder = std::fs::read_to_string(dir.path().join("database/seeders/user_seeder.rs")).unwrap();
     assert!(seeder.contains("impl Seeder for UserSeeder"));
 }
+
+#[tokio::test]
+async fn databases_and_tables_can_be_inspected() {
+    let (app, _dir) = test_app();
+    app.artisan("migrate").assert_successful().await;
+    DB::table("users")
+        .insert(json!({"name": "Taylor", "email": "taylor@laravel.com"}))
+        .await
+        .unwrap();
+
+    app.artisan("db:show --counts")
+        .expects_output_to_contain("SQLite")
+        .expects_output_to_contain("Connection")
+        .expects_output_to_contain("Tables")
+        .expects_output_to_contain("flights")
+        .expects_output_to_contain("users")
+        .expects_output_to_contain("migrations")
+        .assert_successful()
+        .await;
+
+    app.artisan("db:table users")
+        .expects_output_to_contain("Columns")
+        .expects_output_to_contain("email")
+        .expects_output_to_contain("autoincrement")
+        .expects_output_to_contain("Index")
+        .assert_successful()
+        .await;
+
+    app.artisan("db:table missing")
+        .expects_output_to_contain("Table [missing] doesn't exist.")
+        .assert_failed()
+        .await;
+
+    let output = app.artisan("db:table users --json").run().await.output;
+    let data: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+    assert_eq!(data["table"]["name"], "users");
+    assert_eq!(data["table"]["columns"], 5);
+    assert_eq!(data["columns"][1]["column"], "name");
+}

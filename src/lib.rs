@@ -40,6 +40,7 @@ pub use illuminate_filesystem as filesystem;
 pub use illuminate_foundation as foundation;
 pub use illuminate_hashing as hashing;
 pub use illuminate_http as http;
+pub use illuminate_http_client as http_client;
 pub use illuminate_log as log;
 pub use illuminate_pagination as pagination;
 pub use illuminate_pipeline as pipeline;
@@ -84,6 +85,7 @@ pub mod facades {
     pub use illuminate_hashing::Hash;
     pub use illuminate_log::Log;
     pub use illuminate_concurrency::Concurrency;
+    pub use illuminate_http_client::Http;
     pub use illuminate_process::Process;
     pub use illuminate_queue::{Bus, Queue};
     pub use illuminate_routing::{Redirect, Route, URL};

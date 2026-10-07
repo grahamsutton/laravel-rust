@@ -439,3 +439,157 @@ impl Command for MonitorCommand {
         Ok(())
     }
 }
+
+/// `queue:listen` — Listen to a given queue, running each job in a fresh
+/// `queue:work --once` process (so a rebuilt binary is picked up right away).
+pub struct ListenCommand;
+
+#[async_trait]
+impl Command for ListenCommand {
+    fn signature(&self) -> &str {
+        "queue:listen
+            {connection? : The name of connection}
+            {--name=default : The name of the worker}
+            {--queue= : The queue to listen on}
+            {--backoff=0 : The number of seconds to wait before retrying a job that encountered an uncaught exception}
+            {--force : Force the worker to run even in maintenance mode}
+            {--memory=128 : The memory limit in megabytes}
+            {--sleep=3 : Number of seconds to sleep when no job is available}
+            {--rest=0 : Number of seconds to rest between jobs}
+            {--timeout=60 : The number of seconds a child process can run}
+            {--tries=1 : Number of times to attempt a job before logging it failed}"
+    }
+
+    fn description(&self) -> &str {
+        "Listen to a given queue"
+    }
+
+    async fn handle(&self, cmd: Console) -> Result<()> {
+        let (connection, queue) = connection_and_queue(&cmd);
+        let binary = std::env::var("ARTISAN_BINARY")
+            .map(std::path::PathBuf::from)
+            .or_else(|_| std::env::current_exe())?;
+
+        let mut command = vec![
+            binary.to_string_lossy().into_owned(),
+            "queue:work".to_string(),
+            connection,
+            "--once".to_string(),
+            format!("--name={}", cmd.option("name").unwrap_or_else(|| "default".into())),
+            format!("--queue={queue}"),
+            format!("--backoff={}", cmd.option("backoff").unwrap_or_else(|| "0".into())),
+            format!("--memory={}", seconds(&cmd, "memory", 128)),
+            format!("--sleep={}", seconds(&cmd, "sleep", 3)),
+            format!("--tries={}", seconds(&cmd, "tries", 1)),
+            format!("--rest={}", seconds(&cmd, "rest", 0)),
+            format!("--timeout={}", seconds(&cmd, "timeout", 60)),
+        ];
+        if cmd.option_bool("force") {
+            command.push("--force".to_string());
+        }
+
+        cmd.components()
+            .info(format!("Processing jobs from the [{queue}] {}.", if queue.contains(',') { "queues" } else { "queue" }));
+
+        let timeout = seconds(&cmd, "timeout", 60);
+        let output = cmd.output().clone();
+        loop {
+            let mut process = illuminate_process::Process::command(command.clone());
+            if timeout == 0 {
+                process.forever();
+            } else {
+                process.timeout(timeout);
+            }
+            let run = process.run_with_output(command.clone(), |_, line| output.write(line));
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => return Ok(()),
+                result = run => {
+                    if let Err(error) = result {
+                        crate::helpers::report(&error);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// `queue:retry-batch` — Retry the failed jobs for a batch.
+pub struct RetryBatchCommand;
+
+#[async_trait]
+impl Command for RetryBatchCommand {
+    fn signature(&self) -> &str {
+        "queue:retry-batch {id?* : The ID of the batch whose failed jobs should be retried}"
+    }
+
+    fn description(&self) -> &str {
+        "Retry the failed jobs for a batch"
+    }
+
+    async fn handle(&self, cmd: Console) -> Result<()> {
+        let mut ids = cmd.argument_list("id");
+        if ids.is_empty() {
+            ids.push(cmd.ask("What is the ID of the batch?"));
+        }
+
+        let mut failed = false;
+        for id in ids {
+            let Some(batch) = illuminate_queue::Bus::find_batch(&id).await? else {
+                cmd.components().error(format!("Unable to find a batch with ID [{id}]."));
+                failed = true;
+                continue;
+            };
+            if batch.failed_job_ids.is_empty() {
+                cmd.components().error("The given batch does not contain any failed jobs.");
+                failed = true;
+                continue;
+            }
+
+            cmd.components()
+                .info(format!("Pushing failed queue jobs of the batch [{id}] back onto the queue."));
+            for job in &batch.failed_job_ids {
+                cmd.components().task(job, || Queue::retry_failed(job)).await?;
+            }
+            cmd.new_line(1);
+        }
+
+        if failed { cmd.exit(1) } else { Ok(()) }
+    }
+}
+
+/// `queue:prune-batches` — Prune stale entries from the batches database.
+pub struct PruneBatchesCommand;
+
+#[async_trait]
+impl Command for PruneBatchesCommand {
+    fn signature(&self) -> &str {
+        "queue:prune-batches
+            {--hours=24 : The number of hours to retain batch data}
+            {--unfinished= : The number of hours to retain unfinished batch data }
+            {--cancelled= : The number of hours to retain cancelled batch data }"
+    }
+
+    fn description(&self) -> &str {
+        "Prune stale entries from the batches database"
+    }
+
+    async fn handle(&self, cmd: Console) -> Result<()> {
+        let repository = illuminate_container::app::<dyn illuminate_queue::BatchRepository>();
+        let hours = |option: &str| cmd.option(option).and_then(|hours| hours.parse::<i64>().ok());
+
+        let count = repository
+            .prune(Carbon::now().sub_hours(hours("hours").unwrap_or(24)))
+            .await?;
+        cmd.components().info(format!("{count} entries deleted."));
+
+        if let Some(unfinished) = hours("unfinished") {
+            let count = repository.prune_unfinished(Carbon::now().sub_hours(unfinished)).await?;
+            cmd.components().info(format!("{count} unfinished entries deleted."));
+        }
+        if let Some(cancelled) = hours("cancelled") {
+            let count = repository.prune_cancelled(Carbon::now().sub_hours(cancelled)).await?;
+            cmd.components().info(format!("{count} cancelled entries deleted."));
+        }
+        Ok(())
+    }
+}

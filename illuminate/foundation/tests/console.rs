@@ -143,3 +143,32 @@ async fn models_can_be_generated_with_their_companions() {
         .assert_failed()
         .await;
 }
+
+#[tokio::test]
+async fn events_and_their_listeners_can_be_listed() {
+    let (app, _dir) = test_app();
+    illuminate_events::Event::listen_named("podcast.processed", |_: &str, _: &illuminate_support::Value| async { Ok(()) });
+
+    app.artisan("event:list")
+        .expects_output_to_contain("podcast.processed")
+        .assert_successful()
+        .await;
+
+    app.artisan("event:list --event=nothing-matches")
+        .expects_output_to_contain("Your application doesn't have any events matching the given criteria.")
+        .assert_successful()
+        .await;
+}
+
+#[tokio::test]
+async fn cache_items_can_be_forgotten() {
+    let (app, _dir) = test_app();
+    illuminate_cache::Cache::put("podcast", "Laravel", 60).await.unwrap();
+
+    app.artisan("cache:forget podcast")
+        .expects_output_to_contain("The [podcast] key has been removed from the cache.")
+        .assert_successful()
+        .await;
+
+    assert!(!illuminate_cache::Cache::has("podcast").await.unwrap());
+}

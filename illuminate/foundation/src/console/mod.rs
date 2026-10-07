@@ -60,6 +60,13 @@ pub fn register_framework_commands() {
     Artisan::register(SeedCommand);
     Artisan::register(WipeCommand);
 
+    Artisan::register(CacheForgetCommand);
+    Artisan::register(DbShowCommand);
+    Artisan::register(DbTableCommand);
+    Artisan::register(EventListCommand);
+    Artisan::register(QueueListenCommand);
+    Artisan::register(QueuePruneBatchesCommand);
+    Artisan::register(QueueRetryBatchCommand);
     Artisan::register(QueueClearCommand);
     Artisan::register(QueueFailedCommand);
     Artisan::register(QueueFlushCommand);

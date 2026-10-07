@@ -31,6 +31,13 @@ fn app() -> TestApp {
                 Ok::<_, Error>(format!("{users} users, {orders}"))
             });
 
+            Route::get("/repositories", || async {
+                let response = Http::with_token("secret", "Bearer")
+                    .get("https://api.github.com/user/repos")
+                    .await?;
+                Ok::<_, Error>(response.json_path("0.name").to_string_lossy())
+            });
+
             Route::get("/deploy", || async {
                 let result = Process::run("bash deploy.sh").await?;
                 Ok::<_, Error>(result.output().to_string())
@@ -82,4 +89,16 @@ async fn failures_can_be_rescued() {
 
     assert_eq!(total, 0);
     assert_eq!(attempts.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn http_requests_can_be_faked() {
+    let mut app = app();
+    Http::fake_urls([("api.github.com/*", Http::response(json!([{"name": "laravel"}]), 200, &[]))]);
+
+    app.get("/repositories").await.assert_ok().assert_see("laravel");
+
+    Http::assert_sent(|request| {
+        request.url() == "https://api.github.com/user/repos" && request.has_header_value("Authorization", "Bearer secret")
+    });
 }
