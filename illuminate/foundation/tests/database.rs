@@ -121,6 +121,40 @@ async fn migrations_can_be_run_and_rolled_back() {
     assert!(!Schema::has_table("flights").await.unwrap());
 }
 
+struct BrokenMigration;
+
+#[async_trait]
+impl Migration for BrokenMigration {
+    async fn up(&self) -> Result<()> {
+        Err(illuminate_support::Error::msg("The flux capacitor is offline."))
+    }
+
+    async fn down(&self) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn migrations_can_fail_gracefully() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = TestApp::new(Application::configure_detached(dir.path()).with_migrations(migrations![
+        "0001_01_01_000000_create_users_table" => CreateUsersTable,
+        "2024_06_01_000000_break_everything" => BrokenMigration,
+    ]));
+
+    app.artisan("migrate")
+        .expects_output_to_contain("The flux capacitor is offline.")
+        .assert_failed()
+        .await;
+
+    app.artisan("migrate --graceful")
+        .expects_output_to_contain("WARN")
+        .expects_output_to_contain("The flux capacitor is offline.")
+        .assert_successful()
+        .await;
+    assert!(Schema::has_table("users").await.unwrap());
+}
+
 #[tokio::test]
 async fn the_database_can_be_seeded() {
     let (app, _dir) = test_app();

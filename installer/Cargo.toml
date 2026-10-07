@@ -1,0 +1,20 @@
+[package]
+name = "laravel-installer"
+description = "The Laravel application installer, for Rust."
+keywords = ["laravel", "installer", "framework", "skeleton"]
+categories = ["command-line-utilities", "development-tools"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "laravel"
+path = "src/main.rs"
+
+[dependencies]
+base64.workspace = true
+getrandom = "0.3"
+libc = "0.2"

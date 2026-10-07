@@ -124,7 +124,8 @@ impl Default for MigrateCommand {
                  {--pretend : Dump the SQL queries that would be run}
                  {--seed : Indicates if the seed task should be re-run}
                  {--seeder= : The class name of the root seeder}
-                 {--step : Force the migrations to be run so they can be rolled back individually}",
+                 {--step : Force the migrations to be run so they can be rolled back individually}
+                 {--graceful : Return a successful exit code even if an error occurs}",
             ),
         }
     }
@@ -144,34 +145,46 @@ impl Command for MigrateCommand {
         if !confirm_to_proceed(&cmd) {
             return cmd.exit(1);
         }
-        let migrator = migrator(&cmd);
-        if !migrator.repository_exists().await? {
-            cmd.new_line(1);
-            cmd.components().info("Preparing database.");
-            cmd.components()
-                .task("Creating migration table", || async {
-                    migrator.install().await
-                })
-                .await?;
-            cmd.new_line(1);
+
+        match run_migrations(&cmd).await {
+            Err(error) if cmd.option_bool("graceful") => {
+                cmd.components().warn(error.to_string());
+                Ok(())
+            }
+            result => result,
         }
-        if !cmd.option_bool("pretend") {
-            load_schema_state(&cmd, &migrator).await?;
-        }
-        migrator
-            .run(MigrateOptions {
-                pretend: cmd.option_bool("pretend"),
-                step: cmd.option_bool("step"),
+    }
+}
+
+/// Prepare the database, then run the outstanding migrations (and seeders).
+async fn run_migrations(cmd: &Console) -> Result<()> {
+    let migrator = migrator(cmd);
+    if !migrator.repository_exists().await? {
+        cmd.new_line(1);
+        cmd.components().info("Preparing database.");
+        cmd.components()
+            .task("Creating migration table", || async {
+                migrator.install().await
             })
             .await?;
         cmd.new_line(1);
-
-        if cmd.option_bool("seed") && !cmd.option_bool("pretend") {
-            let class = cmd.option("seeder").unwrap_or_else(|| "DatabaseSeeder".into());
-            seed(&cmd, &class).await?;
-        }
-        Ok(())
     }
+    if !cmd.option_bool("pretend") {
+        load_schema_state(cmd, &migrator).await?;
+    }
+    migrator
+        .run(MigrateOptions {
+            pretend: cmd.option_bool("pretend"),
+            step: cmd.option_bool("step"),
+        })
+        .await?;
+    cmd.new_line(1);
+
+    if cmd.option_bool("seed") && !cmd.option_bool("pretend") {
+        let class = cmd.option("seeder").unwrap_or_else(|| "DatabaseSeeder".into());
+        seed(cmd, &class).await?;
+    }
+    Ok(())
 }
 
 /// `migrate:install` — Create the migration repository.

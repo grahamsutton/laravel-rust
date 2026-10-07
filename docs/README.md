@@ -39,14 +39,24 @@ structs, and the compiler checks your work.
 
 ## Getting started
 
-The [`skeleton`](../skeleton) directory is the application skeleton, the
-equivalent of `laravel/laravel`:
+Install the Laravel installer — the equivalent of `laravel/installer` —
+from your checkout of the framework, then create an application:
 
 ```shell
-cd skeleton
-cp .env.example .env
-cargo artisan key:generate
-cargo artisan migrate
+cargo install --path installer
+laravel new example-app
+```
+
+The installer asks which database you'd like and whether to build your
+frontend assets, then copies the application skeleton (the
+[`skeleton`](../skeleton) directory, the equivalent of `laravel/laravel`),
+writes your `.env` with a fresh application key, builds the application,
+and (for SQLite) runs your migrations. New applications depend on the framework
+checkout the installer was built from (or `--path=<dir>`), falling back to
+the framework's Git repository. Then start your application:
+
+```shell
+cd example-app
 cargo artisan serve
 ```
 

@@ -1950,6 +1950,15 @@ name = "laravel-build"
 version = "0.1.0"
 
 [[package]]
+name = "laravel-installer"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "libc",
+]
+
+[[package]]
 name = "laravel-sanctum"
 version = "0.1.0"
 dependencies = [

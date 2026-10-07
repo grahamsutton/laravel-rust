@@ -16,6 +16,7 @@ resolver = "2"
 members = [
     "illuminate/*",
     "packages/*",
+    "installer",
     "skeleton",
 ]
 
