@@ -5,8 +5,9 @@ mod basic;
 mod database;
 mod environment;
 mod events;
+mod housekeeping;
 mod inspection;
-mod install;
+pub(crate) mod install;
 mod models;
 mod optimize;
 mod queue;
@@ -21,6 +22,7 @@ pub use database::{
 };
 pub use environment::{DecryptCommand as EnvDecryptCommand, EncryptCommand as EnvEncryptCommand};
 pub use events::{CacheForgetCommand, ChannelListCommand, EventListCommand};
+pub use housekeeping::{ClearResetsCommand, PackageDiscoverCommand, StorageUnlinkCommand};
 pub use optimize::{OptimizeClearCommand, OptimizeCommand, ViewCacheCommand, ViewClearCommand};
 pub use models::{PruneCommand as ModelPruneCommand, ShowModelCommand};
 pub use install::{InstallApiCommand, InstallBroadcastingCommand};

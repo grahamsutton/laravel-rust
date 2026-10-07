@@ -336,3 +336,61 @@ async fn the_schedule_is_paused_through_the_cache() {
     app.artisan("schedule:resume").assert_successful().await;
     assert!(!illuminate_console::Schedule::instance().is_paused().await);
 }
+
+#[tokio::test]
+async fn more_classes_can_be_generated() {
+    let (app, dir) = test_app();
+    let read = |path: &str| std::fs::read_to_string(dir.path().join(path)).unwrap();
+
+    app.artisan("make:scope AncientScope")
+        .expects_output_to_contain("Scope [app/models/scopes/ancient_scope.rs] created successfully.")
+        .assert_successful()
+        .await;
+    assert!(read("app/models/scopes/ancient_scope.rs").contains("impl<M: Model> Scope<M> for AncientScope"));
+
+    app.artisan("make:channel OrderChannel").assert_successful().await;
+    assert!(read("app/broadcasting/order_channel.rs").contains("pub async fn join(_user: AuthUser) -> bool"));
+
+    app.artisan("make:job-middleware RateLimited").assert_successful().await;
+    assert!(read("app/jobs/middleware/rate_limited.rs").contains("impl JobMiddleware for RateLimited"));
+
+    std::fs::create_dir_all(dir.path().join("config")).unwrap();
+    std::fs::write(dir.path().join("config/mod.rs"), "laravel::config_files![app, mail];\n").unwrap();
+    app.artisan("make:config Billing")
+        .expects_output_to_contain("Config [config/billing.rs] created successfully.")
+        .assert_successful()
+        .await;
+    assert!(read("config/billing.rs").contains("pub fn config() -> Value"));
+    assert_eq!(read("config/mod.rs"), "laravel::config_files![app, billing, mail];\n");
+}
+
+#[tokio::test]
+async fn storage_links_can_be_removed() {
+    let (app, dir) = test_app();
+
+    app.artisan("storage:link").assert_successful().await;
+    let link = dir.path().join("public/storage");
+    assert!(link.is_symlink());
+
+    app.artisan("storage:unlink")
+        .expects_output_to_contain("link has been deleted.")
+        .assert_successful()
+        .await;
+    assert!(!link.exists() && !link.is_symlink());
+}
+
+#[tokio::test]
+async fn packages_are_discovered_and_reset_tokens_cleared() {
+    let (app, _dir) = test_app();
+
+    app.artisan("package:discover")
+        .expects_output_to_contain("Discovering packages")
+        .assert_successful()
+        .await;
+
+    app.app().override_config("auth.passwords.users.driver", "cache");
+    app.artisan("auth:clear-resets")
+        .expects_output_to_contain("Expired reset tokens cleared successfully.")
+        .assert_successful()
+        .await;
+}

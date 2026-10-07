@@ -557,3 +557,55 @@ impl Policy<{{ model }}> for {{ class }} {
     }
 }
 "#;
+
+/// `make:scope`
+pub const SCOPE: &str = r#"use laravel::prelude::*;
+
+pub struct {{ class }};
+
+impl<M: Model> Scope<M> for {{ class }} {
+    /// Apply the scope to a given Eloquent query builder.
+    fn apply(&self, query: Builder<M>) -> Builder<M> {
+        query
+    }
+}
+"#;
+
+/// `make:channel`
+pub const CHANNEL: &str = r#"{{ import }}
+
+pub struct {{ class }};
+
+impl {{ class }} {
+    /// Authenticate the user's access to the channel: register it with
+    /// `Broadcast::channel("orders.{order}", {{ class }}::join)`.
+    pub async fn join(_user: {{ user }}) -> bool {
+        true
+    }
+}
+"#;
+
+/// `make:job-middleware`
+pub const JOB_MIDDLEWARE: &str = r#"use laravel::prelude::*;
+use laravel::queue::middleware::{JobMiddleware, Next};
+
+pub struct {{ class }};
+
+#[async_trait]
+impl JobMiddleware for {{ class }} {
+    /// Process the queued job.
+    async fn handle(&self, job: &dyn ShouldQueue, next: Next<'_>) -> Result<()> {
+        next.run(job).await
+    }
+}
+"#;
+
+/// `make:config`
+pub const CONFIG: &str = r#"use laravel::prelude::*;
+
+pub fn config() -> Value {
+    json!({
+        //
+    })
+}
+"#;

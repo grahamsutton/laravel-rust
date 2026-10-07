@@ -117,7 +117,7 @@ impl Command for InstallBroadcastingCommand {
         let config = app.config_path("broadcasting.rs");
         if force || !Path::new(&config).exists() {
             std::fs::write(&config, CONFIG)?;
-            register_config(&app.config_path("mod.rs"))?;
+            register_config(&app.config_path("mod.rs"), "broadcasting")?;
             cmd.components().info("Published 'broadcasting' configuration file.");
         }
 
@@ -285,8 +285,8 @@ impl Command for InstallApiCommand {
     }
 }
 
-/// Add `broadcasting` to the `config_files!` list in `config/mod.rs`.
-fn register_config(path: &str) -> Result<()> {
+/// Add a config file to the `config_files!` list in `config/mod.rs`.
+pub(crate) fn register_config(path: &str, name: &str) -> Result<()> {
     let Ok(contents) = std::fs::read_to_string(path) else {
         return Ok(());
     };
@@ -302,10 +302,10 @@ fn register_config(path: &str) -> Result<()> {
         .map(|name| name.trim().to_string())
         .filter(|name| !name.is_empty())
         .collect();
-    if names.iter().any(|name| name == "broadcasting") {
+    if names.iter().any(|existing| existing == name) {
         return Ok(());
     }
-    names.push("broadcasting".to_string());
+    names.push(name.to_string());
     names.sort();
     let updated = format!("{}{}{}", &contents[..open], names.join(", "), &contents[close..]);
     std::fs::write(path, updated)?;

@@ -320,6 +320,51 @@ pub fn all() -> Vec<MakeCommand> {
             QualifiedName { namespace: segments, class }
         }),
         MakeCommand::new(
+            "make:scope",
+            "Scope",
+            "Create a new scope class",
+            "app/models/scopes",
+            Registration::ModuleAndExport,
+            |_, name| populate(stubs::SCOPE, &[("class", &class(name))]),
+        ),
+        MakeCommand::new(
+            "make:channel",
+            "Channel",
+            "Create a new channel class",
+            "app/broadcasting",
+            Registration::ModuleAndExport,
+            |_, name| {
+                let has_user = std::path::Path::new(&Application::current().base_path("app/models/user.rs")).exists();
+                let (import, user) = if has_user {
+                    ("use crate::app::models::User;", "User")
+                } else {
+                    ("use laravel::prelude::*;", "AuthUser")
+                };
+                populate(stubs::CHANNEL, &[("class", &class(name)), ("import", import), ("user", user)])
+            },
+        ),
+        MakeCommand::new(
+            "make:job-middleware",
+            "Job middleware",
+            "Create a new job middleware class",
+            "app/jobs/middleware",
+            Registration::ModuleAndExport,
+            |_, name| populate(stubs::JOB_MIDDLEWARE, &[("class", &class(name))]),
+        ),
+        MakeCommand::new(
+            "make:config",
+            "Config",
+            "Create a new configuration file",
+            "config",
+            Registration::None,
+            |_, _| stubs::CONFIG.to_string(),
+        )
+        .rename(|name| QualifiedName { namespace: Vec::new(), class: Str::snake(&name.class) })
+        .after(|_, name, _| {
+            let app = Application::current();
+            crate::console::commands::install::register_config(&app.config_path("mod.rs"), &name.class)
+        }),
+        MakeCommand::new(
             "make:class",
             "Class",
             "Create a new class",
