@@ -144,7 +144,11 @@ impl Application {
         self.bootstrap_console();
         let argv: Vec<String> = argv.into_iter().map(Into::into).collect();
         let code = Artisan::run(argv).await;
-        illuminate_queue::DeferredCallbacks::current().invoke().await;
+        crate::helpers::run_deferred(
+            Some(illuminate_queue::DeferredCallbacks::current()),
+            illuminate_concurrency::DeferredCallbacks::current(),
+        )
+        .await;
         self.terminate();
         code
     }

@@ -30,6 +30,7 @@ pub use illuminate_cache as cache;
 pub use illuminate_config as config;
 pub use illuminate_console as console;
 pub use illuminate_container as container;
+pub use illuminate_concurrency as concurrency;
 pub use illuminate_cookie as cookie;
 pub use illuminate_database::eloquent;
 pub use illuminate_database as database;
@@ -42,6 +43,7 @@ pub use illuminate_http as http;
 pub use illuminate_log as log;
 pub use illuminate_pagination as pagination;
 pub use illuminate_pipeline as pipeline;
+pub use illuminate_process as process;
 pub use illuminate_queue as queue;
 pub use illuminate_routing as routing;
 pub use illuminate_session as session;
@@ -81,6 +83,8 @@ pub mod facades {
     pub use illuminate_foundation::{App, Vite};
     pub use illuminate_hashing::Hash;
     pub use illuminate_log::Log;
+    pub use illuminate_concurrency::Concurrency;
+    pub use illuminate_process::Process;
     pub use illuminate_queue::{Bus, Queue};
     pub use illuminate_routing::{Redirect, Route, URL};
     pub use illuminate_session::Session;
@@ -104,8 +108,8 @@ pub mod helpers {
     pub use illuminate_encryption::{decrypt, encrypt};
     pub use illuminate_events::event;
     pub use illuminate_foundation::{
-        app_path, base_path, bootstrap_path, config_path, database_path, lang_path, public_path,
-        resource_path, storage_path,
+        app_path, base_path, bootstrap_path, config_path, database_path, defer, lang_path, public_path,
+        report, rescue, resource_path, storage_path,
     };
     pub use illuminate_hashing::bcrypt;
     pub use illuminate_http::{abort, abort_if, abort_unless, abort_with, request, response};
