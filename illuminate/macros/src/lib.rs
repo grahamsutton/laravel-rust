@@ -6,6 +6,7 @@
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 
+mod authenticatable;
 mod injectable;
 mod model;
 mod paths;
@@ -103,6 +104,28 @@ pub fn derive_model(input: TokenStream) -> TokenStream {
 pub fn derive_injectable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     injectable::derive(input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// Let an Eloquent model log in: `config/auth.rs` can then name it as the
+/// `eloquent` provider's `model`.
+///
+/// ```ignore
+/// #[derive(Debug, Clone, Default, Model, Authenticatable)]
+/// #[hidden(password, remember_token)]
+/// pub struct User {
+///     pub id: u64,
+///     pub email: String,
+///     #[hashed]
+///     pub password: String,
+///     pub remember_token: Option<String>,
+/// }
+/// ```
+#[proc_macro_derive(Authenticatable)]
+pub fn derive_authenticatable(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    authenticatable::derive(input)
         .unwrap_or_else(syn::Error::into_compile_error)
         .into()
 }

@@ -62,9 +62,25 @@ async fn jobs_run_after_the_response_is_sent() {
     assert!(PROCESSED.load(Ordering::SeqCst) >= before + 1000);
 }
 
+/// The `failed_jobs` table from Laravel's default jobs migration.
+async fn create_failed_jobs_table() {
+    illuminate_database::Schema::create("failed_jobs", |table| {
+        table.id();
+        table.string("uuid").unique();
+        table.string("connection");
+        table.string("queue");
+        table.long_text("payload");
+        table.long_text("exception");
+        table.timestamp("failed_at").use_current();
+    })
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
 async fn workers_process_queued_jobs() {
     let (app, _dir) = test_app("array");
+    create_failed_jobs_table().await;
 
     ProcessPodcast { id: 7 }.dispatch().await.unwrap();
     assert_eq!(Queue::size(None).await.unwrap(), 1);

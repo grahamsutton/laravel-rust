@@ -299,6 +299,51 @@ impl From<String> for MessageBag {
     }
 }
 
+impl From<crate::Value> for MessageBag {
+    /// `{"email": "Invalid."}` or `{"email": ["Invalid.", "Taken."]}`; a
+    /// lone string is stored under the `0` key.
+    ///
+    /// ```
+    /// use illuminate_support::{MessageBag, json};
+    ///
+    /// let bag = MessageBag::from(json!({"email": "Invalid.", "name": ["Too short.", "Taken."]}));
+    /// assert_eq!(bag.first("email"), Some("Invalid."));
+    /// assert_eq!(bag.get("name").len(), 2);
+    /// ```
+    fn from(messages: crate::Value) -> Self {
+        use crate::ValueExt;
+
+        let mut bag = MessageBag::new();
+        match messages {
+            crate::Value::Object(map) => {
+                for (key, value) in map {
+                    match value {
+                        crate::Value::Array(items) => {
+                            for item in items {
+                                bag.add(key.clone(), item.to_string_lossy());
+                            }
+                        }
+                        crate::Value::Null => {}
+                        other => {
+                            bag.add(key, other.to_string_lossy());
+                        }
+                    }
+                }
+            }
+            crate::Value::Array(items) => {
+                for item in items {
+                    bag.add("0", item.to_string_lossy());
+                }
+            }
+            crate::Value::Null => {}
+            other => {
+                bag.add("0", other.to_string_lossy());
+            }
+        }
+        bag
+    }
+}
+
 impl<K: Into<String>, V: Into<String>, const N: usize> From<[(K, V); N]> for MessageBag {
     fn from(messages: [(K, V); N]) -> Self {
         let mut bag = MessageBag::new();

@@ -1,1 +1,3 @@
-//! Your application's Eloquent models.
+pub mod user;
+
+pub use user::User;

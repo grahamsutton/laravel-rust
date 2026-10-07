@@ -12,6 +12,9 @@ use crate::exceptions::{Handler, Prepared};
 
 /// Wire the auth component into routing and the exception handler.
 pub fn boot() {
+    // The `eloquent` and `database` user providers.
+    crate::auth::register_providers();
+
     // `route('login')`, `route('verification.notice')`, ... resolve through the router.
     Auth::resolve_routes_using(|name| {
         illuminate_routing::Route::has(name)

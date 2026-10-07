@@ -1042,6 +1042,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "illuminate-concurrency"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "illuminate-config",
+ "illuminate-container",
+ "illuminate-process",
+ "illuminate-support",
+ "indexmap",
+ "thiserror",
+ "tokio",
+]
+
+[[package]]
 name = "illuminate-config"
 version = "0.1.0"
 dependencies = [
@@ -1212,6 +1226,7 @@ dependencies = [
  "illuminate-validation",
  "illuminate-view",
  "indexmap",
+ "inventory",
  "md-5",
  "mime_guess",
  "rand 0.9.5",
@@ -1263,6 +1278,39 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "illuminate-http-client"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "form_urlencoded",
+ "futures",
+ "hex",
+ "http",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "illuminate-container",
+ "illuminate-events",
+ "illuminate-support",
+ "md-5",
+ "mime_guess",
+ "multer",
+ "percent-encoding",
+ "rand 0.9.5",
+ "rustls",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-rustls",
+ "url",
+ "webpki-roots",
 ]
 
 [[package]]
@@ -1340,6 +1388,18 @@ dependencies = [
  "async-trait",
  "illuminate-container",
  "illuminate-support",
+ "tokio",
+]
+
+[[package]]
+name = "illuminate-process"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "illuminate-container",
+ "illuminate-support",
+ "tempfile",
+ "thiserror",
  "tokio",
 ]
 

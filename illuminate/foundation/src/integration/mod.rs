@@ -37,6 +37,31 @@ pub fn boot() {
     views::boot();
     auth::boot();
     wire_events();
+    wire_eloquent();
+}
+
+/// Eloquent hashes `#[hashed]` attributes with the application's hasher,
+/// and a missing route-bound model is a `404`.
+fn wire_eloquent() {
+    use illuminate_database::eloquent::{self, ModelNotFoundException};
+
+    eloquent::hash_using(|value| {
+        illuminate_hashing::Hash::make(value).expect("Unable to hash the attribute value")
+    });
+
+    illuminate_routing::Route::set_missing_model_detector(|error| error.is::<ModelNotFoundException>());
+
+    if let Some(handler) = try_app::<Handler>() {
+        handler.configure(|exceptions| {
+            exceptions.prepare_using(|error| {
+                error.downcast_ref::<ModelNotFoundException>().map(|e| Prepared::Http {
+                    status: 404,
+                    message: e.to_string(),
+                    headers: Vec::new(),
+                })
+            });
+        });
+    }
 }
 
 /// Queued event listeners (`ShouldQueue`) are pushed onto the queue.

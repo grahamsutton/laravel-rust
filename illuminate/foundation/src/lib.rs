@@ -4,6 +4,7 @@
 //! exception handler, Artisan's framework commands, and testing helpers.
 
 pub mod application;
+pub mod auth;
 pub mod bootstrap;
 pub mod builder;
 pub mod configuration;

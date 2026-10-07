@@ -31,6 +31,7 @@ pub use illuminate_config as config;
 pub use illuminate_console as console;
 pub use illuminate_container as container;
 pub use illuminate_cookie as cookie;
+pub use illuminate_database::eloquent;
 pub use illuminate_database as database;
 pub use illuminate_encryption as encryption;
 pub use illuminate_events as events;
@@ -55,7 +56,8 @@ pub mod testing {
 }
 
 /// The derive macros: `#[derive(Model)]`, `#[derive(Injectable)]`.
-pub use illuminate_macros::{Injectable, Model};
+pub use illuminate_database::eloquent::Model;
+pub use illuminate_macros::{Authenticatable, Injectable};
 
 pub use async_trait::async_trait;
 pub use illuminate_foundation::{Application, ApplicationBuilder, ConfigFile, Inspiring};
@@ -110,7 +112,9 @@ pub mod helpers {
     pub use illuminate_log::{info, logger};
     pub use illuminate_queue::{dispatch, dispatch_sync};
     pub use illuminate_routing::{asset, back, redirect, route, secure_asset, secure_url, to_route, url};
-    pub use illuminate_session::{csrf_field, csrf_token, method_field, old, session};
+    pub use illuminate_session::{
+        csrf_field, csrf_token, method_field, old, redirect_guest, redirect_intended, session,
+    };
     pub use illuminate_support::{
         blank, class_basename, collect, data_get, data_set, e, env, filled, now, retry, str, tap,
         throw_if, throw_unless, today, with,
@@ -129,7 +133,11 @@ pub mod prelude {
     pub use crate::helpers::*;
 
     pub use async_trait::async_trait;
-    pub use illuminate_macros::{Injectable, Model};
+    pub use illuminate_database::eloquent::{
+        BelongsTo, BelongsToMany, EloquentCollection, Factory, Faker, HasFactory, HasMany, HasManyThrough, HasOne,
+        HasOneThrough, Model, ModelNotFoundException, MorphMany, MorphOne, MorphTo, Observer,
+    };
+    pub use illuminate_macros::{Authenticatable, Injectable};
     pub use serde::{Deserialize, Serialize};
 
     pub use illuminate_container::{Container, Injectable as InjectableContract, ServiceProvider};
@@ -229,4 +237,27 @@ pub mod __private {
     pub use inventory;
     pub use serde;
     pub use serde_json;
+
+    use illuminate_database::eloquent::{Model, ModelNotFoundException};
+    use illuminate_http::Request;
+    use illuminate_support::{Result, Str, Value};
+
+    /// Route model binding: resolve `{user}` (or `{user:email}`) into a `User`.
+    pub async fn resolve_route_binding<M: Model>(request: &Request) -> Result<M> {
+        let name = Str::snake(M::class_name());
+        let Some((value, field)) = illuminate_routing::route_parameter_for(request, &name) else {
+            return Err(illuminate_support::error::error!(
+                "Unable to bind [{}]: the route has no {{{name}}} parameter.",
+                M::class_name()
+            ));
+        };
+
+        if M::soft_deletes() && illuminate_routing::route_allows_trashed_bindings(request) {
+            return M::resolve_soft_deletable_route_binding(&value, field.as_deref())
+                .await?
+                .ok_or_else(|| ModelNotFoundException::new(M::class_name(), vec![Value::String(value)]).into());
+        }
+
+        M::resolve_route_binding_or_fail(&value, field.as_deref()).await
+    }
 }
