@@ -55,7 +55,10 @@ laravel-rust/
 | `illuminate-console` | Console (Artisan commands, scheduling) |
 | `illuminate-auth` | Auth (guards, gates, policies) |
 | `illuminate-queue` / `-mail` / `-notifications` | Queue + Bus / Mail / Notifications |
+| `illuminate-process` / `-concurrency` | Process / Concurrency |
+| `illuminate-http-client` | Http Client (the `Http` facade) |
 | `illuminate-foundation` | Foundation (Application, kernels, exception handler, Artisan commands, testing) |
+| `laravel-build` (`illuminate/build`) | Build-time discovery of migrations, seeders, commands, components, and policies |
 
 Dependencies always point "down" this list: a component may depend on
 `support`, `container`, `config` and `http`, but never on `foundation`.
