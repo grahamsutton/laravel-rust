@@ -14,6 +14,7 @@ use crate::exceptions::{Handler, Prepared};
 pub fn boot() {
     // The `eloquent` and `database` user providers.
     crate::auth::register_providers();
+    crate::auth::register_token_repositories();
 
     // `route('login')`, `route('verification.notice')`, ... resolve through the router.
     Auth::resolve_routes_using(|name| {

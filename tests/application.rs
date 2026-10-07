@@ -32,6 +32,13 @@ impl Migration for CreateUsersTable {
             table.remember_token();
             table.timestamps();
         })
+        .await?;
+
+        Schema::create("password_reset_tokens", |table| {
+            table.string("email").primary();
+            table.string("token");
+            table.timestamp("created_at").nullable();
+        })
         .await
     }
 }
@@ -257,4 +264,62 @@ async fn models_are_transformed_by_api_resources() {
         .assert_json_path("meta.current_page", 2)
         .assert_json_path("meta.total", 3)
         .assert_json_path("links.prev", "http://localhost/api/users?page=1");
+}
+
+#[tokio::test]
+async fn passwords_can_be_reset() {
+    use laravel::facades::Password;
+
+    let app = app().await;
+    taylor().await;
+    let sent = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
+
+    let link = sent.clone();
+    let status = Password::send_reset_link(&json!({"email": "taylor@laravel.com"}), |user: User, token: String| async move {
+        assert_eq!(user.email, "taylor@laravel.com");
+        *link.lock().unwrap() = Some(token);
+        Ok(())
+    })
+    .await
+    .unwrap();
+    assert_eq!(status.as_str(), "passwords.sent");
+    let token = sent.lock().unwrap().clone().unwrap();
+    app.assert_database_count("password_reset_tokens", 1).await;
+
+    let throttled = Password::send_reset_link(&json!({"email": "taylor@laravel.com"}), |_: User, _: String| async { Ok(()) })
+        .await
+        .unwrap();
+    assert_eq!(throttled.as_str(), "passwords.throttled");
+
+    let reset = |token: String| async move {
+        Password::reset(
+            &json!({"email": "taylor@laravel.com", "password": "new-secret", "token": token}),
+            |mut user: User, password: String| async move {
+                user.password = password;
+                user.save().await?;
+                Ok(())
+            },
+        )
+        .await
+        .unwrap()
+    };
+    assert_eq!(reset("wrong-token".into()).await.as_str(), "passwords.token");
+    assert_eq!(reset(token.clone()).await.as_str(), "passwords.reset");
+    assert_eq!(reset(token).await.as_str(), "passwords.token", "tokens can only be used once");
+
+    assert!(Auth::validate(&json!({"email": "taylor@laravel.com", "password": "new-secret"})).await.unwrap());
+}
+
+#[tokio::test]
+async fn reset_tokens_can_live_in_the_cache() {
+    use laravel::facades::Password;
+
+    let app = app().await;
+    app.app().override_config("auth.passwords.users.driver", "cache");
+    let taylor = taylor().await;
+
+    let token = Password::create_token(&AuthUser::from(&taylor)).await.unwrap();
+
+    assert!(Password::token_exists(&AuthUser::from(&taylor), &token).await.unwrap());
+    app.assert_database_empty("password_reset_tokens").await;
 }
