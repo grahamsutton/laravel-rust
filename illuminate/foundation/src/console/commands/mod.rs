@@ -6,6 +6,7 @@ mod database;
 mod environment;
 mod events;
 mod inspection;
+mod optimize;
 mod queue;
 mod routes;
 mod serve;
@@ -18,6 +19,7 @@ pub use database::{
 };
 pub use environment::{DecryptCommand as EnvDecryptCommand, EncryptCommand as EnvEncryptCommand};
 pub use events::{CacheForgetCommand, EventListCommand};
+pub use optimize::{OptimizeClearCommand, OptimizeCommand, ViewCacheCommand, ViewClearCommand};
 pub use inspection::{ShowCommand as DbShowCommand, TableCommand as DbTableCommand};
 pub use queue::{
     ListenCommand as QueueListenCommand, PruneBatchesCommand as QueuePruneBatchesCommand,

@@ -151,3 +151,36 @@ async fn components_can_be_generated() {
     assert!(class.contains("impl Component for AlertBanner"));
     assert!(class.contains(r#"ComponentView::view("components.alert-banner")"#));
 }
+
+#[tokio::test]
+async fn views_can_be_cached_and_cleared() {
+    let (app, dir) = test_app();
+    let views = dir.path().join("resources/views");
+    std::fs::create_dir_all(views.join("admin")).unwrap();
+    std::fs::write(views.join("admin/dashboard.blade.html"), "@if($ok) Hello @endif").unwrap();
+
+    app.artisan("view:cache")
+        .expects_output_to_contain("Blade templates cached successfully.")
+        .assert_successful()
+        .await;
+    app.artisan("optimize")
+        .expects_output_to_contain("Caching framework bootstrap, configuration, and metadata.")
+        .expects_output_to_contain("views")
+        .assert_successful()
+        .await;
+
+    std::fs::write(views.join("broken.blade.html"), "@foreach($users as $user) {{ $user }}").unwrap();
+    app.artisan("view:cache")
+        .expects_output_to_contain("broken.blade.html")
+        .assert_failed()
+        .await;
+
+    app.artisan("view:clear")
+        .expects_output_to_contain("Compiled views cleared successfully.")
+        .assert_successful()
+        .await;
+    app.artisan("optimize:clear")
+        .expects_output_to_contain("Clearing cached bootstrap files.")
+        .assert_successful()
+        .await;
+}
