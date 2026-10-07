@@ -30,6 +30,7 @@ illuminate-validation.workspace = true
 illuminate-database.workspace = true
 illuminate-view.workspace = true
 illuminate-auth.workspace = true
+illuminate-queue.workspace = true
 indexmap.workspace = true
 tokio.workspace = true
 serde.workspace = true

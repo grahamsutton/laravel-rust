@@ -218,7 +218,7 @@ impl ValidationRule for {{ class }} {
 
 pub const EVENT: &str = r#"use laravel::prelude::*;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct {{ class }} {
     //
 }
@@ -298,7 +298,8 @@ pub const VIEW: &str = r#"<div>
 </div>
 "#;
 
-pub const CLASS: &str = r#"pub struct {{ class }};
+pub const CLASS: &str = r#"#[derive(Default)]
+pub struct {{ class }};
 
 impl {{ class }} {
     /// Create a new class instance.
@@ -395,6 +396,31 @@ pub struct {{ class }};
 impl Seeder for {{ class }} {
     /// Run the database seeds.
     async fn run(&self) -> Result<()> {
+        Ok(())
+    }
+}
+"#;
+
+pub const JOB: &str = r#"use laravel::prelude::*;
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct {{ class }} {
+    //
+}
+
+laravel::register_job!({{ class }});
+
+impl {{ class }} {
+    /// Create a new job instance.
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+#[async_trait]
+impl ShouldQueue for {{ class }} {
+    /// Execute the job.
+    async fn handle(&self) -> Result<()> {
         Ok(())
     }
 }

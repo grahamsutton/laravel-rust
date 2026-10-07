@@ -41,6 +41,7 @@ pub use illuminate_http as http;
 pub use illuminate_log as log;
 pub use illuminate_pagination as pagination;
 pub use illuminate_pipeline as pipeline;
+pub use illuminate_queue as queue;
 pub use illuminate_routing as routing;
 pub use illuminate_session as session;
 pub use illuminate_support as support;
@@ -78,6 +79,7 @@ pub mod facades {
     pub use illuminate_foundation::{App, Vite};
     pub use illuminate_hashing::Hash;
     pub use illuminate_log::Log;
+    pub use illuminate_queue::{Bus, Queue};
     pub use illuminate_routing::{Redirect, Route, URL};
     pub use illuminate_session::Session;
     pub use illuminate_translation::Lang;
@@ -106,6 +108,7 @@ pub mod helpers {
     pub use illuminate_hashing::bcrypt;
     pub use illuminate_http::{abort, abort_if, abort_unless, abort_with, request, response};
     pub use illuminate_log::{info, logger};
+    pub use illuminate_queue::{dispatch, dispatch_sync};
     pub use illuminate_routing::{asset, back, redirect, route, secure_asset, secure_url, to_route, url};
     pub use illuminate_session::{csrf_field, csrf_token, method_field, old, session};
     pub use illuminate_support::{
@@ -137,6 +140,7 @@ pub mod prelude {
         UploadedFile,
     };
     pub use illuminate_pagination::{LengthAwarePaginator, Paginator};
+    pub use illuminate_queue::{Dispatchable, InteractsWithQueue, ShouldQueue};
     pub use illuminate_routing::{
         FromRequest, Inject, Input, Path, Query, ResourceController, UrlRoutable,
     };
@@ -156,6 +160,9 @@ pub mod prelude {
         to_value,
     };
 }
+
+/// Register job types so queue workers can run them: `register_job!(ProcessPodcast);`
+pub use illuminate_queue::register_job;
 
 // ---------------------------------------------------------------------------
 // Application conventions

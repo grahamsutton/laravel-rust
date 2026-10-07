@@ -178,6 +178,14 @@ pub fn all() -> Vec<MakeCommand> {
             |_, name| populate(stubs::SEEDER, &[("class", &class(name))]),
         ),
         MakeCommand::new(
+            "make:job",
+            "Job",
+            "Create a new job class",
+            "app/jobs",
+            Registration::ModuleAndExport,
+            |_, name| populate(stubs::JOB, &[("class", &class(name))]),
+        ),
+        MakeCommand::new(
             "make:middleware",
             "Middleware",
             "Create a new HTTP middleware class",

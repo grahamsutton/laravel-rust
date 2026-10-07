@@ -126,6 +126,11 @@ impl HttpKernel {
             Box::pin(async move {
                 let response = kernel.handle(request.clone()).await;
                 kernel.terminate(&request, &response).await;
+                // `dispatch_after_response` jobs and deferred callbacks run once
+                // the response is on its way.
+                if let Some(deferred) = request.extension::<illuminate_queue::DeferredCallbacks>() {
+                    tokio::spawn(async move { deferred.invoke().await });
+                }
                 response
             }) as BoxFuture<'static, Response>
         })
@@ -234,6 +239,11 @@ impl Application {
             Ok(kernel) => {
                 let response = kernel.handle(request.clone()).await;
                 kernel.terminate(&request, &response).await;
+                // Run `dispatch_after_response` jobs and deferred callbacks
+                // before handing the response back (the test client relies on it).
+                if let Some(deferred) = request.extension::<illuminate_queue::DeferredCallbacks>() {
+                    deferred.invoke().await;
+                }
                 response
             }
             Err(error) => with_request(request, async move { render_exception(error) }).await,

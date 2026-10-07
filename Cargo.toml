@@ -135,6 +135,7 @@ illuminate-validation.workspace = true
 illuminate-database.workspace = true
 illuminate-view.workspace = true
 illuminate-auth.workspace = true
+illuminate-queue.workspace = true
 async-trait.workspace = true
 serde.workspace = true
 serde_json.workspace = true

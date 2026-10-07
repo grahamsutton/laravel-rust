@@ -60,6 +60,18 @@ pub fn register_framework_commands() {
     Artisan::register(SeedCommand);
     Artisan::register(WipeCommand);
 
+    Artisan::register(QueueClearCommand);
+    Artisan::register(QueueFailedCommand);
+    Artisan::register(QueueFlushCommand);
+    Artisan::register(QueueForgetCommand);
+    Artisan::register(QueueMonitorCommand);
+    Artisan::register(QueuePauseCommand);
+    Artisan::register(QueuePruneFailedCommand);
+    Artisan::register(QueueRestartCommand);
+    Artisan::register(QueueResumeCommand);
+    Artisan::register(QueueRetryCommand);
+    Artisan::register(QueueWorkCommand);
+
     Artisan::register(generators::migration::MakeMigrationCommand);
     for generator in generators::commands::all() {
         Artisan::register(generator);
@@ -127,6 +139,7 @@ impl Application {
         self.bootstrap_console();
         let argv: Vec<String> = argv.into_iter().map(Into::into).collect();
         let code = Artisan::run(argv).await;
+        illuminate_queue::DeferredCallbacks::current().invoke().await;
         self.terminate();
         code
     }
