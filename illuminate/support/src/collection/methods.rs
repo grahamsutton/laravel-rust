@@ -247,6 +247,39 @@ impl<T> Collection<T> {
         self.map(U::from)
     }
 
+    /// Group the values returned by the callback by their keys, as plain
+    /// lists.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// let dictionary = collect(vec![("Sales", "John Doe"), ("Sales", "Jane Doe"), ("Marketing", "Johnny Doe")])
+    ///     .map_to_dictionary(|(department, name)| (department, name));
+    /// assert_eq!(dictionary["Sales"], vec!["John Doe", "Jane Doe"]);
+    /// ```
+    pub fn map_to_dictionary<K: Hash + Eq, V>(self, mut callback: impl FnMut(T) -> (K, V)) -> IndexMap<K, Vec<V>> {
+        let mut dictionary: IndexMap<K, Vec<V>> = IndexMap::new();
+        for item in self.items {
+            let (key, value) = callback(item);
+            dictionary.entry(key).or_default().push(value);
+        }
+        dictionary
+    }
+
+    /// Add the given items to the beginning of the collection, in order.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// assert_eq!(collect(vec![3, 4]).unshift([1, 2]).all(), &[1, 2, 3, 4]);
+    /// ```
+    pub fn unshift(mut self, items: impl IntoIterator<Item = T>) -> Self {
+        let mut items: Vec<T> = items.into_iter().collect();
+        items.append(&mut self.items);
+        self.items = items;
+        self
+    }
+
     /// Group the values returned by the callback by their keys.
     ///
     /// ```
@@ -648,6 +681,176 @@ impl<A, B> Collection<(A, B)> {
         A: Hash + Eq,
     {
         self.items.into_iter().collect()
+    }
+}
+
+/// Methods for keyed collections: pairs of keys and values, the way PHP's
+/// associative arrays work.
+impl<K: Hash + Eq, V> Collection<(K, V)> {
+    /// Get the pairs whose keys aren't in the given pairs.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// let diff = collect(vec![("one", 10), ("two", 20), ("three", 30)]).diff_keys(vec![("two", 2), ("four", 4)]);
+    /// assert_eq!(diff.all(), &[("one", 10), ("three", 30)]);
+    /// ```
+    pub fn diff_keys<W>(self, other: impl IntoIterator<Item = (K, W)>) -> Self {
+        let keys: HashSet<K> = other.into_iter().map(|(key, _)| key).collect();
+        Collection {
+            items: self.items.into_iter().filter(|(key, _)| !keys.contains(key)).collect(),
+        }
+    }
+
+    /// Get the pairs whose keys are in the given pairs.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// let intersect = collect(vec![("serial", "UX301"), ("type", "screen"), ("year", "2009")])
+    ///     .intersect_by_keys(vec![("reference", "UX404"), ("type", "tab"), ("year", "2011")]);
+    /// assert_eq!(intersect.all(), &[("type", "screen"), ("year", "2009")]);
+    /// ```
+    pub fn intersect_by_keys<W>(self, other: impl IntoIterator<Item = (K, W)>) -> Self {
+        let keys: HashSet<K> = other.into_iter().map(|(key, _)| key).collect();
+        Collection {
+            items: self.items.into_iter().filter(|(key, _)| keys.contains(key)).collect(),
+        }
+    }
+
+    /// Sort the collection by its keys.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// let sorted = collect(vec![("id", 22345), ("first", "John".len()), ("last", "Doe".len())]).sort_keys();
+    /// assert_eq!(sorted.keys_of(), vec!["first", "id", "last"]);
+    /// ```
+    pub fn sort_keys(self) -> Self
+    where
+        K: Ord,
+    {
+        self.sort_keys_using(|a, b| a.cmp(b))
+    }
+
+    /// Sort the collection by its keys, in descending order.
+    pub fn sort_keys_desc(self) -> Self
+    where
+        K: Ord,
+    {
+        self.sort_keys_using(|a, b| b.cmp(a))
+    }
+
+    /// Sort the collection by its keys with the given comparison.
+    pub fn sort_keys_using(mut self, mut compare: impl FnMut(&K, &K) -> Ordering) -> Self {
+        self.items.sort_by(|(a, _), (b, _)| compare(a, b));
+        self
+    }
+
+    /// The keys, in order (`keys` returns the positions, like a list).
+    pub fn keys_of(&self) -> Vec<K>
+    where
+        K: Clone,
+    {
+        self.items.iter().map(|(key, _)| key.clone()).collect()
+    }
+
+    /// Get the value for the key, or add the given default and return it.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// let mut collection = collect(vec![("name", "Taylor".to_string())]);
+    /// assert_eq!(collection.get_or_put("name", || "Abigail".into()), "Taylor");
+    /// assert_eq!(collection.get_or_put("role", || "Developer".into()), "Developer");
+    /// assert_eq!(collection.count(), 2);
+    /// ```
+    pub fn get_or_put(&mut self, key: K, value: impl FnOnce() -> V) -> &mut V {
+        let index = match self.items.iter().position(|(existing, _)| *existing == key) {
+            Some(index) => index,
+            None => {
+                self.items.push((key, value()));
+                self.items.len() - 1
+            }
+        };
+        &mut self.items[index].1
+    }
+
+    /// Add the given pairs whose keys aren't in the collection yet.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// let union = collect(vec![(1, "a"), (2, "b")]).union(vec![(3, "c"), (1, "d")]);
+    /// assert_eq!(union.all(), &[(1, "a"), (2, "b"), (3, "c")]);
+    /// ```
+    pub fn union(mut self, other: impl IntoIterator<Item = (K, V)>) -> Self
+    where
+        K: Clone,
+    {
+        let mut keys: HashSet<K> = self.items.iter().map(|(key, _)| key.clone()).collect();
+        for (key, value) in other {
+            if keys.insert(key.clone()) {
+                self.items.push((key, value));
+            }
+        }
+        self
+    }
+
+    /// Swap the keys and values. When values repeat, the last key wins.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// let flipped = collect(vec![("name", "taylor"), ("framework", "laravel")]).flip();
+    /// assert_eq!(flipped.all(), &[("taylor", "name"), ("laravel", "framework")]);
+    /// ```
+    pub fn flip(self) -> Collection<(V, K)>
+    where
+        V: Hash + Eq,
+    {
+        let flipped: IndexMap<V, K> = self.items.into_iter().map(|(key, value)| (value, key)).collect();
+        flipped.into_iter().collect()
+    }
+
+    /// Get the pairs that aren't in the given pairs, comparing keys and
+    /// values.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// let diff = collect(vec![("color", "orange"), ("type", "fruit"), ("remain", "6")])
+    ///     .diff_assoc(vec![("color", "yellow"), ("type", "fruit"), ("remain", "3"), ("used", "6")]);
+    /// assert_eq!(diff.all(), &[("color", "orange"), ("remain", "6")]);
+    /// ```
+    pub fn diff_assoc(self, other: impl IntoIterator<Item = (K, V)>) -> Self
+    where
+        V: PartialEq,
+    {
+        let other: Vec<(K, V)> = other.into_iter().collect();
+        Collection {
+            items: self.items.into_iter().filter(|pair| !other.contains(pair)).collect(),
+        }
+    }
+
+    /// Get the pairs that are also in the given pairs, comparing keys and
+    /// values.
+    ///
+    /// ```
+    /// use illuminate_support::collect;
+    ///
+    /// let intersect = collect(vec![("color", "red"), ("size", "M"), ("material", "cotton")])
+    ///     .intersect_assoc(vec![("color", "blue"), ("size", "M"), ("material", "polyester")]);
+    /// assert_eq!(intersect.all(), &[("size", "M")]);
+    /// ```
+    pub fn intersect_assoc(self, other: impl IntoIterator<Item = (K, V)>) -> Self
+    where
+        V: PartialEq,
+    {
+        let other: Vec<(K, V)> = other.into_iter().collect();
+        Collection {
+            items: self.items.into_iter().filter(|pair| other.contains(pair)).collect(),
+        }
     }
 }
 
