@@ -213,14 +213,14 @@ impl TestResponse {
     // ------------------------------------------------------------------
 
     /// Assert the response is a redirect (optionally to the given URI).
-    pub fn assert_redirect(&self, uri: Option<&str>) -> &Self {
+    pub fn assert_redirect<'a>(&self, uri: impl Into<Option<&'a str>>) -> &Self {
         if !self.response.is_redirect() {
             self.fail(format!(
                 "Expected response status code [201, 301, 302, 303, 307, 308] but received {}.",
                 self.status()
             ));
         }
-        if let Some(uri) = uri {
+        if let Some(uri) = uri.into() {
             self.assert_location(uri);
         }
         self
@@ -228,7 +228,7 @@ impl TestResponse {
 
     /// Assert the response redirects to the given URI.
     pub fn assert_redirect_to(&self, uri: &str) -> &Self {
-        self.assert_redirect(Some(uri))
+        self.assert_redirect(uri)
     }
 
     /// Assert the response redirects to the given named route.
@@ -236,7 +236,7 @@ impl TestResponse {
         let url = illuminate_routing::url_generator()
             .route(name, parameters)
             .unwrap_or_else(|error| self.fail(error.to_string()));
-        self.assert_redirect(Some(&url))
+        self.assert_redirect(url.as_str())
     }
 
     /// Assert the `Location` header matches the URI (absolute or relative).

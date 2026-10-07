@@ -42,6 +42,8 @@ pub fn default_providers() -> Vec<Box<dyn ServiceProvider>> {
         Box::new(illuminate_session::SessionServiceProvider),
         Box::new(illuminate_translation::TranslationServiceProvider),
         Box::new(illuminate_validation::ValidationServiceProvider),
+        Box::new(illuminate_view::ViewServiceProvider),
+        Box::new(illuminate_auth::AuthServiceProvider),
         Box::new(illuminate_console::ConsoleServiceProvider),
         Box::new(FoundationServiceProvider),
     ]
@@ -54,7 +56,10 @@ pub fn extra_framework_commands() -> Vec<Arc<dyn illuminate_console::Command>> {
 
 /// Middleware aliases contributed by framework components.
 pub fn framework_middleware_aliases(_config: &Middleware) -> Vec<(String, MiddlewareFactory)> {
-    Vec::new()
+    illuminate_auth::middleware::middleware_aliases()
+        .into_iter()
+        .map(|(alias, factory)| (alias.to_string(), factory))
+        .collect()
 }
 
 /// Glues the framework's components together.

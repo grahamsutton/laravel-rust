@@ -10,6 +10,9 @@ use illuminate_support::{Error, Map, Value, ValueExt};
 
 use crate::exceptions::{Handler, Prepared};
 
+mod auth;
+mod views;
+
 type ViewRenderer = Arc<dyn Fn(&str, Value) -> Option<String> + Send + Sync>;
 
 static VIEW_RENDERER: LazyLock<RwLock<Option<ViewRenderer>>> = LazyLock::new(|| RwLock::new(None));
@@ -31,6 +34,8 @@ pub fn boot() {
     wire_pagination();
     wire_validation();
     wire_filesystem();
+    views::boot();
+    auth::boot();
 }
 
 /// Report exceptions through the log, and teach the handler about the

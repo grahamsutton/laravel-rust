@@ -17,6 +17,7 @@ pub mod inspiring;
 pub mod integration;
 pub mod providers;
 pub mod testing;
+pub mod vite;
 
 pub use application::{Application, VERSION};
 pub use bootstrap::ConfigFile;
@@ -25,3 +26,4 @@ pub use http::kernel::HttpKernel;
 pub use facade::App;
 pub use helpers::*;
 pub use inspiring::Inspiring;
+pub use vite::Vite;

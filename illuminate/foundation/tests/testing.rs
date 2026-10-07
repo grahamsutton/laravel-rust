@@ -53,7 +53,7 @@ async fn sessions_persist_across_requests() {
     let (mut app, _dir) = test_app();
 
     app.post("/counter", json!({})).await
-        .assert_redirect(Some("/count"))
+        .assert_redirect("/count")
         .assert_session_has("status", Some(json!("Count is 1")));
     app.post("/counter", json!({})).await;
     app.get("/count").await.assert_see("2");

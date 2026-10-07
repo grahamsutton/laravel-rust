@@ -325,7 +325,8 @@ impl Handler {
                     return Response::json(&json!({ "message": message })).with_status(401);
                 }
                 match redirect_to {
-                    Some(to) => Response::redirect(to).with_status(302),
+                    // Remember where the user was headed, for `redirect()->intended()`.
+                    Some(to) => illuminate_session::redirect_guest(&to),
                     None => Response::no_content().with_status(401),
                 }
             }

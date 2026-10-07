@@ -60,7 +60,7 @@ async fn maintenance_mode_can_be_toggled() {
         .assert_successful()
         .await;
     app.get("/").await.assert_service_unavailable();
-    app.get("/letmein").await.assert_redirect(Some("/"));
+    app.get("/letmein").await.assert_redirect("/");
     app.get("/").await.assert_ok().assert_see("Home");
 
     app.artisan("up")

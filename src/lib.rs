@@ -25,6 +25,7 @@
 // The Illuminate components
 // ---------------------------------------------------------------------------
 
+pub use illuminate_auth as auth;
 pub use illuminate_cache as cache;
 pub use illuminate_config as config;
 pub use illuminate_console as console;
@@ -45,6 +46,7 @@ pub use illuminate_session as session;
 pub use illuminate_support as support;
 pub use illuminate_translation as translation;
 pub use illuminate_validation as validation;
+pub use illuminate_view as view;
 
 /// Testing helpers: `TestApp`, `TestResponse`, and friends.
 pub mod testing {
@@ -64,6 +66,7 @@ pub use illuminate_support::{Error, Result, Value, json};
 
 /// Laravel's facades: static, expressive access to framework services.
 pub mod facades {
+    pub use illuminate_auth::facades::{Auth, Gate, Password};
     pub use illuminate_cache::facades::{Cache, RateLimiter};
     pub use illuminate_config::Config;
     pub use illuminate_console::{Artisan, Schedule};
@@ -72,13 +75,15 @@ pub mod facades {
     pub use illuminate_encryption::Crypt;
     pub use illuminate_events::Event;
     pub use illuminate_filesystem::facades::{File, Storage};
-    pub use illuminate_foundation::App;
+    pub use illuminate_foundation::{App, Vite};
     pub use illuminate_hashing::Hash;
     pub use illuminate_log::Log;
     pub use illuminate_routing::{Redirect, Route, URL};
     pub use illuminate_session::Session;
     pub use illuminate_translation::Lang;
     pub use illuminate_validation::Validator;
+    pub use illuminate_view::facades::View;
+    pub use illuminate_view::Blade;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,6 +92,7 @@ pub mod facades {
 
 /// Laravel's global helper functions.
 pub mod helpers {
+    pub use illuminate_auth::{auth, authorize};
     pub use illuminate_cache::cache;
     pub use illuminate_config::{config, config_or};
     pub use illuminate_container::{app, resolve, try_app};
@@ -107,6 +113,7 @@ pub mod helpers {
         throw_if, throw_unless, today, with,
     };
     pub use illuminate_translation::{__, trans, trans_choice};
+    pub use illuminate_view::view;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,9 +140,11 @@ pub mod prelude {
     pub use illuminate_routing::{
         FromRequest, Inject, Input, Path, Query, ResourceController, UrlRoutable,
     };
+    pub use illuminate_auth::{Authenticatable, AuthUser, MustVerifyEmail, Policy, RequestAuthExt};
     pub use illuminate_console::{Command, Console};
     pub use illuminate_database::{Blueprint, Migration, Seeder};
     pub use illuminate_session::RequestSessionExt;
+    pub use illuminate_view::{Component, View};
     pub use illuminate_support::error::Context as _;
     pub use illuminate_validation::{
         FormRequest, Password, Rule, Rules, Validated, ValidatesRequests, ValidationException,
